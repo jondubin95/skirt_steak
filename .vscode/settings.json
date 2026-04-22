@@ -1,0 +1,16 @@
+{
+  "python.linting.enabled": true,
+  "python.linting.pylintEnabled": true,
+  "python.formatting.provider": "black",
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.python",
+    "editor.formatOnSave": true
+  },
+  "[sql]": {
+    "editor.defaultFormatter": "dorzey.vscode-sqlfluff",
+    "editor.formatOnSave": true
+  },
+  "sqlfluff.dialect": "bigquery",
+  "editor.rulers": [88, 120],
+  "editor.wordWrap": "on"
+}
