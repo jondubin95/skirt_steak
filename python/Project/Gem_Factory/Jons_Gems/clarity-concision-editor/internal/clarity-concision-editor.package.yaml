@@ -1,0 +1,8 @@
+id: "clarity-concision-editor-agent"
+version: "0.1.0"
+release-date: "26-04-2026"
+release-notes:
+  - version: "0.1.0"
+    date: "26-04-2026"
+    added:
+      - "Initial release of clarity & concision editor gem with core writing workflows."
