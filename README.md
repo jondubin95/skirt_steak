@@ -1,60 +1,69 @@
-# Skirt Steak
+﻿# Skirt Steak
 
-This project is experimental and very much a work in progress. I am still exploring where it will go, so expect changes, rough edges, and frequent updates as ideas evolve.
+Experimental workspace for Python, SQL, notebooks, and agent-oriented project tooling.
+This repo is intentionally iterative, so structure and workflows will continue to evolve.
 
-## Setup for DuckDB + Python Development
+## Repo Overview
 
-This workspace is configured for local SQL and Python development. Using DuckDB for fast, free exploratory data analysis.
+### Top-Level Areas
 
-### Project Structure
+- `.githooks/` - Git hook enforcement for local guardrails.
+- `docs/` - Runbooks and workflow documentation.
+- `notebooks/` - Jupyter notebooks for exploration.
+- `python/` - Python projects and scripts.
+- `sql/` - SQL scripts and data work.
+- `tools/` - Utility scripts, including workflow guardrail helpers.
+- `Sensitive/` - Local-only credentials/tokens (never stage this path).
 
+### Key Projects
+
+- `python/Project/Gem_Factory/`
+- Gem authoring and sync workflows, including `Jons_Gems/clarity-concision-editor/`.
+- `python/Project/Google_Maps_Linker/`
+- Utilities that enrich Google Sheets rows with Google Maps links and place metadata.
+
+## Project Index
+
+- Root guardrails contract: [AGENTS.md](AGENTS.md)
+- Workflow runbook: [docs/workflow-guardrails.md](docs/workflow-guardrails.md)
+- Guardrail scripts reference: [tools/workflow_guardrails/README.md](tools/workflow_guardrails/README.md)
+- Google Maps Linker guide: [python/Project/Google_Maps_Linker/README.md](python/Project/Google_Maps_Linker/README.md)
+- Clarity & Concision Editor gem: [python/Project/Gem_Factory/Jons_Gems/clarity-concision-editor/README.md](python/Project/Gem_Factory/Jons_Gems/clarity-concision-editor/README.md)
+
+## Quick Start (Local Python + DuckDB)
+
+1. Create a virtual environment:
+```powershell
+python -m venv .venv
 ```
-skirt_steak/
-├── .vscode/
-│   ├── settings.json          # Workspace settings for Python & DuckDB
-│   └── extensions.json        # Recommended extensions
-├── .venv/                     # Virtual environment (created by setup)
-├── sql/                       # SQL scripts
-├── python/                    # Python scripts
-├── notebooks/                 # Jupyter notebooks
-└── README.md
+2. Activate it (Windows PowerShell):
+```powershell
+.\.venv\Scripts\Activate.ps1
 ```
+3. Install baseline packages:
+```powershell
+pip install duckdb pandas black pylint
+```
+4. Start from `python/duckdb_starter.py` for local DuckDB examples.
 
-### Getting Started
+## Dependency Management
 
-1. **Install Recommended Extensions**
-   - Open VS Code and go to Extensions (Ctrl+Shift+X)
-   - Click "Show Recommended Extensions"
-   - Install: Python, Pylance, SQLFluff, Black Formatter, GitHub Copilot, Copilot Chat
+- `.venv/` is intentionally ignored and should stay local-only.
+- Commit dependency manifests, not virtual environment contents.
+- Install per-project dependencies from the repo root:
+```powershell
+pip install -r python/Project/Google_Maps_Linker/requirements.txt
+pip install -r python/Project/Gem_Factory/tools/gdocs_sync/requirements.txt
+```
+- If dependencies change, update the relevant `requirements.txt` in the same commit.
 
-2. **Set Up Python Environment**
-   ```bash
-   # Create virtual environment
-   python -m venv .venv
-   
-   # Activate (Windows)
-   .\.venv\Scripts\Activate.ps1
-   
-   # Install packages
-   pip install duckdb pandas black pylint
-   ```
+## Git Guardrails (v2 Summary)
 
-3. **Get Started with DuckDB**
-   - Check out [python/duckdb_starter.py](python/duckdb_starter.py) for working examples
-   - Learn how to:
-     - Create and query local databases
-     - Convert results to Pandas DataFrames
-     - Read/write CSV files
-     - Run fast analytical queries
+- Protected branches: `main`, `master`
+- Feature branch pattern: `^feature/[a-z0-9-]{3,40}$`
+- Recommended sync command on divergence: `git pull --rebase`
+- `git push --force-with-lease` is conditional and only for agent-owned `feature/*` branches
+- If a command is destructive or unclear, block and escalate instead of guessing
+- `Sensitive/` hook checks are helpful but not a complete secret-scanning system
 
-### Workspace Settings
-
-- Python formatter: Black (auto-format on save)
-- Line rulers at 88 (Black) and 120 characters
-
-### Tips
-
-- **Local-first**: All data stays on your machine—no cloud dependencies
-- **Fast**: DuckDB is optimized for analytical queries
-- **Free**: No costs, no API keys, no setup
-- **Extensible**: Easy to swap in other tools as your needs grow
+See [AGENTS.md](AGENTS.md) and [docs/workflow-guardrails.md](docs/workflow-guardrails.md) for full policy and decision rules.
