@@ -1,0 +1,31 @@
+#!/usr/bin/env sh
+set -eu
+
+branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+
+if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
+  cat <<'MSG'
+[guardrail] Commit blocked: direct commits on main/master are not allowed.
+
+Fix:
+  git switch -c feature/<short-topic>
+  git commit ...
+MSG
+  exit 1
+fi
+
+sensitive_files="$(git diff --cached --name-only --diff-filter=ACMR | grep -Ei '^Sensitive/' || true)"
+if [ -n "$sensitive_files" ]; then
+  echo "[guardrail] Commit blocked: staged files under Sensitive/ are not allowed."
+  echo "Unstage these files first:"
+  echo "$sensitive_files"
+  cat <<'MSG'
+
+Fix:
+  git restore --staged Sensitive/*
+  # Move secrets/tokens under Sensitive/ but do not stage them.
+MSG
+  exit 1
+fi
+
+exit 0

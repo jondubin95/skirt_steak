@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+set -eu
+
+branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+
+if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
+  cat <<'MSG'
+[guardrail] Push blocked: pushing directly from main/master is not allowed.
+
+Fix:
+  git switch -c feature/<short-topic>
+  git push -u origin feature/<short-topic>
+  # Open a PR into main.
+MSG
+  exit 1
+fi
+
+exit 0
