@@ -12,3 +12,9 @@ env/
 
 # Local sensitive files (do not commit)
 /Sensitive/
+
+# Local AI handoff notes
+handoffs/
+
+# Nested local repo
+python/Project/Gem_Factory/gem-factory/
