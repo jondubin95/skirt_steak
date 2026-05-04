@@ -41,6 +41,13 @@ It is scoped to this repo. Do not assume it overrides other tool-specific instru
   - validation performed or still missing
 - Avoid vague summaries that hide decision-relevant detail.
 
+### Pull Request Bodies
+
+- Never open or leave a pull request with the raw template text still in place.
+- Replace all placeholder prompts with concrete repo-specific content before review.
+- Mark validation and guardrail checkboxes to reflect what actually happened.
+- If creating a PR through CLI, API, or automation, supply an explicit body instead of relying on the default template alone.
+
 ### Automation First
 
 - Prefer scripts, CLI commands, and repeatable workflows over manual editing steps.

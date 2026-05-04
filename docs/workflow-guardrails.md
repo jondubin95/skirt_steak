@@ -113,6 +113,14 @@ powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\diagnostics
 ```
 
 5. Commit/push from feature branch, then open PR into `main`.
+6. Before submitting or sharing the PR, replace the raw PR template prompts with actual summary, change list, validation notes, and accurate guardrail checkboxes.
+
+## Pull Request Body Standard
+
+- Do not leave placeholder template bullets like `What changed?` or `Why was this needed?` in the final PR body.
+- Fill in each section with concrete repo-specific context.
+- Update validation and guardrail checkboxes to match the actual work performed.
+- If using automation or API-based PR creation, pass a complete body explicitly rather than relying on template autofill alone.
 
 ## Scenario Validation (Policy Dry-Run)
 
