@@ -13,8 +13,9 @@ env/
 # Local sensitive files (do not commit)
 /Sensitive/
 
-# Local AI handoff notes
-handoffs/
+# Local AI handoff notes (keep the folder README tracked)
+handoffs/*
+!handoffs/README.md
 
 # Nested local repo
 python/Project/Gem_Factory/gem-factory/

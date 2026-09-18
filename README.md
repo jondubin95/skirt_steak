@@ -27,6 +27,8 @@ This repo is intentionally iterative, so structure and workflows will continue t
 - Root guardrails contract: [AGENTS.md](AGENTS.md)
 - GitHub Copilot repo instructions: [.github/copilot-instructions.md](.github/copilot-instructions.md)
 - Cross-model continuity template: [handoff-template.md](handoff-template.md)
+- Cursor project skills: [.cursor/skills/](.cursor/skills/)
+- Local handoff notes (gitignored): [handoffs/README.md](handoffs/README.md)
 - Workflow runbook: [docs/workflow-guardrails.md](docs/workflow-guardrails.md)
 - Guardrail scripts reference: [tools/workflow_guardrails/README.md](tools/workflow_guardrails/README.md)
 - Google Maps Linker guide: [python/Project/Google_Maps_Linker/README.md](python/Project/Google_Maps_Linker/README.md)
@@ -38,6 +40,7 @@ This repo is intentionally iterative, so structure and workflows will continue t
 - Name handoffs with a short topic and timestamp for easy recovery.
 - Include objective, current state, decisions, constraints, next actions, and a short resume prompt.
 - Treat handoffs as continuity artifacts, not full transcripts.
+- Notes under `handoffs/` stay local. Remote agents only see them if you paste or commit a note.
 
 ## What Each File Does
 
