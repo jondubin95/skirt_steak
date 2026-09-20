@@ -10,11 +10,13 @@ venv/
 env/
 .DS_Store
 
-# Local sensitive files (do not commit)
-/Sensitive/
+# Local sensitive files. Track only the scaffold README.
+/Sensitive/**
+!/Sensitive/README.md
 
-# Local AI handoff notes
-handoffs/
+# Public handoff tier is tracked on purpose (sanitized thread heads only).
+# Full-fidelity notes live in Sensitive/handoffs/ and are covered by the
+# /Sensitive/** rule above.
 
 # Nested local repo
 python/Project/Gem_Factory/gem-factory/
