@@ -10,8 +10,9 @@ venv/
 env/
 .DS_Store
 
-# Local sensitive files (do not commit)
-/Sensitive/
+# Local sensitive files. Track only the scaffold README.
+/Sensitive/**
+!/Sensitive/README.md
 
 # Local AI handoff notes (keep the folder README tracked)
 handoffs/*

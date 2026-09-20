@@ -14,8 +14,8 @@
 
 ## Guardrails Check
 
-- [ ] Work was done on a feature branch (`feature/<short-topic>`)
-- [ ] No files under `Sensitive/` were staged
+- [ ] Work was done on an allowed working branch (`feature/<short-topic>` or `cursor/<name>-<id>`)
+- [ ] No secret files under `Sensitive/` were staged (scaffold README only if needed)
 - [ ] This PR targets `main` via normal review flow
 
 ## Notes for Reviewers

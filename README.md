@@ -29,6 +29,7 @@ This repo is intentionally iterative, so structure and workflows will continue t
 - Cross-model continuity template: [handoff-template.md](handoff-template.md)
 - Cursor project skills (keyword-triggered): [.cursor/skills/](.cursor/skills/)
 - Local handoff notes (gitignored): [handoffs/README.md](handoffs/README.md)
+- Secrets layout (gitignored contents): [Sensitive/README.md](Sensitive/README.md)
 - Workflow runbook: [docs/workflow-guardrails.md](docs/workflow-guardrails.md)
 - Guardrail scripts reference: [tools/workflow_guardrails/README.md](tools/workflow_guardrails/README.md)
 - Google Maps Linker guide: [python/Project/Google_Maps_Linker/README.md](python/Project/Google_Maps_Linker/README.md)
@@ -69,9 +70,9 @@ pip install duckdb pandas black pylint
 ## Git Guardrails (v2 Summary)
 
 - Protected branches: `main`, `master`
-- Feature branch pattern: `^feature/[a-z0-9-]{3,40}$`
+- Working branch patterns: `^feature/[a-z0-9-]{3,40}$` (local) or `^cursor/[a-z0-9-]+-[a-z0-9]+$` (Cloud Agents)
 - Recommended sync command on divergence: `git pull --rebase`
-- `git push --force-with-lease` is conditional and only for agent-owned `feature/*` branches
+- `git push --force-with-lease` is conditional and only for agent-owned `feature/*` or `cursor/*` branches
 - If a command is destructive or unclear, block and escalate instead of guessing
 
 See [AGENTS.md](AGENTS.md) and [docs/workflow-guardrails.md](docs/workflow-guardrails.md) for full policy and decision rules.

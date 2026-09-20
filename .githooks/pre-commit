@@ -10,20 +10,22 @@ if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
 Fix:
   git switch -c feature/<short-topic>
   git commit ...
+  # Cloud Agents: stay on the existing cursor/<name>-<id> branch.
 MSG
   exit 1
 fi
 
-sensitive_files="$(git diff --cached --name-only --diff-filter=ACMR | grep -Ei '^Sensitive/' || true)"
+sensitive_files="$(git diff --cached --name-only --diff-filter=ACMR | grep -Ei '^Sensitive/' | grep -Ev '^Sensitive/README\.md$' || true)"
 if [ -n "$sensitive_files" ]; then
   echo "[guardrail] Commit blocked: staged files under Sensitive/ are not allowed."
+  echo "The only tracked path under Sensitive/ is Sensitive/README.md."
   echo "Unstage these files first:"
   echo "$sensitive_files"
   cat <<'MSG'
 
 Fix:
-  git restore --staged Sensitive/*
-  # Move secrets/tokens under Sensitive/ but do not stage them.
+  git restore --staged Sensitive/
+  # Keep secrets/tokens under Sensitive/ but do not stage them.
 MSG
   exit 1
 fi

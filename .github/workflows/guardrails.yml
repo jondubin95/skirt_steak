@@ -23,13 +23,13 @@ jobs:
         run: |
           set -euo pipefail
           echo "Head branch: $HEAD_REF"
-          # AGENTS.md requires feature/[a-z0-9-]{3,40}. Cloud Agent branches
-          # are required to use cursor/<name>-<suffix>. Accept both so this
-          # check does not contradict either policy.
+          # Allowed working branches (see AGENTS.md):
+          # - feature/[a-z0-9-]{3,40}  (local / human)
+          # - cursor/<name>-<id>       (Cursor Cloud Agents; id is run-assigned)
           if [[ "$HEAD_REF" =~ ^feature/[a-z0-9-]{3,40}$ ]] || [[ "$HEAD_REF" =~ ^cursor/[a-z0-9-]+-[a-z0-9]+$ ]]; then
             echo "Branch name OK."
           else
-            echo "::error::Branch '$HEAD_REF' does not match feature/[a-z0-9-]{3,40} or cursor/<name>-<suffix>. See AGENTS.md."
+            echo "::error::Branch '$HEAD_REF' does not match feature/[a-z0-9-]{3,40} or cursor/<name>-<id>. See AGENTS.md."
             exit 1
           fi
 
@@ -39,13 +39,14 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- 'Sensitive/*' || true)"
-          if [ -n "$changed" ]; then
-            echo "::error::PR touches files under Sensitive/, which must never be committed:"
-            echo "$changed"
+          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- 'Sensitive/' || true)"
+          blocked="$(printf '%s\n' "$changed" | grep -Ev '^$|^Sensitive/README\.md$' || true)"
+          if [ -n "$blocked" ]; then
+            echo "::error::PR touches files under Sensitive/ other than the tracked scaffold README:"
+            echo "$blocked"
             exit 1
           fi
-          echo "No Sensitive/ files in this PR."
+          echo "No secret files under Sensitive/ in this PR."
 
       - name: Verify PR body is not the raw template
         env:
