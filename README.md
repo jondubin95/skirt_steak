@@ -27,7 +27,7 @@ This repo is intentionally iterative, so structure and workflows will continue t
 - Root guardrails contract: [AGENTS.md](AGENTS.md)
 - GitHub Copilot repo instructions: [.github/copilot-instructions.md](.github/copilot-instructions.md)
 - Cross-model continuity template: [handoff-template.md](handoff-template.md)
-- Cursor project skills: [.cursor/skills/](.cursor/skills/)
+- Cursor project skills (slash-invoked only): [.cursor/skills/](.cursor/skills/)
 - Local handoff notes (gitignored): [handoffs/README.md](handoffs/README.md)
 - Workflow runbook: [docs/workflow-guardrails.md](docs/workflow-guardrails.md)
 - Guardrail scripts reference: [tools/workflow_guardrails/README.md](tools/workflow_guardrails/README.md)
