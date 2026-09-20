@@ -28,7 +28,7 @@ This repo is intentionally iterative, so structure and workflows will continue t
 - GitHub Copilot repo instructions: [.github/copilot-instructions.md](.github/copilot-instructions.md)
 - Cross-model continuity template: [handoff-template.md](handoff-template.md)
 - Cursor project skills (keyword-triggered): [.cursor/skills/](.cursor/skills/)
-- Local handoff notes (gitignored): [handoffs/README.md](handoffs/README.md)
+- Handoff notes, public tier: [handoffs/README.md](handoffs/README.md)
 - Secrets layout (gitignored contents): [Sensitive/README.md](Sensitive/README.md)
 - Workflow runbook: [docs/workflow-guardrails.md](docs/workflow-guardrails.md)
 - Guardrail scripts reference: [tools/workflow_guardrails/README.md](tools/workflow_guardrails/README.md)
@@ -37,11 +37,12 @@ This repo is intentionally iterative, so structure and workflows will continue t
 
 ## Handoff Convention
 
-- For substantial work, create a handoff note in `handoffs/` using `handoff-template.md`.
-- Name handoffs with a short topic and timestamp for easy recovery.
+- Say "checkpoint" to write a handoff; say "pickup" to resume from one.
+- Notes are two-tier: full detail in `Sensitive/handoffs/` (never committed), sanitized thread heads in `handoffs/` (tracked).
+- Name handoffs `YYYYMMDD-HHMM-<thread>.md` and keep one thread per line of work.
 - Include objective, current state, decisions, constraints, next actions, and a short resume prompt.
 - Treat handoffs as continuity artifacts, not full transcripts.
-- Notes under `handoffs/` stay local. Remote agents only see them if you paste or commit a note.
+- This repo is public. A pushed branch is published, so keep sensitive detail in the private tier.
 
 ## What Each File Does
 

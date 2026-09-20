@@ -4,7 +4,7 @@ These skills are keyword-triggered, not always-on and not slash-only. Cursor's a
 
 | Skill | Trigger keywords |
 | --- | --- |
-| `handoff-notes` | "handoff", "handoffs" |
+| `handoff-notes` | "checkpoint", "pickup", "handoff", "handoffs" |
 | `clarity-concision-editor` | "tighten", "board tone", "cut 20%", "remove jargon", "clarity concision editor", "Polish" gem |
 | `paranoid-market-analyst` | "bet", "wager", "moneyline", "trade", "option", "position", "thesis" (directional market claims) |
 | `operating-behavior` | implementing, debugging, refactoring, summarizing changes, or pull requests in this repo |

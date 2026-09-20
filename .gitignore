@@ -14,9 +14,9 @@ env/
 /Sensitive/**
 !/Sensitive/README.md
 
-# Local AI handoff notes (keep the folder README tracked)
-handoffs/*
-!handoffs/README.md
+# Public handoff tier is tracked on purpose (sanitized thread heads only).
+# Full-fidelity notes live in Sensitive/handoffs/ and are covered by the
+# /Sensitive/** rule above.
 
 # Nested local repo
 python/Project/Gem_Factory/gem-factory/
