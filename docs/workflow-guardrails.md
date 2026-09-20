@@ -72,19 +72,27 @@ These rules are enforced by committed hooks in `.githooks/`.
 
 ## One-Time Setup
 
-From repo root:
+From repo root (Windows):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\setup-hooks.ps1
 ```
 
+From repo root (Linux/macOS):
+
+```bash
+bash tools/workflow_guardrails/setup-hooks.sh
+```
+
 Verify:
 
-```powershell
+```bash
 git config --get core.hooksPath
 ```
 
 Expected output: `.githooks`
+
+**Do not run this on a Cursor Cloud Agent VM.** Cloud Agents already have `core.hooksPath` pointed at Cursor's own agent-hooks wrapper; running `setup-hooks` there overwrites it. Cloud Agents should rely on `AGENTS.md` plus the CI checks below instead. See `tools/workflow_guardrails/README.md` for how to restore the original value if this happens by mistake.
 
 ## Daily Workflow
 
@@ -100,16 +108,28 @@ git switch -c feature/<short-topic>
 powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\preflight.ps1
 ```
 
+```bash
+bash tools/workflow_guardrails/preflight.sh
+```
+
 3. Optional dry-run of sync:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\preflight.ps1 -DryRunSync
 ```
 
+```bash
+bash tools/workflow_guardrails/preflight.sh --dry-run-sync
+```
+
 4. Run quick diagnostics anytime:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\diagnostics.ps1
+```
+
+```bash
+bash tools/workflow_guardrails/diagnostics.sh
 ```
 
 5. Commit/push from feature branch, then open PR into `main`.
@@ -198,3 +218,15 @@ Sensitive file accidentally staged
 
 - Current hook checks block staged paths matching `Sensitive/`.
 - This is not a complete secret-scanning or data-loss-prevention system.
+
+## CI Guardrails
+
+`.github/workflows/guardrails.yml` runs on every pull request into `main`/`master` and enforces, server-side, what local hooks only enforce if a contributor set them up:
+
+- Branch naming: accepts `feature/[a-z0-9-]{3,40}` (this doc's standard) and `cursor/<name>-<suffix>` (the pattern Cursor Cloud Agents are required to use). A PR from any other branch name fails the check.
+- Blocks any PR that touches files under `Sensitive/`.
+- Blocks any PR whose body still contains the raw template placeholders ("What changed?", "Why was this needed?").
+- Runs `python -m py_compile` over `python/` as a blocking syntax check.
+- Runs `black --check` and `pylint` as advisory-only steps (they report warnings but do not fail the build), because the existing codebase has not been reformatted yet.
+
+This is enforcement backstop, not a replacement for local hooks. Local hooks still block bad commits/pushes before they leave your machine; CI blocks them from merging even if hooks were skipped or never installed. Neither is a substitute for GitHub branch protection on `main`, which is configured in repo Settings → Branches and is not something this repo's files can enforce on their own.
