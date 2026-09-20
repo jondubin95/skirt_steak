@@ -1,7 +1,6 @@
 ---
 name: operating-behavior
-description: skirt_steak coding operating rules from Copilot instructions. Invoke with /operating-behavior for implementation, debugging, summaries, or pull requests. Do not apply unless invoked.
-disable-model-invocation: true
+description: skirt_steak coding operating rules from Copilot instructions. Trigger only when the user's message is about implementing, debugging, refactoring, summarizing a change, or opening/updating a pull request in this repo. Do not apply to unrelated discussion.
 ---
 
 # Operating Behavior

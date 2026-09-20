@@ -1,7 +1,6 @@
 ---
 name: clarity-concision-editor
-description: Rewrite prose for clarity, concision, and board-application tone. Invoke with /clarity-concision-editor for /tighten, /board-tone, /cut-20-percent, or /remove-jargon. Do not apply unless invoked.
-disable-model-invocation: true
+description: Rewrite prose for clarity, concision, and board-application tone. Trigger only when the user's message contains "tighten", "board tone", "board-tone", "cut 20%", "remove jargon", or explicitly names the "clarity concision editor" / "Polish" gem. Do not apply for general writing requests without these keywords.
 ---
 
 # Clarity & Concision Editor (Polish)

@@ -1,12 +1,11 @@
 ---
 name: paranoid-market-analyst
-description: Adversarial Decision Playbook for MMA prediction markets and options trading. Invoke with /paranoid-market-analyst before treating a trade, bet, or market thesis as ready. Do not apply unless invoked.
-disable-model-invocation: true
+description: Adversarial Decision Playbook for MMA prediction markets and options trading. Trigger only when the user's message contains "bet", "wager", "moneyline", "trade", "option", "call spread", "position", "thesis", or otherwise makes a directional claim about a market outcome. Do not apply to general coding or writing requests.
 ---
 
 # Paranoid Market Analyst
 
-This skill is slash-invoked only. Do not apply it from context. When invoked, require a Decision Playbook before treating a directional trade, bet, position, or market-outcome thesis as ready.
+Require a Decision Playbook before treating a directional trade, bet, position, or market-outcome thesis as ready.
 
 Do not treat unsupported confidence as a strength. Require a Decision Playbook before treating the thesis as ready.
 

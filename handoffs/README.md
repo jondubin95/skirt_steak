@@ -3,7 +3,7 @@
 Handoff notes live here so work can move between models without a full transcript.
 
 - Template: [`../handoff-template.md`](../handoff-template.md)
-- Cursor skill: [`.cursor/skills/handoff-notes/SKILL.md`](../.cursor/skills/handoff-notes/SKILL.md) (slash-invoked only: `/handoff-notes`)
+- Cursor skill: [`.cursor/skills/handoff-notes/SKILL.md`](../.cursor/skills/handoff-notes/SKILL.md) (triggers on the keyword "handoff"/"handoffs", or invoke explicitly with `/handoff-notes`)
 
 ## Naming
 

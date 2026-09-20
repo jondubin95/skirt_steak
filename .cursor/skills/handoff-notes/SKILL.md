@@ -1,7 +1,6 @@
 ---
 name: handoff-notes
-description: Create, read, and resume from skirt_steak AI handoff notes. Invoke with /handoff-notes when writing or resuming a handoff. Do not apply unless invoked.
-disable-model-invocation: true
+description: Create, read, and resume from skirt_steak AI handoff notes. Trigger only when the user's message contains the word "handoff" or "handoffs" (e.g. "write a handoff", "resume from my handoff", "check the handoffs folder"). Do not apply otherwise.
 ---
 
 # Handoff Notes
