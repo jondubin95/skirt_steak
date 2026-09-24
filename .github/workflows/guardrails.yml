@@ -79,6 +79,9 @@ jobs:
           set -euo pipefail
           find python -name '*.py' -print0 | xargs -0 -n1 python -m py_compile
 
+      - name: Board secretary unit tests (blocking)
+        run: python -m unittest discover -s python/msjc_board_secretary/tests -p "test_*.py"
+
       - name: black --check (advisory, does not fail the build)
         run: |
           python -m black --check python || \

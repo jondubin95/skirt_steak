@@ -28,6 +28,7 @@ fi
 # Project-specific Google API client dependencies.
 "$PY" -m pip install \
   -r python/Project/Google_Maps_Linker/requirements.txt \
-  -r python/Project/Gem_Factory/tools/gdocs_sync/requirements.txt
+  -r python/Project/Gem_Factory/tools/gdocs_sync/requirements.txt \
+  -r python/msjc_board_secretary/requirements.txt
 
 echo "Environment ready. Activate with: source .venv/bin/activate"

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    {
+      "kind": "masthead",
+      "date": "April 12, 2026",
+      "organization": "Example Community Center",
+      "title": "Board of Trustees – April 2026 Meeting Minutes"
+    },
+    {
+      "kind": "attendance",
+      "label": "In attendance:",
+      "groups": [
+        {"category": "Officers", "names": ["Sam Ortiz"]},
+        {"category": "Trustees", "names": ["Alex Rivera", "Jordan Hale"]},
+        {"category": "Not in attendance", "names": ["Taylor Morgan"]},
+        {"category": "Others", "names": ["Rabbi Mendes"]}
+      ]
+    },
+    {"kind": "section", "title": "Accept Minutes"},
+    {"kind": "presenter", "text": "Presented by Alex Rivera."},
+    {
+      "kind": "motion",
+      "body": "Alex Rivera moves to accept the March minutes. Jordan Hale seconds.",
+      "verdict": "passes"
+    },
+    {"kind": "section", "title": "Hall Rental"},
+    {"kind": "bullet", "level": 0, "text": "Hall rental"},
+    {
+      "kind": "bullet",
+      "level": 1,
+      "text": "Jordan Hale said the volunteer schedule covers the hall rental."
+    },
+    {"kind": "paragraph", "text": "None."}
+  ]
+}
