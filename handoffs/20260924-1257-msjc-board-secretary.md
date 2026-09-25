@@ -14,11 +14,12 @@ Land the board-secretary skill and guarded Docs writer. The pull request is open
 
 ## Current State
 
-- Branch `feature/msjc-board-secretary` is pushed. Pull request: https://github.com/jondubin95/skirt_steak/pull/13 (commit `5e31c69`).
-- The skill, fictional template spec, schema, builder, guarded CLI, read-only MCP server, sample, tests, CI hook, and index rows are in that commit.
+- Branch `feature/msjc-board-secretary` is pushed. Pull request: https://github.com/jondubin95/skirt_steak/pull/13 (head `d1d88e5`).
+- Commit `5e31c69`: skill, fictional template spec, schema, builder, guarded CLI, read-only MCP server, sample, tests, CI hook, and install/index rows.
+- Commit `d1d88e5`: public handoff head, archived prior head, and `handoffs/INDEX.md` row for this thread.
 - 23 unit tests passed. An offline first-pass request comparison against the local September builder matched (288 requests).
 - The user declined further credential work and declined the live smoke write. See private detail.
-- Unrelated untracked files remain under `handoffs/` (`checkpoint-20260504-142710.md`, `personal-ai-os-docs-20260504-141818.md`). Leave them unstaged. Do not edit the `harness-hardening` public head.
+- Stale unrelated local handoff drafts were removed from the working tree. Do not edit the `harness-hardening` public head (that belongs on draft PR #12).
 
 ## Key Decisions Already Made
 
@@ -42,9 +43,8 @@ Land the board-secretary skill and guarded Docs writer. The pull request is open
 
 ## Next Best Actions
 
-- Next: leave the credential follow-up closed unless the user brings it up.
-- After that: respond to review on PR #13. Merge only if the user asks.
-- Live smoke stays off the table unless the user later asks for it.
+- Respond to review on PR #13. Merge only if the user asks.
+- Leave the credential follow-up and live smoke write closed unless the user brings them up.
 
 ## Known Risks or Failure Modes
 
@@ -54,4 +54,4 @@ Land the board-secretary skill and guarded Docs writer. The pull request is open
 
 ## Prompt to Resume
 
-Continue from PR #13 on `feature/msjc-board-secretary`. The implementation and offline tests are done. Focus on review comments if any arrive. Avoid credential files, a live Docs write, real meeting content, the unrelated `handoffs/` files, and the harness-hardening head. The user already declined credential rotation and the smoke write.
+Continue from PR #13 on `feature/msjc-board-secretary` (head `d1d88e5`). The implementation, offline tests, and handoff thread registration are done. Focus on review comments if any arrive. Avoid credential files, a live Docs write, real meeting content, and edits to the harness-hardening head. The user already declined credential rotation and the smoke write.
