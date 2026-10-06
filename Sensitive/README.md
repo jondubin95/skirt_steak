@@ -15,16 +15,23 @@ Sensitive/
     clarity-concision-editor.gdocs-map.json
   handoffs/                          # private tier of handoff notes (gitignored)
     YYYYMMDD-HHMM-<thread>.md
+  decisions/                         # market-analyst log (gitignored)
+    market_decisions.duckdb
+    playbooks/
+      <id>.md
+    inbox/
+      <id>.json
+    export/                          # local CSV dumps only
 ```
 
 Create the local directories once:
 
 ```bash
-mkdir -p Sensitive/google Sensitive/handoffs
+mkdir -p Sensitive/google Sensitive/handoffs Sensitive/decisions/playbooks Sensitive/decisions/inbox
 ```
 
 ```powershell
-New-Item -ItemType Directory -Force Sensitive\google, Sensitive\handoffs
+New-Item -ItemType Directory -Force Sensitive\google, Sensitive\handoffs, Sensitive\decisions\playbooks, Sensitive\decisions\inbox
 ```
 
 Place `credentials.json` at `Sensitive/credentials.json`. Token and map files are written under `Sensitive/google/` by the gdocs sync tool.
@@ -38,6 +45,8 @@ Pre-commit, pre-push CI, and `.gitignore` block every other path under `Sensitiv
 ## Handoff notes
 
 `Sensitive/handoffs/` holds the private tier of handoff notes: the full-fidelity version of each checkpoint. The sanitized public counterpart lives in `handoffs/` and is tracked. See `.cursor/skills/handoff-notes/SKILL.md`.
+
+`Sensitive/decisions/` holds the market-analyst decision log: the DuckDB file, the playbook for each review, and the inbox JSON. The schema and the CLI are tracked. See `python/decision_log/README.md`.
 
 ## Related
 

@@ -82,6 +82,12 @@ jobs:
       - name: Board secretary unit tests (blocking)
         run: python -m unittest discover -s python/msjc_board_secretary/tests -p "test_*.py"
 
+      - name: Install decision log dependency
+        run: python -m pip install "duckdb==1.5.2"
+
+      - name: Decision log unit tests (blocking)
+        run: python -m unittest discover -s python/decision_log/tests -p "test_*.py"
+
       - name: black --check (advisory, does not fail the build)
         run: |
           python -m black --check python || \

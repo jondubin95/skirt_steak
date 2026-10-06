@@ -35,6 +35,7 @@ This repo is intentionally iterative, so structure and workflows will continue t
 - Google Maps Linker guide: [python/Project/Google_Maps_Linker/README.md](python/Project/Google_Maps_Linker/README.md)
 - Clarity & Concision Editor gem: [python/Project/Gem_Factory/Jons_Gems/clarity-concision-editor/README.md](python/Project/Gem_Factory/Jons_Gems/clarity-concision-editor/README.md)
 - MSJC Board Secretary minutes writer: [python/msjc_board_secretary/README.md](python/msjc_board_secretary/README.md)
+- Market-analyst decision log: [python/decision_log/README.md](python/decision_log/README.md)
 
 ## Handoff Convention
 

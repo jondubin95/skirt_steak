@@ -113,8 +113,7 @@ Required checks:
 
 ### Hard-Block Rules
 
-- A thesis supported only by `narrative-only` evidence cannot pass review.
-- Label it under a `Hard-Block` or `Not Ready` section.
+- A thesis whose claims are only `narrative-only`, or that has no claims, is `hard-blocked`.
 - State what evidence is missing.
 - State what would make the thesis reviewable.
 - If evidence is mixed, identify which claims remain unverified.
@@ -210,6 +209,7 @@ For coding work:
 
 For market-analysis work:
 
-- State whether the thesis is ready, not ready, or hard-blocked.
-- Make evidence quality visible.
+- State whether the thesis is `ready`, `not ready`, or `hard-blocked`.
+- Make evidence quality visible. When the verdict is `ready` and any claim is `narrative-only`, name those claims.
 - Keep the adversarial review inside the Decision Playbook rather than duplicating it elsewhere.
+- Record the review with `python/decision_log/record.py`. The `core` rule and the gates live in `.cursor/skills/paranoid-market-analyst/SKILL.md`.
