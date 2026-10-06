@@ -455,47 +455,20 @@ def resolve(
             raise DecisionLogError("id", "not found")
         if existing[0] is not None:
             raise DecisionLogError("outcome", "already resolved")
-        evidence = con.execute(
+        # One statement, so resolve is atomic: evidence rows are never
+        # touched. The schema keeps no FOREIGN KEY from evidence to
+        # decisions because DuckDB rejects UPDATE of a referenced parent
+        # row; parent existence is checked on insert instead.
+        updated = con.execute(
             """
-            SELECT id, decision_id, position, claim, evidence_class, core, basis_ref
-            FROM evidence WHERE decision_id = ?
-            ORDER BY position
+            UPDATE decisions
+            SET outcome = ?, resolved_at = ?, outcome_notes = ?
+            WHERE id = ? AND outcome IS NULL
             """,
-            [str(parsed_id)],
-        ).fetchall()
-        # DuckDB rejects UPDATE of a referenced row until the child delete has
-        # committed, so this cannot be one transaction. Restore the claims if
-        # the outcome write fails.
-        removed = False
-        try:
-            if evidence:
-                con.execute(
-                    "DELETE FROM evidence WHERE decision_id = ?", [str(parsed_id)]
-                )
-                removed = True
-            updated = con.execute(
-                """
-                UPDATE decisions
-                SET outcome = ?, resolved_at = ?, outcome_notes = ?
-                WHERE id = ? AND outcome IS NULL
-                """,
-                [outcome, resolved_at, stored_notes, str(parsed_id)],
-            ).fetchone()
-            if updated is None or updated[0] != 1:
-                raise DecisionLogError("id", "not found")
-            if evidence:
-                con.executemany(
-                    "INSERT INTO evidence VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    evidence,
-                )
-                removed = False
-        except Exception:
-            if removed:
-                con.executemany(
-                    "INSERT INTO evidence VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    evidence,
-                )
-            raise
+            [outcome, resolved_at, stored_notes, str(parsed_id)],
+        ).fetchone()
+        if updated is None or updated[0] != 1:
+            raise DecisionLogError("id", "not found")
     finally:
         con.close()
     return {"id": parsed_id, "outcome": outcome, "resolved_at": resolved_at}

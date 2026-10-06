@@ -44,6 +44,9 @@ CREATE TABLE evidence (
     CHECK (
         evidence_class <> 'data-backed'
         OR (basis_ref IS NOT NULL AND length(trim(basis_ref)) > 0)
-    ),
-    FOREIGN KEY (decision_id) REFERENCES decisions (id)
+    )
+    -- No FOREIGN KEY to decisions: DuckDB rejects UPDATE of a referenced
+    -- parent row, which would force resolve through a non-atomic
+    -- delete/update/re-insert. Parent existence is checked in the CLI
+    -- before insert, and decision rows are never deleted or re-keyed.
 );

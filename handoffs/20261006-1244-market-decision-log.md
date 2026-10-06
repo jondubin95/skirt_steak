@@ -17,7 +17,7 @@ Persist a market-analyst review as a local DuckDB row. The playbook stays under 
 - Pull request: https://github.com/jondubin95/skirt_steak/pull/14 on `feature/market-decision-log`.
 - `05acfd3` adds the log. `02c53ce` publishes the board-secretary handoff head that was already on disk.
 - `check` does not create a database. `record` stores a review only after the gates pass. `resolve` records whether the direction happened. `verify` compares the playbook hash.
-- 23 unit tests passed. A live CLI pass in a temp directory matched those gates. See private detail for the DuckDB update workaround.
+- 24 unit tests passed, including resolve-leaves-evidence-untouched and a no-orphan scan. A live CLI pass in a temp directory matched those gates.
 - `harness-hardening` and `msjc-board-secretary` are marked done in this checkpoint. Do not restart them.
 
 ## Key Decisions Already Made
@@ -49,7 +49,6 @@ Persist a market-analyst review as a local DuckDB row. The playbook stays under 
 ## Known Risks or Failure Modes
 
 - A model can still mark a narrative claim `data-backed`. The refusal is an instruction, not a control.
-- `resolve` cannot update the decision and its claims in one DuckDB transaction. See private detail.
 
 ## Prompt to Resume
 

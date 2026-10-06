@@ -627,6 +627,30 @@ class DecisionLogTests(unittest.TestCase):
         self.assertNotIn(PLAYBOOK, out + err)
         self.assert_no_secrets(out + err)
 
+    def test_resolve_leaves_evidence_untouched(self) -> None:
+        self.record_default(_payload())
+        before = self.connect()
+        rows_before = before.execute("""
+            SELECT id, decision_id, position, claim, evidence_class, core, basis_ref
+            FROM evidence ORDER BY position
+            """).fetchall()
+        before.close()
+        self.assertEqual(len(rows_before), 2)
+        resolve(ID_READY, "right", notes=NOTES, repo_root=self.root)
+        after = self.connect()
+        rows_after = after.execute("""
+            SELECT id, decision_id, position, claim, evidence_class, core, basis_ref
+            FROM evidence ORDER BY position
+            """).fetchall()
+        orphans = after.execute("""
+            SELECT COUNT(*) FROM evidence AS e
+            LEFT JOIN decisions AS d ON d.id = e.decision_id
+            WHERE d.id IS NULL
+            """).fetchone()[0]
+        after.close()
+        self.assertEqual(rows_after, rows_before)
+        self.assertEqual(orphans, 0)
+
     def test_refusal_field_path_and_output_hygiene(self) -> None:
         bad_class = "SECRET-CLASS-VALUE"
         payload = _payload(
