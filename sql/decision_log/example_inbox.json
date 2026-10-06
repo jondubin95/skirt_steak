@@ -1,0 +1,22 @@
+{
+  "id": "11111111-1111-4111-8111-111111111111",
+  "market": "Synthetic fighter moneyline",
+  "thesis": "Synthetic directional claim for the example file only.",
+  "verdict": "ready",
+  "invalidation": "Synthetic invalidation if the quoted line moves.",
+  "observed_at": "2026-10-06T12:00:00Z",
+  "market_snapshot": "Synthetic moneyline +100 / +100",
+  "evidence": [
+    {
+      "claim": "Synthetic measured comparison.",
+      "class": "data-backed",
+      "core": true,
+      "basis_ref": "synthetic-source://example"
+    },
+    {
+      "claim": "Synthetic color from a clip.",
+      "class": "narrative-only",
+      "core": false
+    }
+  ]
+}
