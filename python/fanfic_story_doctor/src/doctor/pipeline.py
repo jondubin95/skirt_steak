@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from doctor.detect import alias_map_from_facts, detect_markers, detect_mentions
 from doctor.factstore import mark_conflicts
-from doctor.ids import scene_of
 from doctor.intake import window_edges, window_same
 from doctor.resolve import is_enforceable
 from doctor.rules import (
@@ -27,14 +26,27 @@ def graph_from(doc, facts: list[dict], intake: dict) -> Graph:
     before: list[tuple[str, str]] = []
     same: list[tuple[str, str]] = []
     events = [event["id"] for event in intake.get("events") or []]
-    for fact in facts:
-        if fact.get("predicate") != "event_order" or not is_enforceable(fact):
+    order_facts = [
+        fact
+        for fact in facts
+        if fact.get("predicate") == "event_order" and is_enforceable(fact)
+    ]
+    # Canon order is compared by CANON.DIVERGENCE, not asserted into the work's
+    # timeline. A canon edge is used only for a pair the ledger and AU layers
+    # do not order themselves, so a deliberate branch never forms a cycle.
+    local_pairs = {_pair(fact) for fact in order_facts if not _is_canon(fact)}
+    for fact in order_facts:
+        if _is_canon(fact) and _pair(fact) in local_pairs:
             continue
         obj = fact.get("object") or {}
         subject = fact.get("subject")
         target = obj.get("target")
         relation = obj.get("relation")
-        if obj.get("anchor_kind") and isinstance(subject, str) and subject.startswith("ch"):
+        if (
+            obj.get("anchor_kind")
+            and isinstance(subject, str)
+            and subject.startswith("ch")
+        ):
             anchors[subject] = obj["anchor_kind"]
         if relation == "same" and subject and target:
             same.append((subject, target))
@@ -49,9 +61,6 @@ def graph_from(doc, facts: list[dict], intake: dict) -> Graph:
         same.append((same_event, first))
     if same_event and same_event not in events:
         events.append(same_event)
-    for event in events:
-        if event not in events:
-            events.append(event)
     scenes = []
     for scene_id in doc.scene_ids:
         kind = anchors.get(scene_id)
@@ -67,10 +76,28 @@ def graph_from(doc, facts: list[dict], intake: dict) -> Graph:
         before,
         same,
         paragraph_ids=[paragraph.id for paragraph in doc.paragraphs],
+        window_before=_window_before(intake),
     )
 
 
-def run_rules(doc, facts, intake, tags, graph, mentions, layer_b: bool) -> tuple[list[dict], list[dict]]:
+def _is_canon(fact: dict) -> bool:
+    return str(fact.get("layer", "")).startswith("canon:")
+
+
+def _pair(fact: dict) -> frozenset:
+    return frozenset((fact.get("subject"), (fact.get("object") or {}).get("target")))
+
+
+def _window_before(intake: dict) -> str | None:
+    window = intake.get("window") or {}
+    if window.get("relation") == "before":
+        return window.get("event")
+    return None
+
+
+def run_rules(
+    doc, facts, intake, tags, graph, mentions, layer_b: bool
+) -> tuple[list[dict], list[dict], str]:
     primary = intake.get("primary_canon_source")
     opted = set((intake.get("profile") or {}).get("opt_out") or [])
     items: list[dict] = []
@@ -102,7 +129,13 @@ def run_rules(doc, facts, intake, tags, graph, mentions, layer_b: bool) -> tuple
                     "severity": "info",
                     "kind": "coverage",
                     "symptom": notice["text"],
-                    "evidence": [{"kind": "file", "path": "facts.json", "field": notice["ids"][0]}],
+                    "evidence": [
+                        {
+                            "kind": "file",
+                            "path": "facts.json",
+                            "field": notice["ids"][0],
+                        }
+                    ],
                     "fact_ids": notice["ids"],
                     "depends_on_hash": coverage["depends_on_hash"],
                 }
@@ -111,16 +144,28 @@ def run_rules(doc, facts, intake, tags, graph, mentions, layer_b: bool) -> tuple
     aliases = [fact["object"] for fact in facts if fact.get("predicate") == "alias"]
     items.extend(name_spelling(doc.paragraphs, [str(alias) for alias in aliases]))
     ran.add("CANON.NAME_SPELLING")
-    items.extend(ao3_schema(tags))
-    ran.add("AO3.SCHEMA")
-    items.extend(ao3_tag_format(tags))
-    ran.add("AO3.TAG_FORMAT")
+    skipped: dict[str, str] = {}
+    if tags:
+        items.extend(ao3_schema(tags))
+        ran.add("AO3.SCHEMA")
+        items.extend(ao3_tag_format(tags))
+        ran.add("AO3.TAG_FORMAT")
+    else:
+        skipped["AO3.SCHEMA"] = "no_tags_yaml"
+        skipped["AO3.TAG_FORMAT"] = "no_tags_yaml"
     lens = []
     for rule in MVP_RULES:
         if rule in opted:
             lens.append({"rule_id": rule, "state": "skipped", "reason": "opted_out"})
         elif rule in {"OOC.VOICE", "CANON.RAILS"} and not layer_b:
             lens.append({"rule_id": rule, "state": "skipped", "reason": "layer_a_only"})
+        elif rule in {"OOC.VOICE", "CANON.RAILS"}:
+            # --layer-b is accepted, but no Layer B runner is wired yet.
+            lens.append(
+                {"rule_id": rule, "state": "skipped", "reason": "layer_b_not_wired"}
+            )
+        elif rule in skipped:
+            lens.append({"rule_id": rule, "state": "skipped", "reason": skipped[rule]})
         elif rule in ran:
             lens.append({"rule_id": rule, "state": "applied", "reason": ""})
         else:
@@ -134,7 +179,7 @@ def run_rules(doc, facts, intake, tags, graph, mentions, layer_b: bool) -> tuple
         )
     else:
         summary = f"{len(findings)} findings. {len(blockers)} blockers."
-    return items, lens, summary  # type: ignore[return-value]
+    return items, lens, summary
 
 
 def build_mentions(doc, facts) -> list[dict]:

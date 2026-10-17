@@ -118,7 +118,9 @@ def normalize_markdown(text: str, chapter: int = 1) -> Document:
     return doc
 
 
-def _emit(doc: Document, chapter: int, scene: int, index: int, lines: list[str]) -> None:
+def _emit(
+    doc: Document, chapter: int, scene: int, index: int, lines: list[str]
+) -> None:
     text = normalize_inline("\n".join(lines))
     if not text:
         return
@@ -163,7 +165,10 @@ class _Ao3Parser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attr = {key.lower(): (value or "") for key, value in attrs}
         blob = f"{attr.get('class', '')} {attr.get('id', '')}".lower()
-        if any(token in blob for token in ("notes", "feedback", "preface", "kudos", "bookmark")):
+        if any(
+            token in blob
+            for token in ("notes", "feedback", "preface", "kudos", "bookmark")
+        ):
             self.skip_depth += 1
             self._in_note = "notes" in blob or "preface" in blob
         if self.skip_depth:

@@ -3,9 +3,9 @@
 **Status:** Draft v0.4.3, implementation revision  
 **Owner:** Jon Dubin  
 **Last updated:** October 10, 2026  
-**Previous version:** [fanfic-story-doctor-spec-v0.4.2.md](fanfic-story-doctor-spec-v0.4.2.md) (kept unchanged)
+**Previous version:** v0.4.2 (kept unchanged in private notes; not published in this repo)
 
-Build from this file. Where this file does not amend a section, v0.4.2 remains in force. Nothing in v0.4.2 is deleted.
+Build from this file. Where this file does not amend a section, v0.4.2 remains in force; that text lives in private notes, not in this public repo. Nothing in v0.4.2 is deleted.
 
 > **Implementation status.** v0.4.2's legend still applies. This revision does not mark anything Implemented or Test passed. Package status lives in `python/fanfic_story_doctor/STATUS.md`, keyed by spec section and test id. CI fails if a row says "Test passed" and the named test is missing.
 
@@ -37,7 +37,7 @@ Build from this file. Where this file does not amend a section, v0.4.2 remains i
 | Canon cover is not YES | nothing |
 | Canon citation stale or disputed | unverifiable, no fall-through to a lower canon source |
 
-`CONT.TIMELINE_ORDER` is a different rule. It fires on a cycle of confirmed edges. It is not this rule.
+`CONT.TIMELINE_ORDER` is a different rule. It fires on a cycle of confirmed edges. It is not this rule. Canon `event_order` edges are not asserted into the work's timeline graph for any pair the ledger or AU layer orders itself, so a deliberate branch never forms a `CONT.TIMELINE_ORDER` cycle. The pre-canon inference (a later mainline scene stays before an event an earlier scene precedes) applies only to the intake `window.event` when `window.relation` is `before`.
 
 `CANON.RAILS` is not this rule. "Later events should have changed" is a Layer B judgment.
 
@@ -65,7 +65,7 @@ Each canon fact records `confirmed_by`. Corrections to canon rows are counted se
 
 **Private canon.** A per-user ledger under `DOCTOR_HOME` is allowed. No shared or published canon database. Canon facts load from intake or from `DOCTOR_HOME/canon/<source_id>/facts.json`. Extraction writes `proposed` rows only. Confirmed rows are enforceable. Book text, quotes, and series facts never enter git, CI logs, manifests, or chat.
 
-`DOCTOR_HOME/canon/<source_id>/text/` holds chapter files. `normalized/` is normalizer output. `facts.json` uses the fact schema, `layer: canon:<source_id>`, with a local citation (paragraph id, exact quote, paragraph hash). `doctor canon load` refuses a path inside the repo. On this machine the folder is `C:\Users\jondu\doctor-home`. The tool does not download books.
+`DOCTOR_HOME/canon/<source_id>/text/` holds chapter files. `normalized/` is normalizer output. `facts.json` uses the fact schema, `layer: canon:<source_id>`, with a local citation (paragraph id, exact quote, paragraph hash). `doctor canon load` refuses a path inside the repo. The default folder is `%USERPROFILE%\doctor-home` (Windows) or `~/doctor-home`; set `DOCTOR_HOME` to override. The tool does not download books.
 
 **SAME-class story bounds.** If `covers` would return YES only because `compare` of a story-time `from` bound and a paragraph is SAME across two different nodes in one class, return UNKNOWN and queue "where in this scene does this change?" Work-position bounds still order by paragraph index. Scenes strictly after the event stay YES.
 

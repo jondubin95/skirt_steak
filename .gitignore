@@ -27,3 +27,7 @@ python/fanfic_story_doctor/works/
 python/fanfic_story_doctor/runs/
 python/fanfic_story_doctor/cache/
 python/fanfic_story_doctor/eval/holdout/
+python/fanfic_story_doctor/build/
+python/fanfic_story_doctor/dist/
+*.egg-info/
+.pytest_cache/

@@ -17,20 +17,47 @@ from doctor.pipeline import build_mentions, graph_from, run_rules
 from doctor.render import render
 from doctor.validate_output import validate_report
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[2]
-REPO_ROOT = PACKAGE_ROOT.parents[1]
+# Marker that identifies a checkout of this repo, wherever it lives.
+REPO_MARKER = Path("python") / "fanfic_story_doctor" / "pyproject.toml"
 
 
 def doctor_home() -> Path:
     return Path(os.environ.get("DOCTOR_HOME", Path.home() / "doctor-home"))
 
 
+def _repo_roots(path: Path) -> list[Path]:
+    """Checkouts of this repo that could contain `path`.
+
+    Walks up from the path itself and from the current directory, so the guard
+    holds for an installed package too (no reliance on __file__ location).
+    """
+    roots = []
+    for start in (path.resolve(), Path.cwd().resolve()):
+        for parent in [start, *start.parents]:
+            if (parent / REPO_MARKER).is_file():
+                roots.append(parent)
+                break
+    return roots
+
+
 def _inside_repo(path: Path) -> bool:
-    try:
-        path.resolve().relative_to(REPO_ROOT.resolve())
-        return True
-    except ValueError:
-        return False
+    resolved = path.resolve()
+    for root in _repo_roots(path):
+        if resolved == root or root in resolved.parents:
+            return True
+    return False
+
+
+def home_canon(home: Path, primary: str | None) -> list[dict]:
+    """Private canon from DOCTOR_HOME/canon/<primary>/facts.json, if present."""
+    if not primary:
+        return []
+    base = home / "canon" / primary
+    ledger = base / "facts.json"
+    if not ledger.is_file():
+        return []
+    text_dir = base / "text"
+    return load_canon(ledger, text_dir if text_dir.is_dir() else None)
 
 
 def load_canon(path: Path, text_dir: Path | None = None) -> list[dict]:
@@ -47,27 +74,41 @@ def load_canon(path: Path, text_dir: Path | None = None) -> list[dict]:
             for fact in facts:
                 quote = (fact.get("citation") or {}).get("text")
                 if quote and not any(quote in text for text in paragraphs.values()):
-                    raise SystemExit("canon citation text is missing from the local chapter")
-    return [fact for fact in facts if fact.get("status") == "confirmed"]
+                    raise SystemExit(
+                        "canon citation text is missing from the local chapter"
+                    )
+    # Proposed rows are never enforced. Disputed rows are kept so rules can
+    # report them as unverifiable instead of silently falling through.
+    return [fact for fact in facts if fact.get("status") in {"confirmed", "disputed"}]
 
 
-def run_work(work: Path, layer_b: bool = False) -> str:
+def build_report(work: Path, layer_b: bool = False, home: Path | None = None) -> dict:
     intake_data = yaml.safe_load((work / "intake.yaml").read_text(encoding="utf-8"))
     profile = {}
     if (work / "profile.yaml").exists():
-        profile = load_profile(yaml.safe_load((work / "profile.yaml").read_text(encoding="utf-8")))
+        profile = load_profile(
+            yaml.safe_load((work / "profile.yaml").read_text(encoding="utf-8"))
+        )
     intake_data["profile"] = profile
     intake, seeded = load_intake(intake_data)
     tags = None
     if (work / "tags.yaml").exists():
-        tags = load_tags(yaml.safe_load((work / "tags.yaml").read_text(encoding="utf-8")))
-    sources = [(path.name, path.read_text(encoding="utf-8")) for path in sorted(work.glob("*.md"))]
+        tags = load_tags(
+            yaml.safe_load((work / "tags.yaml").read_text(encoding="utf-8"))
+        )
+    sources = [
+        (path.name, path.read_text(encoding="utf-8"))
+        for path in sorted(work.glob("*.md"))
+    ]
     doc = normalize_sources(sources)
     extra = []
     facts_path = work / "facts.json"
     if facts_path.exists():
         extra = load_facts(facts_path.read_text(encoding="utf-8"))
-    facts = seeded + extra
+    canon = home_canon(
+        home if home is not None else doctor_home(), intake.get("primary_canon_source")
+    )
+    facts = seeded + canon + extra
     graph = graph_from(doc, facts, intake)
     mentions = build_mentions(doc, facts)
     items, lens, summary = run_rules(doc, facts, intake, tags, graph, mentions, layer_b)
@@ -77,7 +118,11 @@ def run_work(work: Path, layer_b: bool = False) -> str:
     errors = validate_report(report, paragraphs, fact_index)
     if errors:
         raise SystemExit("report failed validation: " + "; ".join(errors))
-    return render(report)
+    return report
+
+
+def run_work(work: Path, layer_b: bool = False, home: Path | None = None) -> str:
+    return render(build_report(work, layer_b=layer_b, home=home))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,6 +143,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "canon" and args.canon_cmd == "load":
         text = Path(args.text) if args.text else None
         facts = load_canon(Path(args.ledger), text)
-        sys.stdout.write(json.dumps({"confirmed": len(facts)}))
+        sys.stdout.write(
+            json.dumps(
+                {
+                    "confirmed": sum(
+                        1 for fact in facts if fact.get("status") == "confirmed"
+                    )
+                }
+            )
+        )
         return 0
     return 2

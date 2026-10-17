@@ -7,7 +7,7 @@ import json
 import uuid
 from copy import deepcopy
 
-from doctor.timeline import NO, UNKNOWN, YES, overlap
+from doctor.timeline import UNKNOWN, YES, overlap
 
 CLOSED_PREDICATES = {"status", "alias", "setup_anchor", "payoff_anchor", "event_order"}
 CLOSED_STATUS = {"alive", "dead", "unspecified"}
@@ -29,7 +29,9 @@ def validate_fact(fact: dict) -> None:
         raise ValueError("claim requires claimant")
 
 
-def supersede(facts: list[dict], old_id: str, updates: dict, who: str = "writer") -> dict:
+def supersede(
+    facts: list[dict], old_id: str, updates: dict, who: str = "writer"
+) -> dict:
     old = next(fact for fact in facts if fact["id"] == old_id)
     new = deepcopy(old)
     new.update(updates)
@@ -70,13 +72,28 @@ def mark_conflicts(facts: list[dict], graph) -> list[dict]:
                         fact["status"] = "disputed"
                         fact["conflict_set"] = cid
                 elif state == UNKNOWN:
-                    notices.append({"kind": "possible_conflict", "ids": [left["id"], right["id"]]})
-    ledger = [fact for fact in facts if fact.get("layer") == "ledger" and fact.get("status") == "confirmed"]
-    au = [fact for fact in facts if fact.get("layer") == "au" and fact.get("status") == "confirmed"]
+                    notices.append(
+                        {"kind": "possible_conflict", "ids": [left["id"], right["id"]]}
+                    )
+    ledger = [
+        fact
+        for fact in facts
+        if fact.get("layer") == "ledger" and fact.get("status") == "confirmed"
+    ]
+    au = [
+        fact
+        for fact in facts
+        if fact.get("layer") == "au" and fact.get("status") == "confirmed"
+    ]
     for left in ledger:
         for right in au:
-            if left.get("subject") == right.get("subject") and left.get("predicate") == right.get("predicate"):
-                if left.get("object") != right.get("object") and overlap(graph, left, right) == YES:
+            if left.get("subject") == right.get("subject") and left.get(
+                "predicate"
+            ) == right.get("predicate"):
+                if (
+                    left.get("object") != right.get("object")
+                    and overlap(graph, left, right) == YES
+                ):
                     notices.append(
                         {
                             "kind": "coverage",
@@ -87,7 +104,9 @@ def mark_conflicts(facts: list[dict], graph) -> list[dict]:
     return notices
 
 
-def reanchor(facts: list[dict], paragraphs: dict[str, str], hashes: dict[str, str]) -> None:
+def reanchor(
+    facts: list[dict], paragraphs: dict[str, str], hashes: dict[str, str]
+) -> None:
     """paragraphs: id -> normalized text. hashes: id -> content hash."""
     by_chapter_text: dict[int, list[tuple[str, str]]] = {}
     by_hash: dict[str, list[str]] = {}
@@ -101,7 +120,9 @@ def reanchor(facts: list[dict], paragraphs: dict[str, str], hashes: dict[str, st
         at = citation.get("at")
         if quote and at:
             chapter = int(str(at).split(".")[0][2:])
-            hits = [pid for pid, text in by_chapter_text.get(chapter, []) if quote in text]
+            hits = [
+                pid for pid, text in by_chapter_text.get(chapter, []) if quote in text
+            ]
             if len(hits) == 1:
                 citation["at"] = hits[0]
                 fact["citation_state"] = "ok"
@@ -112,7 +133,11 @@ def reanchor(facts: list[dict], paragraphs: dict[str, str], hashes: dict[str, st
             bound = interval.get(key)
             if not bound or "work" not in bound:
                 continue
-            if citation.get("at") and bound["work"] == at and fact.get("citation_state") == "ok":
+            if (
+                citation.get("at")
+                and bound["work"] == at
+                and fact.get("citation_state") == "ok"
+            ):
                 bound["work"] = citation["at"]
                 continue
             stored = bound.get("content_hash")

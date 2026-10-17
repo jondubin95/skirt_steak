@@ -12,16 +12,16 @@ The tool diagnoses. It does not rewrite. Suggested fixes are directions.
 
 ## Privacy
 
-Real drafts and book text stay in `DOCTOR_HOME` (on this machine, `C:\Users\jondu\doctor-home`), outside the repo. Do not paste chapters, book text, or quote-bearing canon dumps into chat. Do not read those files out of `DOCTOR_HOME`.
+Real drafts and book text stay in `$DOCTOR_HOME` (default `%USERPROFILE%\doctor-home` on Windows, `~/doctor-home` elsewhere), outside the repo. Do not paste chapters, book text, or quote-bearing canon dumps into chat. Do not read those files out of `DOCTOR_HOME`.
 
 Synthetic fixtures in the repo use an invented cast. No series text belongs in git.
 
 ## What is built
 
-Layer A runs local Python. It makes no model call.
+Layer A runs local Python. It makes no model call. Layer B (`OOC.VOICE`, `CANON.RAILS`) is not wired into the runner yet: `--layer-b` is accepted, and both rules still report `skipped` (`layer_b_not_wired`).
 
 ```powershell
-$env:DOCTOR_HOME = "C:\Users\jondu\doctor-home"
+$env:DOCTOR_HOME = "$env:USERPROFILE\doctor-home"
 python -m doctor run <work>
 ```
 

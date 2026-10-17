@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 
 from doctor.ids import compare_ids, paragraph_index, scene_of
@@ -118,6 +117,7 @@ def build_graph(
     confirmed_before: list[tuple[str, str]],
     same_pairs: list[tuple[str, str]] | None = None,
     paragraph_ids: list[str] | None = None,
+    window_before: str | None = None,
 ) -> Graph:
     graph = Graph(
         scenes=list(scenes),
@@ -147,7 +147,9 @@ def build_graph(
         if cls in nxts:
             contradicted.add(cls)
     graph.contradicted = contradicted
-    graph.uncertain_nodes = {scene.scene_id for scene in graph.scenes if scene.uncertain}
+    graph.uncertain_nodes = {
+        scene.scene_id for scene in graph.scenes if scene.uncertain
+    }
     graph.adj = adj
 
     mainline = [scene for scene in graph.scenes if scene.mainline]
@@ -166,20 +168,29 @@ def build_graph(
             continue
         graph.adj[src].add(dst)
         graph.default_before.append(edge)
-    # A scene that follows one already placed before an event is also before it,
-    # unless a confirmed edge already puts that scene after the event (E2, E7).
-    for event in graph.events:
+    # Pre-canon window only: when intake says the work is set before
+    # `window_before`, a mainline scene that follows one already placed before
+    # that event is also before it, unless a confirmed edge already puts the
+    # scene after the event (E2, E7). Other events get no such inference.
+    scoped = [window_before] if window_before and window_before in graph.events else []
+    for event in scoped:
         ecls = graph.find(event)
         for scene in mainline:
             scls = graph.find(scene.scene_id)
-            if _reaches(graph.adj, scls, ecls) or _reaches(graph.adj, ecls, scls) or scls == ecls:
+            if (
+                _reaches(graph.adj, scls, ecls)
+                or _reaches(graph.adj, ecls, scls)
+                or scls == ecls
+            ):
                 continue
             earlier = [
                 item
                 for item in mainline
                 if _scene_sort(item.scene_id) < _scene_sort(scene.scene_id)
             ]
-            if not any(_reaches(graph.adj, graph.find(item.scene_id), ecls) for item in earlier):
+            if not any(
+                _reaches(graph.adj, graph.find(item.scene_id), ecls) for item in earlier
+            ):
                 continue
             if _reaches(graph.adj, ecls, scls):
                 graph.dropped_defaults.append((scene.scene_id, event))
@@ -205,7 +216,9 @@ def _prev_mainline(mainline: list[SceneNode], scene: SceneNode) -> SceneNode | N
     return None
 
 
-def _point(bound: dict | None, paragraph_id: str | None = None) -> tuple[str, int | None]:
+def _point(
+    bound: dict | None, paragraph_id: str | None = None
+) -> tuple[str, int | None]:
     if bound is None:
         raise ValueError("empty bound")
     if "story" in bound:
@@ -220,7 +233,10 @@ def compare(graph: Graph, a: tuple[str, int | None], b: tuple[str, int | None]) 
     b_node, b_index = b
     if a_node in graph.uncertain_nodes or b_node in graph.uncertain_nodes:
         return UNKNOWN
-    if graph.find(a_node) in graph.contradicted or graph.find(b_node) in graph.contradicted:
+    if (
+        graph.find(a_node) in graph.contradicted
+        or graph.find(b_node) in graph.contradicted
+    ):
         return UNKNOWN
     if graph.find(a_node) == graph.find(b_node):
         if a_node == b_node and a_index is not None and b_index is not None:
@@ -259,7 +275,9 @@ def covers(graph: Graph, fact: dict, paragraph_id: str) -> str:
     return UNKNOWN
 
 
-def _same_class_story_from(graph: Graph, bound: dict | None, query: tuple[str, int | None]) -> bool:
+def _same_class_story_from(
+    graph: Graph, bound: dict | None, query: tuple[str, int | None]
+) -> bool:
     """YES would rest only on a story-time bound contemporaneous with another node."""
     if not bound or "story" not in bound:
         return False

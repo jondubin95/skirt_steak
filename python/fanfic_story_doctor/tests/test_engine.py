@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from doctor.cli import load_canon, run_work
+from doctor.cli import build_report, load_canon, run_work
 from doctor.factstore import mark_conflicts, reanchor, reanchor_annotations, supersede
 from doctor.ids import compare_ids
 from doctor.intake import IntakeError, load_intake, load_tags
@@ -23,12 +23,27 @@ from doctor.later import (
     propose,
     vote,
 )
-from doctor.normalize import content_hash, normalize_html, normalize_markdown, normalize_sources
+from doctor.normalize import (
+    content_hash,
+    normalize_html,
+    normalize_markdown,
+    normalize_sources,
+)
 from doctor.pipeline import build_mentions, graph_from, run_rules
 from doctor.render import render
 from doctor.resolve import RESOLVED, UNRESOLVED, resolve
-from doctor.rules import dead_reappears
-from doctor.timeline import AFTER, BEFORE, NO, UNKNOWN, YES, SceneNode, build_graph, compare, covers
+from doctor.rules import ao3_schema, dead_reappears
+from doctor.timeline import (
+    AFTER,
+    BEFORE,
+    NO,
+    UNKNOWN,
+    YES,
+    SceneNode,
+    build_graph,
+    compare,
+    covers,
+)
 from doctor.validate_output import validate_report
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -60,7 +75,9 @@ def test_two_chapters_three_breaks_and_author_notes():
             "The end.",
         ]
     )
-    doc = normalize_sources([("ch01.md", text), ("ch02.md", "Second chapter starts.\n\nAnd continues.")])
+    doc = normalize_sources(
+        [("ch01.md", text), ("ch02.md", "Second chapter starts.\n\nAnd continues.")]
+    )
     assert [p.id for p in doc.paragraphs] == [
         "ch01.s1.p1",
         "ch01.s2.p1",
@@ -80,7 +97,9 @@ def test_hard_wrap_and_quotes_and_stable_hash():
     two = normalize_markdown(raw + "\n\n" + curly, chapter=1)
     assert one.paragraphs[0].text == "Mara walked into the camp."
     assert one.paragraphs[1].text == 'Mara\'s "eyes" - wide...'
-    assert [p.content_hash for p in one.paragraphs] == [p.content_hash for p in two.paragraphs]
+    assert [p.content_hash for p in one.paragraphs] == [
+        p.content_hash for p in two.paragraphs
+    ]
     assert one.paragraphs[0].content_hash == content_hash(one.paragraphs[0].text)
 
 
@@ -99,21 +118,40 @@ def test_html_matches_markdown_ids():
 
 
 def test_intake_seeds_and_rejects():
-    data = yaml.safe_load((ROOT / "tests" / "fixtures" / "ashfall" / "intake.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load(
+        (ROOT / "tests" / "fixtures" / "ashfall" / "intake.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
     _intake, facts = load_intake(data)
     assert any(fact["confirmation_method"] == "intake_inherited" for fact in facts)
-    assert any(fact["predicate"] == "alias" and fact["object"] == "Mara" for fact in facts)
+    assert any(
+        fact["predicate"] == "alias" and fact["object"] == "Mara" for fact in facts
+    )
     bad = dict(data)
     bad["primary_canon_source"] = "missing"
     with pytest.raises(IntakeError):
         load_intake(bad)
-    tags = {"rating": "Teen And Up Audiences", "archive_warnings": ["Major Character Death"], "fandoms": ["Ashfall"], "title": "After", "language": None}
-    loaded = load_tags({k: v for k, v in tags.items() if v is not None})
-    assert "language" not in loaded or loaded.get("language") is None
+    tags = {
+        "rating": "Teen And Up Audiences",
+        "archive_warnings": ["Major Character Death"],
+        "fandoms": ["Ashfall"],
+        "title": "After",
+    }
+    missing = ao3_schema(load_tags(tags))
+    assert (
+        len(missing) == 1
+        and missing[0]["symptom"] == "Required AO3 field missing: language."
+    )
+    assert ao3_schema(load_tags({**tags, "language": "English"})) == []
+    with pytest.raises(IntakeError):
+        load_tags({**tags, "rating": "PG-13"})
 
 
 def test_supersede_conflict_claim_and_reanchor():
-    graph = build_graph([SceneNode("ch01.s1")], ["ev-bridge"], [], paragraph_ids=["ch01.s1.p1"])
+    graph = build_graph(
+        [SceneNode("ch01.s1")], ["ev-bridge"], [], paragraph_ids=["ch01.s1.p1"]
+    )
     alive = {
         "id": "f1",
         "subject": "teodor",
@@ -173,7 +211,9 @@ def test_supersede_conflict_claim_and_reanchor():
     claim["status"] = "confirmed"
     claim["assertion"] = "claim"
     claim["claimant"] = "ilsa"
-    state, _value, _ids = resolve([claim], "teodor", "status", "ch01.s1.p1", graph, "books")
+    state, _value, _ids = resolve(
+        [claim], "teodor", "status", "ch01.s1.p1", graph, "books"
+    )
     assert state == RESOLVED and _value == "unspecified"
 
     original = {
@@ -256,7 +296,9 @@ def test_e1_through_e8_and_same_class():
     )
     assert covers(e2, fact, "ch03.s2.p1") == YES
 
-    e3 = build_graph([SceneNode("ch04.s1")], ["ev-bridge", "ev-wedding"], [("ev-bridge", "ch01.s1")])
+    e3 = build_graph(
+        [SceneNode("ch04.s1")], ["ev-bridge", "ev-wedding"], [("ev-bridge", "ch01.s1")]
+    )
     # ch01 not in scenes; wedding disconnected from ch04
     assert compare(e3, ("ev-wedding", None), ("ch04.s1", 1)) == UNKNOWN
 
@@ -277,7 +319,10 @@ def test_e1_through_e8_and_same_class():
     assert not e5.contradicted
 
     e6 = build_graph(
-        [SceneNode("ch02.s3", anchor_kind="flashback"), SceneNode("ch06.s2", anchor_kind="flashback")],
+        [
+            SceneNode("ch02.s3", anchor_kind="flashback"),
+            SceneNode("ch06.s2", anchor_kind="flashback"),
+        ],
         ["ev-bridge"],
         [("ch02.s3", "ev-bridge"), ("ch06.s2", "ev-bridge")],
     )
@@ -287,6 +332,7 @@ def test_e1_through_e8_and_same_class():
         [SceneNode("ch01.s1"), SceneNode("ch02.s1")],
         ["ev-book1-start", "ev-bridge"],
         [("ch01.s1", "ev-book1-start"), ("ev-book1-start", "ev-bridge")],
+        window_before="ev-book1-start",
     )
     assert covers(e7, fact, "ch02.s1.p3") == NO
     state, value, _ids = resolve([fact], "teodor", "status", "ch02.s1.p3", e7, "books")
@@ -296,8 +342,12 @@ def test_e1_through_e8_and_same_class():
     au["id"] = "f-au-002"
     au["layer"] = "au"
     au["object"] = "alive"
-    post = build_graph([SceneNode("ch04.s2")], ["ev-bridge"], [("ev-bridge", "ch04.s2")])
-    state, value, _ids = resolve([fact, au], "teodor", "status", "ch04.s2.p5", post, "books")
+    post = build_graph(
+        [SceneNode("ch04.s2")], ["ev-bridge"], [("ev-bridge", "ch04.s2")]
+    )
+    state, value, _ids = resolve(
+        [fact, au], "teodor", "status", "ch04.s2.p5", post, "books"
+    )
     assert state == RESOLVED and value == "alive"
 
     same = build_graph(
@@ -313,6 +363,23 @@ def test_e1_through_e8_and_same_class():
     assert covers(same, work, "ch01.s1.p6") == YES
     assert covers(same, work, "ch01.s1.p1") == NO
 
+    # The pre-canon rule is scoped to the intake window event. Without a
+    # `before` window, a later chapter is not pulled before the event.
+    unscoped = build_graph(
+        [SceneNode("ch01.s1"), SceneNode("ch09.s1")],
+        ["ev-bridge"],
+        [("ch01.s1", "ev-bridge")],
+    )
+    assert compare(unscoped, ("ch09.s1", 1), ("ev-bridge", None)) == UNKNOWN
+    scoped = build_graph(
+        [SceneNode("ch01.s1"), SceneNode("ch09.s1")],
+        ["ev-bridge", "ev-other"],
+        [("ch01.s1", "ev-bridge"), ("ch01.s1", "ev-other")],
+        window_before="ev-bridge",
+    )
+    assert compare(scoped, ("ch09.s1", 1), ("ev-bridge", None)) == BEFORE
+    assert compare(scoped, ("ch09.s1", 1), ("ev-other", None)) == UNKNOWN
+
     one = build_graph([SceneNode("ch01.s1")], ["ev-bridge"], [("ev-bridge", "ch01.s1")])
     two = build_graph([SceneNode("ch01.s1")], ["ev-bridge"], [("ev-bridge", "ch01.s1")])
     assert one.default_before == two.default_before
@@ -320,7 +387,9 @@ def test_e1_through_e8_and_same_class():
 
 
 def test_stale_blocks_lower_layer():
-    graph = build_graph([SceneNode("ch04.s2")], ["ev-bridge"], [("ev-bridge", "ch04.s2")])
+    graph = build_graph(
+        [SceneNode("ch04.s2")], ["ev-bridge"], [("ev-bridge", "ch04.s2")]
+    )
     stale = _dead_from_bridge()
     stale["layer"] = "ledger"
     stale["citation_state"] = "stale"
@@ -329,17 +398,29 @@ def test_stale_blocks_lower_layer():
     au["layer"] = "au"
     au["object"] = "alive"
     au["citation_state"] = "ok"
-    state, value, _ids = resolve([stale, au], "teodor", "status", "ch04.s2.p1", graph, "books")
+    state, value, _ids = resolve(
+        [stale, au], "teodor", "status", "ch04.s2.p1", graph, "books"
+    )
     assert state == UNRESOLVED and value is None
 
 
 def test_dead_reappears_rows():
-    graph = build_graph([SceneNode("ch05.s1")], ["ev-bridge"], [("ev-bridge", "ch05.s1")])
+    graph = build_graph(
+        [SceneNode("ch05.s1")], ["ev-bridge"], [("ev-bridge", "ch05.s1")]
+    )
     fact = _dead_from_bridge()
-    base = {"id": "m1", "entity": "teodor", "paragraph": "ch05.s1.p3", "surface": "Teodor", "stale": False}
+    base = {
+        "id": "m1",
+        "entity": "teodor",
+        "paragraph": "ch05.s1.p3",
+        "surface": "Teodor",
+        "stale": False,
+    }
 
     def mode(status, value):
-        return dead_reappears([{**base, "mode_status": status, "mode": value}], [fact], graph, "books")
+        return dead_reappears(
+            [{**base, "mode_status": status, "mode": value}], [fact], graph, "books"
+        )
 
     assert mode("confirmed", "present_action")[0]["item_state"] == "finding"
     for value in ("mentioned", "remembered", "quoted_or_recorded", "dream_or_vision"):
@@ -348,14 +429,139 @@ def test_dead_reappears_rows():
     assert mode("confirmed", "present_action")[0]["depends_on_hash"]
 
 
+def _report_rows(report: dict, rule: str) -> list[tuple[str, str]]:
+    return [
+        (item["item_state"], item["severity"])
+        for item in report["items"]
+        if item["rule_id"] == rule
+    ]
+
+
 def test_canon_divergence_and_report(tmp_path: Path):
     work = ROOT / "tests" / "fixtures" / "ashfall"
-    text = run_work(work)
-    assert "CANON.DIVERGENCE" in text
-    assert "skipped" in text
-    again = run_work(work)
-    assert text == again
+    report = build_report(work, home=tmp_path)
+    # Ledger puts ev-bridge before ev-start; canon says the reverse. The work is
+    # set before ev-bridge, the declared branch, so this is a should finding.
+    assert _report_rows(report, "CANON.DIVERGENCE") == [("finding", "should")]
+    # A deliberate divergence is not a timeline cycle.
+    assert _report_rows(report, "CONT.TIMELINE_ORDER") == []
+    spelling = [
+        item for item in report["items"] if item["rule_id"] == "CANON.NAME_SPELLING"
+    ]
+    assert [item["evidence"][0]["quote"] for item in spelling] == ["Teodr"]
+    schema = [item for item in report["items"] if item["rule_id"] == "AO3.SCHEMA"]
+    assert [item["symptom"] for item in schema] == [
+        "Required AO3 field missing: language."
+    ]
+    assert report["summary"].startswith("3 findings. 0 blockers.")
+    text = run_work(work, home=tmp_path)
+    assert text == run_work(work, home=tmp_path)
     assert "rewrite as" not in text.lower()
+
+
+def _divergence_case(
+    is_au=True,
+    divergence="ev-x",
+    window=("after", "ev-x"),
+    au_rows=None,
+    canon_status="confirmed",
+    citation_state="ok",
+):
+    intake = {
+        "canon_sources": [{"id": "books"}],
+        "primary_canon_source": "books",
+        "window": {"relation": window[0], "event": window[1]},
+        "events": [
+            {"id": event, "layer": "canon"} for event in ("ev-x", "ev-a", "ev-b")
+        ],
+        "canon_event_order": [],
+        "main_cast": [],
+        "au": {"is_au": is_au, "divergence_event": divergence},
+    }
+    intake, seeded = load_intake(intake)
+    doc = normalize_sources([("ch01.md", "The duel came first.")])
+    canon = [
+        {
+            "id": "c-xa",
+            "subject": "ev-a",
+            "predicate": "event_order",
+            "object": {"relation": "after", "target": "ev-x"},
+            "layer": "canon:books",
+            "status": "confirmed",
+        },
+        {
+            "id": "c-ab",
+            "subject": "ev-b",
+            "predicate": "event_order",
+            "object": {"relation": "after", "target": "ev-a"},
+            "layer": "canon:books",
+            "status": canon_status,
+            "citation_state": citation_state,
+        },
+    ]
+    ledger = {
+        "id": "L",
+        "subject": "ev-b",
+        "predicate": "event_order",
+        "object": {"relation": "before", "target": "ev-a"},
+        "layer": "ledger",
+        "status": "confirmed",
+        "citation": {"at": "ch01.s1.p1", "text": "The duel"},
+    }
+    facts = seeded + canon + [ledger] + list(au_rows or [])
+    graph = graph_from(doc, facts, intake)
+    items, _lens, summary = run_rules(doc, facts, intake, None, graph, [], False)
+    return items, summary
+
+
+def _rows(items, rule="CANON.DIVERGENCE"):
+    return [
+        (item["item_state"], item["severity"])
+        for item in items
+        if item["rule_id"] == rule
+    ]
+
+
+def test_canon_divergence_classification():
+    # After the branch: coverage, and no timeline blocker.
+    items, summary = _divergence_case()
+    assert _rows(items) == [("coverage", "info")]
+    assert _rows(items, "CONT.TIMELINE_ORDER") == []
+    assert summary.startswith("0 findings. 0 blockers.")
+    # Before the branch: finding, severity should.
+    items, _ = _divergence_case(divergence="ev-x", window=("before", "ev-x"))
+    assert _rows(items) == [("finding", "should")]
+    # Not declared AU: info, never a finding.
+    items, summary = _divergence_case(is_au=False)
+    assert _rows(items) == [("info", "info")]
+    assert summary.startswith("0 findings.")
+    # Declared AU, no divergence event: info plus one intake question.
+    items, _ = _divergence_case(divergence=None)
+    assert _rows(items) == [("info", "info"), ("question", "info")]
+    assert [item["kind"] for item in items if item["item_state"] == "question"] == [
+        "DIVERGENCE_EVENT"
+    ]
+    # Unordered against the branch: unverifiable plus a TIMELINE_ANCHOR question.
+    items, _ = _divergence_case(window=("after", "ev-b"))
+    assert _rows(items) == [("unverifiable", "info"), ("question", "info")]
+    assert [item["kind"] for item in items if item["item_state"] == "question"] == [
+        "TIMELINE_ANCHOR"
+    ]
+    # AU override with the ledger's order: coverage at any point.
+    au = {
+        "id": "au1",
+        "subject": "ev-b",
+        "predicate": "event_order",
+        "object": {"relation": "before", "target": "ev-a"},
+        "layer": "au",
+        "status": "confirmed",
+    }
+    items, _ = _divergence_case(window=("before", "ev-x"), au_rows=[au])
+    assert _rows(items) == [("coverage", "info")]
+    # Stale or disputed canon: unverifiable, no fall-through.
+    for status, citation in (("confirmed", "stale"), ("disputed", "ok")):
+        items, _ = _divergence_case(canon_status=status, citation_state=citation)
+        assert _rows(items) == [("unverifiable", "info")]
 
 
 def test_validator_rejects_unknown_quote_and_rewrite():
@@ -371,7 +577,13 @@ def test_validator_rejects_unknown_quote_and_rewrite():
                 "severity": "should",
                 "kind": "internal_inconsistency",
                 "symptom": "nope",
-                "evidence": [{"kind": "prose", "paragraph_id": "ch01.s1.p1", "quote": "not in text"}],
+                "evidence": [
+                    {
+                        "kind": "prose",
+                        "paragraph_id": "ch01.s1.p1",
+                        "quote": "not in text",
+                    }
+                ],
                 "fact_ids": [],
                 "depends_on_hash": "abc",
             }
@@ -387,14 +599,30 @@ def test_validator_rejects_unknown_quote_and_rewrite():
 
 
 def test_mentions_are_alias_exact_and_markers_uncertain():
-    doc = normalize_markdown('Mara asked for Teodor.\n\n"Three years earlier," she said.', chapter=5)
+    doc = normalize_markdown(
+        'Mara asked for Teodor.\n\n"Three years earlier," she said.', chapter=5
+    )
     facts = [
-        {"predicate": "alias", "object": "Mara", "subject": "mara", "status": "confirmed"},
-        {"predicate": "alias", "object": "Teodor", "subject": "teodor", "status": "confirmed"},
+        {
+            "predicate": "alias",
+            "object": "Mara",
+            "subject": "mara",
+            "status": "confirmed",
+        },
+        {
+            "predicate": "alias",
+            "object": "Teodor",
+            "subject": "teodor",
+            "status": "confirmed",
+        },
     ]
     notes = build_mentions(doc, facts)
     assert {note["entity"] for note in notes} == {"mara", "teodor"}
-    intake = {"events": [{"id": "ev-bridge"}], "window": {"relation": "after", "event": "ev-bridge"}, "primary_canon_source": "books"}
+    intake = {
+        "events": [{"id": "ev-bridge"}],
+        "window": {"relation": "after", "event": "ev-bridge"},
+        "primary_canon_source": "books",
+    }
     graph = graph_from(doc, [], intake)
     assert any(scene.uncertain for scene in graph.scenes)
 
@@ -441,37 +669,95 @@ def test_canon_load_refuses_repo_and_missing_quote(tmp_path: Path):
 def test_later_confirmation_proposer_vote_cache_and_holdout():
     main = {"teodor"}
     questions = [
-        {"type": "STATE_CHANGE", "predicate": "status", "object": "dead", "subject": "teodor", "reading_order": "ch02"},
-        {"type": "ALIAS", "predicate": "alias", "subject": "ilsa", "reading_order": "ch01"},
+        {
+            "type": "STATE_CHANGE",
+            "predicate": "status",
+            "object": "dead",
+            "subject": "teodor",
+            "reading_order": "ch02",
+        },
+        {
+            "type": "ALIAS",
+            "predicate": "alias",
+            "subject": "ilsa",
+            "reading_order": "ch01",
+        },
     ]
     asked, rest = prioritize(questions, main, cap=5)
     assert len(asked) == 1 and rest
-    assert not bulk_accept_allowed({"type": "CONFLICT", "high_confidence": True, "verbatim": True})
     assert not bulk_accept_allowed(
-        {"type": "APPEARANCE_MODE", "mode": "present_action", "status": "dead", "high_confidence": True, "verbatim": True}
+        {"type": "CONFLICT", "high_confidence": True, "verbatim": True}
+    )
+    assert not bulk_accept_allowed(
+        {
+            "type": "APPEARANCE_MODE",
+            "mode": "present_action",
+            "status": "dead",
+            "high_confidence": True,
+            "verbatim": True,
+        }
     )
     stored = {"proposition": "a", "location": "b", "dependency": "c", "version": "1"}
     assert memory_invalid(stored, {**stored, "dependency": "d"})
     assert not memory_invalid(stored, dict(stored))
-    provider = MockProvider([{"kind": "proposal", "fact": {"subject": "mara", "predicate": "alias", "object": "Mara"}}])
-    stored_fact = propose(provider, "hash")
-    assert stored_fact["stored"]["status"] == "proposed"
-    refused = propose(MockProvider([{"kind": "refusal", "reason_category": "policy"}]), "hash")
-    assert refused["not_reviewed"] == "policy"
-    layer_a = RaisingProvider()
-    assert layer_a  # Layer A tests never call complete
-    voted = vote(
+    provider = MockProvider(
         [
-            {"label": "on_rails", "votes": 2},
-            {"label": "on_rails", "votes": 1},
-            {"label": "intentional_evolution", "votes": 3},
+            {
+                "kind": "proposal",
+                "fact": {"subject": "mara", "predicate": "alias", "object": "Mara"},
+            }
         ]
     )
-    assert any(note["agreement"] == "low_agreement" for note in voted)
+    stored_fact = propose(provider, "hash")
+    assert stored_fact["stored"]["status"] == "proposed"
+    refused = propose(
+        MockProvider([{"kind": "refusal", "reason_category": "policy"}]), "hash"
+    )
+    assert refused["not_reviewed"] == "policy"
+    with pytest.raises(AssertionError):
+        RaisingProvider().complete("hash")
+    voted = vote(
+        [
+            {"label": "on_rails", "votes": 1},
+            {"label": "on_rails", "votes": 1},
+            {"label": "drift", "votes": 3},
+            {"label": "consequence_shown", "votes": 1},
+            {"label": "in_voice", "votes": 1},
+            {"label": "made_up", "votes": 3},
+        ]
+    )
+    by_label = {note["label"]: note["agreement"] for note in voted}
+    assert by_label == {
+        "on_rails": "2_of_3",
+        "drift": "3_of_3",
+        "consequence_shown": "low_agreement",
+    }
     assert cache_key("a", "r", "m", "c") != cache_key("b", "r", "m", "c")
-    assert holdout_allowed(ROOT / "eval" / "criteria.yaml", REPO) is False or True
     missing = ROOT / "eval" / "holdout" / "nope.yaml"
     assert holdout_allowed(missing, REPO) is False
+
+
+def test_holdout_gate_tracks_git_state(tmp_path: Path):
+    import shutil
+    import subprocess
+
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-q")
+    git("config", "user.email", "test@example.invalid")
+    git("config", "user.name", "test")
+    criteria = tmp_path / "criteria.yaml"
+    criteria.write_text("rules: {}\n", encoding="utf-8")
+    assert holdout_allowed(criteria, tmp_path) is False
+    git("add", "criteria.yaml")
+    git("commit", "-q", "-m", "criteria")
+    assert holdout_allowed(criteria, tmp_path) is True
+    criteria.write_text("rules: {changed: true}\n", encoding="utf-8")
+    assert holdout_allowed(criteria, tmp_path) is False
 
 
 def test_measure_synthetic_chapters(tmp_path: Path):
@@ -480,11 +766,25 @@ def test_measure_synthetic_chapters(tmp_path: Path):
     notes = build_mentions(
         doc,
         [
-            {"predicate": "alias", "object": "Mara", "subject": "mara", "status": "confirmed"},
-            {"predicate": "alias", "object": "Teodor", "subject": "teodor", "status": "confirmed"},
+            {
+                "predicate": "alias",
+                "object": "Mara",
+                "subject": "mara",
+                "status": "confirmed",
+            },
+            {
+                "predicate": "alias",
+                "object": "Teodor",
+                "subject": "teodor",
+                "status": "confirmed",
+            },
         ],
     )
-    summary = {"alias_hits": len(notes), "paragraphs": len(doc.paragraphs), "predicate": "event_order"}
+    summary = {
+        "alias_hits": len(notes),
+        "paragraphs": len(doc.paragraphs),
+        "predicate": "event_order",
+    }
     dest = tmp_path / "measure.json"
     dest.write_text(json.dumps(summary), encoding="utf-8")
     assert json.loads(dest.read_text(encoding="utf-8"))["alias_hits"] == 2
@@ -492,7 +792,9 @@ def test_measure_synthetic_chapters(tmp_path: Path):
 
 def test_status_file_names_real_tests():
     text = (ROOT / "STATUS.md").read_text(encoding="utf-8")
-    bodies = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "tests").glob("test_*.py"))
+    bodies = "\n".join(
+        path.read_text(encoding="utf-8") for path in (ROOT / "tests").glob("test_*.py")
+    )
     for line in text.splitlines():
         if "Test passed" not in line or line.startswith("| Section"):
             continue
@@ -505,14 +807,133 @@ def test_status_file_names_real_tests():
 
 
 def test_gitignore_covers_private_drafts():
-    path = "python/fanfic_story_doctor/drafts/heated-rivalry.txt"
-    ignore = (REPO / ".gitignore").read_text(encoding="utf-8")
-    assert "python/fanfic_story_doctor/drafts/" in ignore
-    assert path.startswith("python/fanfic_story_doctor/drafts/")
+    import shutil
+    import subprocess
+
+    if shutil.which("git") is None or not (REPO / ".git").exists():
+        pytest.skip("not a git checkout")
+    pkg = "python/fanfic_story_doctor"
+    ignored = [
+        f"{pkg}/drafts/ashfall-draft.txt",
+        f"{pkg}/works/ashfall/ch01.md",
+        f"{pkg}/runs/run.json",
+        f"{pkg}/cache/key.json",
+        f"{pkg}/eval/holdout/set.yaml",
+        f"{pkg}/build/lib/doctor/cli.py",
+        f"{pkg}/src/fanfic_story_doctor.egg-info/PKG-INFO",
+    ]
+    tracked = [f"{pkg}/tests/fixtures/ashfall/ch01.md", f"{pkg}/eval/criteria.yaml"]
+
+    def check(path: str) -> bool:
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", "--no-index", path], cwd=REPO, check=False
+        )
+        return result.returncode == 0
+
+    assert [path for path in ignored if not check(path)] == []
+    assert [path for path in tracked if check(path)] == []
 
 
-def test_render_golden_shape():
-    report = json.loads((ROOT / "tests" / "golden" / "report.json").read_text(encoding="utf-8"))
-    rendered = render(report)
-    expected = (ROOT / "tests" / "golden" / "report.md").read_text(encoding="utf-8")
-    assert rendered == expected
+def test_render_golden_matches_run(tmp_path: Path):
+    work = ROOT / "tests" / "fixtures" / "ashfall"
+    expected_json = json.loads(
+        (ROOT / "tests" / "golden" / "report.json").read_text(encoding="utf-8")
+    )
+    expected_md = (ROOT / "tests" / "golden" / "report.md").read_text(encoding="utf-8")
+    assert build_report(work, home=tmp_path) == expected_json
+    assert run_work(work, home=tmp_path) == expected_md
+    assert render(expected_json) == expected_md
+
+
+def test_validator_rewrite_markers_with_space():
+    paragraphs = {"ch01.s1.p1": "Mara walked"}
+    for text in (
+        "try: Mara runs",
+        "For example: she runs",
+        "Rewrite as she runs",
+        "replace with a run",
+    ):
+        report = {
+            "summary": "x",
+            "lens": [],
+            "items": [
+                {
+                    "rule_id": "R",
+                    "item_state": "finding",
+                    "tier": "A1",
+                    "severity": "info",
+                    "kind": "k",
+                    "symptom": "ok",
+                    "suggested_fix": text,
+                    "evidence": [],
+                    "fact_ids": [],
+                    "depends_on_hash": "h",
+                }
+            ],
+        }
+        assert validate_report(report, paragraphs, {}) == ["never-rewrite: R"], text
+    report["items"][0]["suggested_fix"] = "Consider placing the scene later."
+    assert validate_report(report, paragraphs, {}) == []
+
+
+def test_doctor_home_canon_loads_in_run(tmp_path: Path):
+    work = ROOT / "tests" / "fixtures" / "ashfall"
+    home = tmp_path / "home"
+    (home / "canon" / "books").mkdir(parents=True)
+    disputed = {
+        "id": "f-home-1",
+        "subject": "ev-bridge",
+        "predicate": "event_order",
+        "object": {"relation": "after", "target": "ev-start"},
+        "layer": "canon:books",
+        "status": "disputed",
+        "assertion": "state",
+        "citation_state": "ok",
+    }
+    (home / "canon" / "books" / "facts.json").write_text(
+        json.dumps([disputed]), encoding="utf-8"
+    )
+    report = build_report(work, home=home)
+    ids = {fid for item in report["items"] for fid in item.get("fact_ids", [])}
+    assert (
+        "f-home-1" not in ids
+    )  # the intake canon row still decides; disputed home row is loaded but not enforced
+    assert _report_rows(report, "CANON.DIVERGENCE") == [("finding", "should")]
+
+
+def test_canon_load_guard_does_not_depend_on_install_location(
+    tmp_path: Path, monkeypatch
+):
+    inside = ROOT / "cache"
+    inside.mkdir(exist_ok=True)
+    ledger = inside / "guard-facts.json"
+    ledger.write_text("[]", encoding="utf-8")
+    try:
+        monkeypatch.chdir(tmp_path)  # not inside the repo
+        with pytest.raises(SystemExit):
+            load_canon(ledger)
+    finally:
+        ledger.unlink()
+    outside = tmp_path / "facts.json"
+    outside.write_text("[]", encoding="utf-8")
+    monkeypatch.chdir(REPO)
+    assert load_canon(outside) == []
+
+
+def test_ao3_lens_skips_without_tags(tmp_path: Path):
+    doc = normalize_sources([("ch01.md", "Mara walked.")])
+    intake = {
+        "window": {"relation": "after", "event": "ev-bridge"},
+        "events": [],
+        "primary_canon_source": "books",
+    }
+    graph = graph_from(doc, [], intake)
+    items, lens, _summary = run_rules(doc, [], intake, None, graph, [], False)
+    states = {row["rule_id"]: (row["state"], row["reason"]) for row in lens}
+    assert states["AO3.SCHEMA"] == ("skipped", "no_tags_yaml")
+    assert states["AO3.TAG_FORMAT"] == ("skipped", "no_tags_yaml")
+    assert not [item for item in items if item["rule_id"].startswith("AO3.")]
+    _items, lens_b, _ = run_rules(doc, [], intake, None, graph, [], True)
+    assert {row["rule_id"]: row["reason"] for row in lens_b}[
+        "CANON.RAILS"
+    ] == "layer_b_not_wired"

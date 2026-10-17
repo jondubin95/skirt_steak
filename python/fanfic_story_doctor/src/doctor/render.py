@@ -17,6 +17,8 @@ def render(report: dict) -> str:
             f"- [{item.get('item_state')}] {item.get('rule_id')}: {item.get('symptom')}"
         )
     lines.append("")
-    lines.append("Archive Warnings were not scanned. Whether a warning applies is your call.")
+    lines.append(
+        "Archive Warnings were not scanned. Whether a warning applies is your call."
+    )
     lines.append("")
     return "\n".join(lines)

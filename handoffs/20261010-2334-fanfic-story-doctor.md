@@ -14,9 +14,11 @@ Diagnose-only continuity tool for fanfic drafts. The first fact check is event-o
 
 ## Current State
 
-- Branch `feature/fanfic-story-doctor`. Committed and opened as a PR for review on 2026-10-17. Spec v0.4.3 is new. v0.4.2 is unchanged.
+- Branch `feature/fanfic-story-doctor`, PR #15. Opened 2026-10-17. An adversarial review that day found blockers, and a fix commit on the same branch addressed them. Spec v0.4.3 is new. v0.4.2 is unchanged and lives in private notes, not in this repo.
 - Package `python/fanfic_story_doctor` and skill stub `.cursor/skills/fanfic-story-doctor`. Pull-request CI runs this package's pytest.
-- 19 tests passed locally. `CANON.DIVERGENCE` checks event order. Before the branch is a finding. At or after the branch is coverage. Layer B notes are skipped on a normal run.
+- 50 tests pass locally (pytest in a venv). `CANON.DIVERGENCE` checks event order. Before the branch is a finding (`should`). At or after the branch is coverage. Not AU, or no divergence event: info (plus an intake question). Stale or disputed canon: unverifiable. Canon edges no longer enter the timeline graph for pairs the ledger orders, so a branch is never a `CONT.TIMELINE_ORDER` blocker.
+- `doctor run` loads `$DOCTOR_HOME/canon/<primary>/facts.json` when present. The report schema ships inside the package, and the in-repo guard no longer depends on where the package is installed.
+- Layer B is not wired. `--layer-b` is accepted, but `OOC.VOICE` and `CANON.RAILS` report `skipped` (`layer_b_not_wired`).
 - Real chapters were not measured. Private files belong under `DOCTOR_HOME`, outside the repo. See private detail: `Sensitive/handoffs/20261010-2334-fanfic-story-doctor.md`.
 
 ## Key Decisions Already Made
@@ -47,9 +49,9 @@ Diagnose-only continuity tool for fanfic drafts. The first fact check is event-o
 
 ## Known Risks or Failure Modes
 
-- One timeline rule was added so a pre-canon work's later chapters stay before the canon event. Confirm that still matches the worked examples before relying on it.
-- The large dead-reappears table's expected column was fitted against the implementation. Recheck it before calling the rule validated.
-- Confirmation, proposer, cache, and holdout code are helpers, not a finished writer loop.
+- Pre-canon timeline rule: confirmed over-broad in review (it applied to every event). Now scoped to the intake `window.event` with `relation: before`. E1–E8 still pass. Recheck when a work crosses its window event.
+- Dead-reappears table: confirmed in review that the old `expect()` mirrored the code. It has been replaced by a hand-written literal table that also covers alive, unspecified, and out-of-set statuses. That table is still one author's reading of the spec, not a second annotator's.
+- Confirmation, proposer, cache, and holdout code are helpers, not a finished writer loop. Layer B is not wired into the runner.
 
 ## Prompt to Resume
 

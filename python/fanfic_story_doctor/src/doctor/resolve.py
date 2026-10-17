@@ -30,7 +30,14 @@ def _layer_rank(layer: str, primary: str | None) -> tuple[int, int]:
     return (9, 0)
 
 
-def resolve(facts: list[dict], subject: str, predicate: str, paragraph_id: str, graph, primary: str | None = None):
+def resolve(
+    facts: list[dict],
+    subject: str,
+    predicate: str,
+    paragraph_id: str,
+    graph,
+    primary: str | None = None,
+):
     grouped: dict[str, list[dict]] = {}
     for fact in facts:
         if fact.get("subject") != subject or fact.get("predicate") != predicate:
@@ -48,7 +55,9 @@ def resolve(facts: list[dict], subject: str, predicate: str, paragraph_id: str, 
             if fact.get("citation_state") == "stale" or fact.get("status") == "disputed"
         ]
         yes = [fact for fact in enforceable if covers(graph, fact, paragraph_id) == YES]
-        unk = [fact for fact in enforceable if covers(graph, fact, paragraph_id) == UNKNOWN]
+        unk = [
+            fact for fact in enforceable if covers(graph, fact, paragraph_id) == UNKNOWN
+        ]
         unk = unk + blocked
         if yes:
             objects = {repr(fact.get("object")) for fact in yes}

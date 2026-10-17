@@ -6,17 +6,22 @@ import json
 import re
 from pathlib import Path
 
-REWRITE = re.compile(r"\b(rewrite as|replace with|try:|for example:)\b", re.IGNORECASE)
+REWRITE = re.compile(
+    r"\b(?:rewrite as\b|replace with\b|try:|for example:)", re.IGNORECASE
+)
 QUOTED = re.compile(r'"([^"]+)"')
 
-SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "report.schema.json"
+# Shipped inside the package (see [tool.setuptools.package-data]).
+SCHEMA_PATH = Path(__file__).resolve().parent / "schemas" / "report.schema.json"
 
 
 def load_schema() -> dict:
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
-def validate_report(report: dict, paragraphs: dict[str, str], facts: dict[str, dict]) -> list[str]:
+def validate_report(
+    report: dict, paragraphs: dict[str, str], facts: dict[str, dict]
+) -> list[str]:
     errors: list[str] = []
     try:
         import jsonschema

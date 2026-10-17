@@ -6,7 +6,7 @@ import hashlib
 import json
 
 from doctor.resolve import UNRESOLVED, is_enforceable, resolve
-from doctor.timeline import UNKNOWN, YES, covers, compare, reading_before, scene_of
+from doctor.timeline import UNKNOWN, compare, reading_before, scene_of
 
 MVP_RULES = [
     "CANON.DIVERGENCE",
@@ -42,75 +42,217 @@ def _direction(fact: dict) -> tuple[str, str] | None:
     return (subject, target)
 
 
-def canon_divergence(facts: list[dict], graph, intake: dict, primary: str) -> list[dict]:
-    """event_order ledger vs primary canon, classified by the divergence event."""
-    items = []
+def _blocked(fact: dict) -> bool:
+    return (
+        fact.get("status") in {"confirmed", "disputed"}
+        and fact.get("assertion", "state") == "state"
+        and not fact.get("superseded_by")
+        and (fact.get("status") == "disputed" or fact.get("citation_state") == "stale")
+    )
+
+
+def _question(kind: str, field: str, text: str, fact_ids: list[str]) -> dict:
+    return {
+        "rule_id": "CANON.DIVERGENCE",
+        "item_state": "question",
+        "tier": "A1",
+        "severity": "info",
+        "kind": kind,
+        "symptom": text,
+        "evidence": [{"kind": "file", "path": "intake.yaml", "field": field}],
+        "fact_ids": fact_ids,
+        "depends_on_hash": depends_hash(fact_ids, kind),
+    }
+
+
+def canon_divergence(
+    facts: list[dict], graph, intake: dict, primary: str
+) -> list[dict]:
+    """event_order ledger vs primary canon, classified by the divergence event.
+
+    Canon edges are not part of the work's timeline graph for pairs the ledger
+    orders itself, so a deliberate branch is classified here and never shows up
+    as a CONT.TIMELINE_ORDER cycle.
+    """
+    items: list[dict] = []
+    asked: set[str] = set()
     au = (intake or {}).get("au") or {}
     is_au = bool(au.get("is_au"))
     divergence = au.get("divergence_event")
     canon_layer = f"canon:{primary}"
+    order = [fact for fact in facts if fact.get("predicate") == "event_order"]
     ledger = [
-        fact
-        for fact in facts
-        if fact.get("predicate") == "event_order"
-        and fact.get("layer") == "ledger"
-        and is_enforceable(fact)
+        fact for fact in order if fact.get("layer") == "ledger" and is_enforceable(fact)
     ]
     canon = [
         fact
-        for fact in facts
-        if fact.get("predicate") == "event_order" and fact.get("layer") == canon_layer and is_enforceable(fact)
+        for fact in order
+        if fact.get("layer") == canon_layer and is_enforceable(fact)
+    ]
+    canon_blocked = [
+        fact for fact in order if fact.get("layer") == canon_layer and _blocked(fact)
+    ]
+    au_rows = [
+        fact for fact in order if fact.get("layer") == "au" and is_enforceable(fact)
     ]
     for left in ledger:
         pair = _direction(left)
         if pair is None:
             continue
-        matches = [fact for fact in canon if _direction(fact) and set(_direction(fact)) == set(pair)]
-        if not matches:
-            continue
-        agree = [fact for fact in matches if _direction(fact) == pair]
-        disagree = [fact for fact in matches if _direction(fact) != pair]
-        if agree and not disagree:
+        same_pair = [
+            fact
+            for fact in canon
+            if _direction(fact) and set(_direction(fact)) == set(pair)
+        ]
+        blocked = [
+            fact
+            for fact in canon_blocked
+            if _direction(fact) and set(_direction(fact)) == set(pair)
+        ]
+        disagree = [fact for fact in same_pair if _direction(fact) != pair]
+        citation = (left.get("citation") or {}).get("at")
+        paragraph = citation or _first_paragraph(graph, left.get("subject"))
+        if blocked and not same_pair:
+            ids = [left["id"], blocked[0]["id"]]
+            items.append(
+                _divergence_item(
+                    left,
+                    paragraph,
+                    ids,
+                    "unverifiable",
+                    "info",
+                    "unverifiable",
+                    "Canon order for this pair is stale or disputed. No lower canon source is used.",
+                )
+            )
             continue
         if not disagree:
             continue
-        citation = (left.get("citation") or {}).get("at")
-        paragraph = citation or _first_paragraph(graph, left.get("subject"))
-        au_cover = [
-            fact
-            for fact in facts
-            if fact.get("layer") == "au"
-            and fact.get("predicate") == "event_order"
-            and is_enforceable(fact)
-            and _direction(fact) == pair
-        ]
-        base = {
-            "rule_id": "CANON.DIVERGENCE",
-            "tier": "A1",
-            "fact_ids": [left["id"], disagree[0]["id"]],
-            "depends_on_hash": depends_hash([left["id"], disagree[0]["id"]]),
-            "evidence": _prose(paragraph, left),
-        }
-        if au_cover:
-            items.append({**base, "item_state": "coverage", "severity": "info", "kind": "coverage", "symptom": "Declared AU order covers this point."})
+        ids = [left["id"], disagree[0]["id"]]
+        if any(_direction(fact) == pair for fact in au_rows):
+            items.append(
+                _divergence_item(
+                    left,
+                    paragraph,
+                    ids,
+                    "coverage",
+                    "info",
+                    "coverage",
+                    "Declared AU order covers this point.",
+                )
+            )
             continue
         if not is_au:
-            items.append({**base, "item_state": "finding", "severity": "info", "kind": "coverage", "symptom": "Draft event order disagrees with canon. The work is not declared AU."})
+            items.append(
+                _divergence_item(
+                    left,
+                    paragraph,
+                    ids,
+                    "info",
+                    "info",
+                    "coverage",
+                    "Draft event order differs from canon. The work is not declared AU.",
+                )
+            )
             continue
         if not divergence:
-            items.append({**base, "item_state": "finding", "severity": "info", "kind": "coverage", "symptom": "Declared AU has no divergence event."})
+            items.append(
+                _divergence_item(
+                    left,
+                    paragraph,
+                    ids,
+                    "info",
+                    "info",
+                    "coverage",
+                    "Declared AU has no divergence event.",
+                )
+            )
+            if "DIVERGENCE_EVENT" not in asked:
+                asked.add("DIVERGENCE_EVENT")
+                items.append(
+                    _question(
+                        "DIVERGENCE_EVENT",
+                        "au.divergence_event",
+                        "Which canon event is the branch point?",
+                        ids,
+                    )
+                )
             continue
         if not paragraph:
-            items.append({**base, "item_state": "unverifiable", "severity": "info", "kind": "unverifiable", "symptom": "Event order disagrees with canon, and the scene is not placed."})
+            items.append(
+                _divergence_item(
+                    left,
+                    paragraph,
+                    ids,
+                    "unverifiable",
+                    "info",
+                    "unverifiable",
+                    "Event order differs from canon, and the scene is not placed.",
+                )
+            )
             continue
-        order = compare(graph, (scene_of(paragraph), None), (divergence, None))
-        if order == UNKNOWN:
-            items.append({**base, "item_state": "unverifiable", "severity": "info", "kind": "unverifiable", "symptom": "Event order disagrees with canon, and the branch point is unordered here."})
-        elif order == "BEFORE":
-            items.append({**base, "item_state": "finding", "severity": "should", "kind": "internal_inconsistency", "symptom": "Event order contradicts canon before the declared branch."})
+        where = compare(graph, (scene_of(paragraph), None), (divergence, None))
+        if where == UNKNOWN:
+            items.append(
+                _divergence_item(
+                    left,
+                    paragraph,
+                    ids,
+                    "unverifiable",
+                    "info",
+                    "unverifiable",
+                    "Event order differs from canon, and this scene is unordered against the branch point.",
+                )
+            )
+            if "TIMELINE_ANCHOR" not in asked:
+                asked.add("TIMELINE_ANCHOR")
+                items.append(
+                    _question(
+                        "TIMELINE_ANCHOR",
+                        "au.divergence_event",
+                        "Is this scene before or after the branch point?",
+                        ids,
+                    )
+                )
+        elif where == "BEFORE":
+            items.append(
+                _divergence_item(
+                    left,
+                    paragraph,
+                    ids,
+                    "finding",
+                    "should",
+                    "internal_inconsistency",
+                    "Event order contradicts canon before the declared branch.",
+                )
+            )
         else:
-            items.append({**base, "item_state": "coverage", "severity": "info", "kind": "coverage", "symptom": "Event order leaves canon at or after the declared branch."})
+            items.append(
+                _divergence_item(
+                    left,
+                    paragraph,
+                    ids,
+                    "coverage",
+                    "info",
+                    "coverage",
+                    "Event order leaves canon at or after the declared branch.",
+                )
+            )
     return items
+
+
+def _divergence_item(left, paragraph, ids, state, severity, kind, symptom) -> dict:
+    return {
+        "rule_id": "CANON.DIVERGENCE",
+        "item_state": state,
+        "tier": "A1",
+        "severity": severity,
+        "kind": kind,
+        "symptom": symptom,
+        "fact_ids": ids,
+        "depends_on_hash": depends_hash(ids),
+        "evidence": _prose(paragraph, left),
+    }
 
 
 def _first_paragraph(graph, scene_id: str | None) -> str | None:
@@ -126,25 +268,49 @@ def _prose(paragraph: str | None, fact: dict) -> list[dict]:
     quote = (fact.get("citation") or {}).get("text")
     if paragraph and quote:
         return [{"kind": "prose", "paragraph_id": paragraph, "quote": quote}]
-    return [{"kind": "file", "path": "intake.yaml", "field": fact.get("id", "event_order")}]
+    return [
+        {"kind": "file", "path": "intake.yaml", "field": fact.get("id", "event_order")}
+    ]
 
 
-def dead_reappears(mentions: list[dict], facts: list[dict], graph, primary: str | None) -> list[dict]:
+def dead_reappears(
+    mentions: list[dict], facts: list[dict], graph, primary: str | None
+) -> list[dict]:
     items = []
     for mention in mentions:
         if mention.get("stale"):
             continue
-        state, value, ids = resolve(facts, mention["entity"], "status", mention["paragraph"], graph, primary)
+        state, value, ids = resolve(
+            facts, mention["entity"], "status", mention["paragraph"], graph, primary
+        )
         if state == UNRESOLVED:
-            items.append(_unknown("CONT.DEAD_REAPPEARS", mention, ids, "Status at this paragraph is unresolved."))
+            items.append(
+                _unknown(
+                    "CONT.DEAD_REAPPEARS",
+                    mention,
+                    ids,
+                    "Status at this paragraph is unresolved.",
+                )
+            )
             continue
-        if value in {"alive", "unspecified"}:
+        if value != "dead":
             continue
         if mention.get("mode_status") != "confirmed":
-            items.append(_unknown("CONT.DEAD_REAPPEARS", mention, ids, "Appearance mode is not confirmed."))
+            items.append(
+                _unknown(
+                    "CONT.DEAD_REAPPEARS",
+                    mention,
+                    ids,
+                    "Appearance mode is not confirmed.",
+                )
+            )
             continue
         if mention.get("mode") == "unclear":
-            items.append(_unknown("CONT.DEAD_REAPPEARS", mention, ids, "Appearance mode is unclear."))
+            items.append(
+                _unknown(
+                    "CONT.DEAD_REAPPEARS", mention, ids, "Appearance mode is unclear."
+                )
+            )
             continue
         if mention.get("mode") == "present_action":
             items.append(
@@ -155,7 +321,13 @@ def dead_reappears(mentions: list[dict], facts: list[dict], graph, primary: str 
                     "severity": "blocker",
                     "kind": "load_bearing_break",
                     "symptom": f"{mention['entity']} is dead here and confirmed present.",
-                    "evidence": [{"kind": "prose", "paragraph_id": mention["paragraph"], "quote": mention.get("surface", "")}],
+                    "evidence": [
+                        {
+                            "kind": "prose",
+                            "paragraph_id": mention["paragraph"],
+                            "quote": mention.get("surface", ""),
+                        }
+                    ],
                     "fact_ids": ids,
                     "annotation_ids": [mention["id"]],
                     "depends_on_hash": depends_hash(ids, mention["id"]),
@@ -172,7 +344,13 @@ def _unknown(rule: str, mention: dict, ids: list[str], symptom: str) -> dict:
         "severity": "info",
         "kind": "unverifiable",
         "symptom": symptom,
-        "evidence": [{"kind": "prose", "paragraph_id": mention["paragraph"], "quote": mention.get("surface", "")}],
+        "evidence": [
+            {
+                "kind": "prose",
+                "paragraph_id": mention["paragraph"],
+                "quote": mention.get("surface", ""),
+            }
+        ],
         "fact_ids": ids,
         "annotation_ids": [mention.get("id", "")],
         "depends_on_hash": depends_hash(ids, mention.get("id", "")),
@@ -186,9 +364,22 @@ def payoff_before_setup(facts: list[dict]) -> list[dict]:
         if fact.get("predicate") in {"setup_anchor", "payoff_anchor"}:
             threads.setdefault(fact["subject"], []).append(fact)
     for thread, rows in threads.items():
-        payoffs = [fact for fact in rows if fact.get("predicate") == "payoff_anchor" and is_enforceable(fact)]
-        setups = [fact for fact in rows if fact.get("predicate") == "setup_anchor" and is_enforceable(fact)]
-        proposed = [fact for fact in rows if fact.get("predicate") == "setup_anchor" and fact.get("status") == "proposed"]
+        payoffs = [
+            fact
+            for fact in rows
+            if fact.get("predicate") == "payoff_anchor" and is_enforceable(fact)
+        ]
+        setups = [
+            fact
+            for fact in rows
+            if fact.get("predicate") == "setup_anchor" and is_enforceable(fact)
+        ]
+        proposed = [
+            fact
+            for fact in rows
+            if fact.get("predicate") == "setup_anchor"
+            and fact.get("status") == "proposed"
+        ]
         if not payoffs:
             continue
         payoff_at = _anchor_at(payoffs[0])
@@ -204,13 +395,26 @@ def payoff_before_setup(facts: list[dict]) -> list[dict]:
                     "severity": "blocker",
                     "kind": "load_bearing_break",
                     "symptom": f"Payoff for {thread} is before every confirmed setup.",
-                    "evidence": [{"kind": "prose", "paragraph_id": payoff_at, "quote": (payoffs[0].get("citation") or {}).get("text") or ""}],
+                    "evidence": [
+                        {
+                            "kind": "prose",
+                            "paragraph_id": payoff_at,
+                            "quote": (payoffs[0].get("citation") or {}).get("text")
+                            or "",
+                        }
+                    ],
                     "fact_ids": [fact["id"] for fact in payoffs + setups],
-                    "depends_on_hash": depends_hash([fact["id"] for fact in payoffs + setups]),
+                    "depends_on_hash": depends_hash(
+                        [fact["id"] for fact in payoffs + setups]
+                    ),
                 }
             )
         elif not setups:
-            symptom = "Setup is only proposed." if proposed else "No confirmed setup for this payoff."
+            symptom = (
+                "Setup is only proposed."
+                if proposed
+                else "No confirmed setup for this payoff."
+            )
             items.append(
                 {
                     "rule_id": "CONT.PAYOFF_BEFORE_SETUP",
@@ -219,7 +423,14 @@ def payoff_before_setup(facts: list[dict]) -> list[dict]:
                     "severity": "info",
                     "kind": "unverifiable",
                     "symptom": symptom,
-                    "evidence": [{"kind": "prose", "paragraph_id": payoff_at, "quote": (payoffs[0].get("citation") or {}).get("text") or ""}],
+                    "evidence": [
+                        {
+                            "kind": "prose",
+                            "paragraph_id": payoff_at,
+                            "quote": (payoffs[0].get("citation") or {}).get("text")
+                            or "",
+                        }
+                    ],
                     "fact_ids": [payoffs[0]["id"]],
                     "depends_on_hash": depends_hash([payoffs[0]["id"]]),
                 }
@@ -233,9 +444,13 @@ def payoff_before_setup(facts: list[dict]) -> list[dict]:
                     "severity": "info",
                     "kind": "unverifiable",
                     "symptom": "A setup and a payoff share a work position.",
-                    "evidence": [{"kind": "prose", "paragraph_id": payoff_at, "quote": ""}],
+                    "evidence": [
+                        {"kind": "prose", "paragraph_id": payoff_at, "quote": ""}
+                    ],
                     "fact_ids": [fact["id"] for fact in payoffs + setups],
-                    "depends_on_hash": depends_hash([fact["id"] for fact in payoffs + setups]),
+                    "depends_on_hash": depends_hash(
+                        [fact["id"] for fact in payoffs + setups]
+                    ),
                 }
             )
     return items
@@ -258,14 +473,18 @@ def timeline_order(graph) -> list[dict]:
             "severity": "blocker",
             "kind": "load_bearing_break",
             "symptom": "Confirmed timeline edges contradict each other.",
-            "evidence": [{"kind": "file", "path": "intake.yaml", "field": "canon_event_order"}],
+            "evidence": [
+                {"kind": "file", "path": "intake.yaml", "field": "canon_event_order"}
+            ],
             "fact_ids": [],
             "depends_on_hash": depends_hash(sorted(graph.contradicted)),
         }
     ]
 
 
-def name_spelling(paragraphs: list, aliases: list[str], dismissed: list[str] | None = None) -> list[dict]:
+def name_spelling(
+    paragraphs: list, aliases: list[str], dismissed: list[str] | None = None
+) -> list[dict]:
     dismissed = dismissed or []
     alias_set = set(aliases)
     folded = {alias.casefold(): alias for alias in aliases}
@@ -277,7 +496,11 @@ def name_spelling(paragraphs: list, aliases: list[str], dismissed: list[str] | N
             for alias in aliases:
                 limit = 1 if len(alias) <= 5 else 2
                 if _damerau(token, alias) <= limit and token.casefold() not in folded:
-                    if any(_damerau(token, other) <= limit for other in aliases if other != alias and other.casefold() != alias.casefold()):
+                    if any(
+                        _damerau(token, other) <= limit
+                        for other in aliases
+                        if other != alias and other.casefold() != alias.casefold()
+                    ):
                         continue
                     items.append(
                         {
@@ -287,7 +510,13 @@ def name_spelling(paragraphs: list, aliases: list[str], dismissed: list[str] | N
                             "severity": "info",
                             "kind": "internal_inconsistency",
                             "symptom": f"{token} is near the alias {alias} and is not itself an alias.",
-                            "evidence": [{"kind": "prose", "paragraph_id": paragraph.id, "quote": token}],
+                            "evidence": [
+                                {
+                                    "kind": "prose",
+                                    "paragraph_id": paragraph.id,
+                                    "quote": token,
+                                }
+                            ],
                             "fact_ids": [],
                             "depends_on_hash": depends_hash([alias, token]),
                         }
@@ -323,7 +552,9 @@ def _damerau(a: str, b: str) -> int:
     for i in range(1, la + 1):
         for j in range(1, lb + 1):
             cost = 0 if a[i - 1] == b[j - 1] else 1
-            grid[i][j] = min(grid[i - 1][j] + 1, grid[i][j - 1] + 1, grid[i - 1][j - 1] + cost)
+            grid[i][j] = min(
+                grid[i - 1][j] + 1, grid[i][j - 1] + 1, grid[i - 1][j - 1] + cost
+            )
             if i > 1 and j > 1 and a[i - 1] == b[j - 2] and a[i - 2] == b[j - 1]:
                 grid[i][j] = min(grid[i][j], grid[i - 2][j - 2] + 1)
     return grid[la][lb]
@@ -331,7 +562,7 @@ def _damerau(a: str, b: str) -> int:
 
 def ao3_schema(tags: dict | None) -> list[dict]:
     if not tags:
-        return [_skip_item("AO3.SCHEMA", "no tags.yaml")]
+        return []
     missing = []
     for field in ("rating", "archive_warnings", "fandoms", "title", "language"):
         value = tags.get(field)
@@ -357,8 +588,12 @@ def ao3_schema(tags: dict | None) -> list[dict]:
             "tier": "A1",
             "severity": "should",
             "kind": "tagging",
-            "symptom": "Required AO3 field missing: " + ", ".join(sorted(set(missing))) + ".",
-            "evidence": [{"kind": "file", "path": "tags.yaml", "field": sorted(set(missing))[0]}],
+            "symptom": "Required AO3 field missing: "
+            + ", ".join(sorted(set(missing)))
+            + ".",
+            "evidence": [
+                {"kind": "file", "path": "tags.yaml", "field": sorted(set(missing))[0]}
+            ],
             "fact_ids": [],
             "depends_on_hash": depends_hash(missing),
         }
@@ -386,25 +621,13 @@ def ao3_tag_format(tags: dict | None) -> list[dict]:
             "severity": "should",
             "kind": "tagging",
             "symptom": "AO3 tag format: " + "; ".join(problems) + ".",
-            "evidence": [{"kind": "file", "path": "tags.yaml", "field": "additional_tags"}],
+            "evidence": [
+                {"kind": "file", "path": "tags.yaml", "field": "additional_tags"}
+            ],
             "fact_ids": [],
             "depends_on_hash": depends_hash(problems),
         }
     ]
-
-
-def _skip_item(rule: str, reason: str) -> dict:
-    return {
-        "rule_id": rule,
-        "item_state": "skipped",
-        "tier": "A1",
-        "severity": "info",
-        "kind": "coverage",
-        "symptom": reason,
-        "evidence": [{"kind": "file", "path": "tags.yaml", "field": "missing"}],
-        "fact_ids": [],
-        "depends_on_hash": depends_hash([reason]),
-    }
 
 
 def status_coverage(facts: list[dict], main_cast: list[str], graph) -> dict:
@@ -413,7 +636,9 @@ def status_coverage(facts: list[dict], main_cast: list[str], graph) -> dict:
         rows = [
             fact
             for fact in facts
-            if fact.get("subject") == entity and fact.get("predicate") == "status" and is_enforceable(fact)
+            if fact.get("subject") == entity
+            and fact.get("predicate") == "status"
+            and is_enforceable(fact)
         ]
         if rows:
             covered += 1
