@@ -1,0 +1,10 @@
+# Acceptance criteria for a future holdout run.
+# Commit this file before any holdout. The harness refuses a holdout while this file is untracked or modified.
+rules:
+  CANON.DIVERGENCE:
+    predicate: event_order
+    before_branch: finding
+    after_branch: coverage
+  CANON.RAILS:
+    tier: B
+    severity: info

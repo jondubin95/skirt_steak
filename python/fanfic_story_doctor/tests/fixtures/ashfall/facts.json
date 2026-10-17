@@ -1,0 +1,22 @@
+[
+  {
+    "id": "f-ledger-order",
+    "subject": "ev-bridge",
+    "predicate": "event_order",
+    "object": {
+      "relation": "before",
+      "target": "ev-start",
+      "anchor_kind": "explicit_order"
+    },
+    "layer": "ledger",
+    "status": "confirmed",
+    "assertion": "state",
+    "citation_state": "ok",
+    "citation": {
+      "at": "ch01.s1.p1",
+      "text": "before the bridge"
+    },
+    "confirmation_method": "manually_entered",
+    "provenance": {"created_by": "writer"}
+  }
+]

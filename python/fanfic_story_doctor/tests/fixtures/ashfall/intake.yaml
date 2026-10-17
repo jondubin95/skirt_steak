@@ -1,0 +1,34 @@
+work_id: ashfall-after
+fandom: The Ashfall Chronicles
+canon_sources:
+  - id: books
+    label: Ashfall books
+  - id: show
+    label: Ashfall show
+primary_canon_source: books
+canon_cutoff: end of book 2
+window:
+  relation: before
+  event: ev-bridge
+events:
+  - id: ev-start
+    label: Story start
+    layer: canon
+  - id: ev-bridge
+    label: Battle of the Bridge
+    layer: canon
+canon_event_order:
+  - [ev-start, ev-bridge]
+main_cast:
+  - entity: mara
+    names: [Mara]
+  - entity: teodor
+    names: [Teodor]
+other_entities: []
+au:
+  is_au: true
+  divergence_event: ev-bridge
+  status_overrides: []
+unreliable_narrator: false
+tagged_out_of_character: false
+depth: quick

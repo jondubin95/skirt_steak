@@ -1,0 +1,11 @@
+{
+  "summary": "1 findings. 0 blockers.",
+  "lens": [
+    {
+      "rule_id": "CANON.DIVERGENCE",
+      "state": "skipped",
+      "reason": "not_built"
+    }
+  ],
+  "items": []
+}
