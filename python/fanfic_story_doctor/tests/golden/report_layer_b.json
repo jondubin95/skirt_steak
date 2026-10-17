@@ -1,0 +1,207 @@
+{
+  "items": [
+    {
+      "covered": 0,
+      "depends_on_hash": "6ea6c6a5906fb55b49dd3723d00c006e009db109d6f20252cbab3b95ea321019",
+      "evidence": [
+        {
+          "field": "main_cast",
+          "kind": "file",
+          "path": "intake.yaml"
+        }
+      ],
+      "fact_ids": [],
+      "item_state": "coverage",
+      "kind": "coverage",
+      "rule_id": "LEDGER.COVERAGE",
+      "severity": "info",
+      "symptom": "status facts cover 0 of 2 main-cast characters.",
+      "tier": "A1",
+      "total": 2
+    },
+    {
+      "agreement": "3_of_3",
+      "depends_on_hash": "ab136eba5f11adb6c2193360f175e0fd7968d079fe36c138eb49b44e6f466960",
+      "evidence": [
+        {
+          "kind": "prose",
+          "paragraph_id": "ch01.s1.p1",
+          "quote": "Mara"
+        }
+      ],
+      "fact_ids": [],
+      "interpretation": "Mock provider judgment for tests. Not a reading of the text.",
+      "item_state": "note",
+      "kind": "judgment",
+      "label": "intentional_evolution",
+      "observed": "Mara",
+      "rule_id": "OOC.VOICE",
+      "severity": "info",
+      "symptom": "OOC.VOICE label intentional_evolution (3_of_3). Agreement is not correctness.",
+      "tier": "B"
+    },
+    {
+      "agreement": "2_of_3",
+      "depends_on_hash": "6118ec5c5bfa2682f613cc2951449afa64b3f92f34e6dbd31ab95069b6c0ce0c",
+      "evidence": [
+        {
+          "kind": "prose",
+          "paragraph_id": "ch01.s2.p1",
+          "quote": "Teodor"
+        }
+      ],
+      "fact_ids": [],
+      "interpretation": "Mock provider judgment for tests. Not a reading of the text.",
+      "item_state": "note",
+      "kind": "judgment",
+      "label": "break",
+      "observed": "Teodor",
+      "rule_id": "OOC.VOICE",
+      "severity": "info",
+      "symptom": "OOC.VOICE label break (2_of_3). Agreement is not correctness.",
+      "tier": "B"
+    },
+    {
+      "agreement": "low_agreement",
+      "depends_on_hash": "6118ec5c5bfa2682f613cc2951449afa64b3f92f34e6dbd31ab95069b6c0ce0c",
+      "evidence": [
+        {
+          "kind": "prose",
+          "paragraph_id": "ch01.s2.p1",
+          "quote": "Teodor"
+        }
+      ],
+      "fact_ids": [],
+      "interpretation": "Mock provider judgment for tests. Not a reading of the text.",
+      "item_state": "note",
+      "kind": "judgment",
+      "label": "not_enough_evidence",
+      "observed": "Teodor",
+      "rule_id": "OOC.VOICE",
+      "severity": "info",
+      "symptom": "OOC.VOICE label not_enough_evidence (low_agreement). Agreement is not correctness.",
+      "tier": "B"
+    },
+    {
+      "agreement": "3_of_3",
+      "depends_on_hash": "c466298a184276484e20bdf43f24b0b90dc666acfffe95c3ced90a1a52ee93b2",
+      "evidence": [
+        {
+          "kind": "prose",
+          "paragraph_id": "ch01.s1.p1",
+          "quote": "Mara crossed the broken bridge"
+        }
+      ],
+      "fact_ids": [],
+      "interpretation": "Mock provider judgment for tests. Not a reading of the text.",
+      "item_state": "note",
+      "kind": "judgment",
+      "label": "consequence_shown",
+      "observed": "Mara crossed the broken bridge",
+      "rule_id": "CANON.RAILS",
+      "severity": "info",
+      "symptom": "CANON.RAILS label consequence_shown (3_of_3). Agreement is not correctness.",
+      "tier": "B"
+    },
+    {
+      "agreement": "2_of_3",
+      "depends_on_hash": "f7d191f4480d262cb16595c28d638459b669dd503221c033dc2c928dfbd8f668",
+      "evidence": [
+        {
+          "kind": "prose",
+          "paragraph_id": "ch01.s2.p1",
+          "quote": "Teodor waited at the camp"
+        }
+      ],
+      "fact_ids": [],
+      "interpretation": "Mock provider judgment for tests. Not a reading of the text.",
+      "item_state": "note",
+      "kind": "judgment",
+      "label": "on_rails",
+      "observed": "Teodor waited at the camp",
+      "rule_id": "CANON.RAILS",
+      "severity": "info",
+      "symptom": "CANON.RAILS label on_rails (2_of_3). Agreement is not correctness.",
+      "tier": "B"
+    },
+    {
+      "agreement": "low_agreement",
+      "depends_on_hash": "f7d191f4480d262cb16595c28d638459b669dd503221c033dc2c928dfbd8f668",
+      "evidence": [
+        {
+          "kind": "prose",
+          "paragraph_id": "ch01.s2.p1",
+          "quote": "Teodor waited at the camp"
+        }
+      ],
+      "fact_ids": [],
+      "interpretation": "Mock provider judgment for tests. Not a reading of the text.",
+      "item_state": "note",
+      "kind": "judgment",
+      "label": "consequence_shown",
+      "observed": "Teodor waited at the camp",
+      "rule_id": "CANON.RAILS",
+      "severity": "info",
+      "symptom": "CANON.RAILS label consequence_shown (low_agreement). Agreement is not correctness.",
+      "tier": "B"
+    }
+  ],
+  "lens": [
+    {
+      "reason": "",
+      "rule_id": "CANON.DIVERGENCE",
+      "state": "applied"
+    },
+    {
+      "reason": "",
+      "rule_id": "CONT.DEAD_REAPPEARS",
+      "state": "applied"
+    },
+    {
+      "reason": "",
+      "rule_id": "CONT.PAYOFF_BEFORE_SETUP",
+      "state": "applied"
+    },
+    {
+      "reason": "",
+      "rule_id": "CONT.TIMELINE_ORDER",
+      "state": "applied"
+    },
+    {
+      "reason": "",
+      "rule_id": "LEDGER.COVERAGE",
+      "state": "applied"
+    },
+    {
+      "reason": "",
+      "rule_id": "LEDGER.CONFLICT",
+      "state": "applied"
+    },
+    {
+      "reason": "",
+      "rule_id": "CANON.NAME_SPELLING",
+      "state": "applied"
+    },
+    {
+      "reason": "no_tags_yaml",
+      "rule_id": "AO3.SCHEMA",
+      "state": "skipped"
+    },
+    {
+      "reason": "no_tags_yaml",
+      "rule_id": "AO3.TAG_FORMAT",
+      "state": "skipped"
+    },
+    {
+      "reason": "provider=mock; tasks=2",
+      "rule_id": "OOC.VOICE",
+      "state": "applied"
+    },
+    {
+      "reason": "provider=mock; tasks=2",
+      "rule_id": "CANON.RAILS",
+      "state": "applied"
+    }
+  ],
+  "summary": "0 findings. 0 blockers. No status facts are confirmed for the main cast."
+}

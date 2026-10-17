@@ -18,7 +18,7 @@ Synthetic fixtures in the repo use an invented cast. No series text belongs in g
 
 ## What is built
 
-Layer A runs local Python. It makes no model call. Layer B (`OOC.VOICE`, `CANON.RAILS`) is not wired into the runner yet: `--layer-b` is accepted, and both rules still report `skipped` (`layer_b_not_wired`).
+Layer A runs local Python. It makes no model call. `--layer-b` adds `OOC.VOICE` and `CANON.RAILS` notes from the **mock** provider only: info, never a blocker, agreement is not correctness. A real provider is refused by gate G9 (`DOCTOR_G9_OPT_IN=1` after checking Cursor data/retention settings), and none is implemented yet.
 
 ```powershell
 $env:DOCTOR_HOME = "$env:USERPROFILE\doctor-home"

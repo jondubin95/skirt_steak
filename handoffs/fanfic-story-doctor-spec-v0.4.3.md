@@ -93,6 +93,8 @@ Each canon fact records `confirmed_by`. Corrections to canon rows are counted se
 
 `CANON.RAILS` labels: `consequence_shown`, `on_rails`, `not_enough_evidence`. It asks whether a declared branch has an on-page consequence in a later passage. It ships with the mock provider first.
 
+> **Status (2026-10-17).** `doctor run --layer-b` runs both rules on the deterministic mock provider (three runs, vote, cache). `OOC.VOICE` labels: `in_voice`, `drift`, `break`, `intentional_evolution`, `not_enough_evidence`. `CANON.RAILS` runs only when the work declares an AU with a divergence event, and only on passages ordered after it. Notes are item_state `note`, severity `info`; the validator rejects any Layer B item above info or as a finding. A non-mock provider is refused while gate G9 is closed (`DOCTOR_G9_OPT_IN`), and no real provider exists yet.
+
 ## 8. What the first code packet includes
 
 Normalize (Markdown, text, AO3 HTML), intake, fact store, timeline (E1–E8 plus the SAME-class rule), private canon load, report schema and renderer, alias-exact mentions, temporal markers. `CANON.DIVERGENCE` is in this revision's code once M5 is built; until that code exists the report says `skipped`.

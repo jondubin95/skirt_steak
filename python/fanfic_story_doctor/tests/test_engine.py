@@ -936,4 +936,4 @@ def test_ao3_lens_skips_without_tags(tmp_path: Path):
     _items, lens_b, _ = run_rules(doc, [], intake, None, graph, [], True)
     assert {row["rule_id"]: row["reason"] for row in lens_b}[
         "CANON.RAILS"
-    ] == "layer_b_not_wired"
+    ] == "layer_b_pending"

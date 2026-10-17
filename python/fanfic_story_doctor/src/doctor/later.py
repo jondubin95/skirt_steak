@@ -81,7 +81,7 @@ class MockProvider:
         self.responses = list(responses)
         self.calls = 0
 
-    def complete(self, prompt_hash: str) -> dict:
+    def complete(self, prompt_hash: str, request: dict | None = None) -> dict:
         self.calls += 1
         if not self.responses:
             return {"kind": "refusal", "reason_category": "empty"}
@@ -89,7 +89,7 @@ class MockProvider:
 
 
 class RaisingProvider:
-    def complete(self, prompt_hash: str) -> dict:
+    def complete(self, prompt_hash: str, request: dict | None = None) -> dict:
         raise AssertionError("Layer A called a provider")
 
 

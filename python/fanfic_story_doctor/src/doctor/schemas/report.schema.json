@@ -66,6 +66,7 @@
         "interpretation": { "type": ["string", "null"] },
         "suggested_fix": { "type": ["string", "null"], "maxLength": 240 },
         "ooc_label": { "type": ["string", "null"] },
+        "label": { "type": ["string", "null"] },
         "agreement": { "type": ["string", "null"] },
         "covered": { "type": "integer" },
         "total": { "type": "integer" }

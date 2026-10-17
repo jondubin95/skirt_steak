@@ -160,9 +160,9 @@ def run_rules(
         elif rule in {"OOC.VOICE", "CANON.RAILS"} and not layer_b:
             lens.append({"rule_id": rule, "state": "skipped", "reason": "layer_a_only"})
         elif rule in {"OOC.VOICE", "CANON.RAILS"}:
-            # --layer-b is accepted, but no Layer B runner is wired yet.
+            # Filled in by doctor.layerb.run_layer_b via cli.build_report.
             lens.append(
-                {"rule_id": rule, "state": "skipped", "reason": "layer_b_not_wired"}
+                {"rule_id": rule, "state": "skipped", "reason": "layer_b_pending"}
             )
         elif rule in skipped:
             lens.append({"rule_id": rule, "state": "skipped", "reason": skipped[rule]})

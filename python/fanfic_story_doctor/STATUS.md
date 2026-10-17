@@ -24,6 +24,16 @@ Keyed to spec v0.4.3. A row may say "Test passed" only when the named test exist
 | 8.6 mentions | Test passed | test_mentions_are_alias_exact_and_markers_uncertain |
 | 5 canon load | Test passed | test_canon_load_refuses_repo_and_missing_quote |
 | 9 layer b helpers | Test passed | test_later_confirmation_proposer_vote_cache_and_holdout |
-| 7 layer b runner | Not built | (`--layer-b` reports `layer_b_not_wired`) |
+| 7 layer b runner (mock) | Test passed | test_layer_b_runs_mock_and_contract_holds |
+| 7 layer b skipped without flag | Test passed | test_without_flag_layer_b_is_skipped_layer_a_only |
+| 7 closed labels | Test passed | test_labels_are_closed_and_match_rubric_files |
+| 7 rails needs branch | Test passed | test_canon_rails_needs_a_declared_branch_and_later_passages |
+| 7 exact quote | Test passed | test_invalid_responses_are_rejected_not_shown |
+| 7 info only | Test passed | test_validator_blocks_layer_b_above_info |
+| 7 mock deterministic | Test passed | test_mock_is_deterministic |
+| 7 cache | Test passed | test_cache_skips_provider_on_second_run |
+| 7 golden | Test passed | test_layer_b_golden |
+| G9 gate | Test passed | test_non_mock_provider_refuses_without_g9_opt_in |
+| 7 real provider | Not built | gated by G9 |
 | 18 privacy | Test passed | test_gitignore_covers_private_drafts |
 
