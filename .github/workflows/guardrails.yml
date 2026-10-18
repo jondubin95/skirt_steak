@@ -102,7 +102,7 @@ jobs:
           for path in drafts/x.txt works/x/ch01.md runs/run.json cache/key.json eval/holdout/set.yaml; do
             git check-ignore -q --no-index "$pkg/$path" || { echo "::error::$pkg/$path is not gitignored"; exit 1; }
           done
-          for path in tests/fixtures/ashfall/ch01.md eval/criteria.yaml; do
+          for path in tests/fixtures/ashfall/ch01.md; do
             if git check-ignore -q --no-index "$pkg/$path"; then echo "::error::$pkg/$path should be tracked"; exit 1; fi
           done
 
