@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from doctor.detect import alias_map_from_facts, detect_markers, detect_mentions
+from doctor.detect import (
+    alias_map_from_facts,
+    ambiguous_aliases,
+    detect_markers,
+    detect_mentions,
+)
 from doctor.factstore import mark_conflicts
 from doctor.intake import window_edges, window_same
 from doctor.resolve import is_enforceable
@@ -12,6 +17,7 @@ from doctor.rules import (
     ao3_tag_format,
     canon_divergence,
     dead_reappears,
+    depends_hash,
     name_spelling,
     payoff_before_setup,
     status_coverage,
@@ -100,9 +106,10 @@ def run_rules(
 ) -> tuple[list[dict], list[dict], str]:
     primary = intake.get("primary_canon_source")
     opted = set((intake.get("profile") or {}).get("opt_out") or [])
+    alternate = au_kind(intake) == "alternate_setting"
     items: list[dict] = []
     ran: set[str] = set()
-    if "CANON.DIVERGENCE" not in opted:
+    if "CANON.DIVERGENCE" not in opted and not alternate:
         items.extend(canon_divergence(facts, graph, intake, primary))
         ran.add("CANON.DIVERGENCE")
     if "CONT.DEAD_REAPPEARS" not in opted:
@@ -141,6 +148,22 @@ def run_rules(
                 }
             )
     ran.add("LEDGER.CONFLICT")
+    for surface, entities in sorted(ambiguous_aliases(facts).items()):
+        items.append(
+            {
+                "rule_id": "LEDGER.COVERAGE",
+                "item_state": "coverage",
+                "tier": "A1",
+                "severity": "info",
+                "kind": "coverage",
+                "symptom": f"{surface} is shared by {', '.join(entities)}. Mentions of it are not attributed.",
+                "evidence": [
+                    {"kind": "file", "path": "intake.yaml", "field": "main_cast"}
+                ],
+                "fact_ids": [],
+                "depends_on_hash": depends_hash([surface, *entities]),
+            }
+        )
     aliases = [fact["object"] for fact in facts if fact.get("predicate") == "alias"]
     items.extend(name_spelling(doc.paragraphs, [str(alias) for alias in aliases]))
     ran.add("CANON.NAME_SPELLING")
@@ -164,22 +187,55 @@ def run_rules(
             lens.append(
                 {"rule_id": rule, "state": "skipped", "reason": "layer_b_pending"}
             )
+        elif rule == "CANON.DIVERGENCE" and alternate:
+            lens.append(
+                {"rule_id": rule, "state": "skipped", "reason": "alternate_setting"}
+            )
         elif rule in skipped:
             lens.append({"rule_id": rule, "state": "skipped", "reason": skipped[rule]})
         elif rule in ran:
             lens.append({"rule_id": rule, "state": "applied", "reason": ""})
         else:
             lens.append({"rule_id": rule, "state": "skipped", "reason": "not_built"})
+    return items, lens, summarize(items)
+
+
+def summarize(items: list[dict]) -> str:
     findings = [item for item in items if item.get("item_state") == "finding"]
     blockers = [item for item in findings if item.get("severity") == "blocker"]
-    if coverage["covered"] == 0:
-        summary = (
-            f"{len(findings)} findings. {len(blockers)} blockers. "
-            "No status facts are confirmed for the main cast."
+    coverage = next(
+        (
+            item
+            for item in items
+            if item.get("rule_id") == "LEDGER.COVERAGE" and "covered" in item
+        ),
+        None,
+    )
+    summary = f"{len(findings)} findings. {len(blockers)} blockers."
+    if coverage is not None and coverage["covered"] == 0:
+        summary += " No status facts are confirmed for the main cast."
+    return summary
+
+
+AU_KINDS = {"branch", "alternate_setting"}
+
+
+def au_kind(intake: dict) -> str:
+    return ((intake.get("au") or {}).get("au_kind")) or "branch"
+
+
+def applicable_facts(facts: list[dict], intake: dict) -> list[dict]:
+    """In an alternate setting, canon status and event order do not apply. Aliases do."""
+    if au_kind(intake) != "alternate_setting":
+        return facts
+    return [
+        fact
+        for fact in facts
+        if not (
+            str(fact.get("layer", "")).startswith("canon:")
+            and fact.get("predicate") in {"status", "event_order"}
         )
-    else:
-        summary = f"{len(findings)} findings. {len(blockers)} blockers."
-    return items, lens, summary
+    ]
 
 
 def build_mentions(doc, facts) -> list[dict]:

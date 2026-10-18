@@ -36,4 +36,14 @@ Keyed to spec v0.4.3. A row may say "Test passed" only when the named test exist
 | G9 gate | Test passed | test_non_mock_provider_refuses_without_g9_opt_in |
 | 7 real provider | Not built | gated by G9 |
 | 18 privacy | Test passed | test_gitignore_covers_private_drafts |
-
+| 12 ao3 full work | Test passed | test_ao3_full_work_splits_chapters_and_strips_notes |
+| 12 html in run | Test passed | test_html_chapter_files_and_full_work_run_through_doctor_run |
+| 8.6 candidates | Test passed | test_candidates_never_cross_punctuation_and_are_substrings |
+| 8.6 spelling noise | Test passed | test_possessives_stammers_and_plural_surnames_are_not_flagged |
+| 8.6 spelling hits | Test passed | test_missing_apostrophe_and_real_typo_are_flagged |
+| 8.6 common words | Test passed | test_common_words_are_not_flagged_against_short_names |
+| 8.6 shared surname | Test passed | test_shared_surname_is_ambiguous_not_attributed |
+| 11 drop invalid item | Test passed | test_invalid_item_is_dropped_not_fatal |
+| 1 alternate setting | Test passed | test_alternate_setting_drops_canon_status_and_order_keeps_aliases |
+| 1 divergence question | Test passed | test_branch_au_without_divergence_event_gets_question_without_disagreement |
+| 6 conflicts single-valued | Test passed | test_multiple_aliases_and_order_edges_are_not_conflicts |

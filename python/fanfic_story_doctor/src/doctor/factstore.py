@@ -11,6 +11,7 @@ from doctor.timeline import UNKNOWN, YES, overlap
 
 CLOSED_PREDICATES = {"status", "alias", "setup_anchor", "payoff_anchor", "event_order"}
 CLOSED_STATUS = {"alive", "dead", "unspecified"}
+SINGLE_VALUED = {"status"}
 
 
 def new_id(prefix: str) -> str:
@@ -57,6 +58,10 @@ def mark_conflicts(facts: list[dict], graph) -> list[dict]:
         if fact.get("assertion", "state") != "state":
             continue
         if fact.get("superseded_by"):
+            continue
+        # Only single-valued predicates can conflict. An entity has many
+        # aliases, and an event has many order edges.
+        if fact.get("predicate") not in SINGLE_VALUED:
             continue
         key = (fact.get("layer"), fact.get("subject"), fact.get("predicate"))
         groups.setdefault(key, []).append(fact)

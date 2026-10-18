@@ -27,6 +27,8 @@ python -m doctor run <work>
 
 Run that from `python/fanfic_story_doctor` with `PYTHONPATH=src`, or install the package.
 
+Chapters can be `.md`, `.txt`, or AO3 `.html` (chapter or full work). For a total AU with no canon timeline, set `au.au_kind: alternate_setting`.
+
 A rule that is not built is reported as **skipped**. Skipped is not "nothing found."
 
 `CANON.DIVERGENCE` checks event order against the declared branch point. `CANON.RAILS` is a Layer B note, info only, and it is not a fact check.

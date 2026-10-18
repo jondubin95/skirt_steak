@@ -57,9 +57,34 @@ def detect_markers(paragraphs: list) -> list[str]:
     return scenes
 
 
-def alias_map_from_facts(facts: list[dict]) -> dict[str, str]:
-    mapping = {}
+def _alias_owners(facts: list[dict]) -> dict[str, set[str]]:
+    owners: dict[str, set[str]] = {}
     for fact in facts:
         if fact.get("predicate") == "alias" and fact.get("status") == "confirmed":
-            mapping[str(fact["object"])] = str(fact["subject"])
-    return mapping
+            owners.setdefault(str(fact["object"]), set()).add(str(fact["subject"]))
+    # A surname-only alias is shared with every entity whose full name ends in it.
+    for surface, entities in list(owners.items()):
+        if " " in surface:
+            continue
+        for other, other_entities in owners.items():
+            if " " in other and other.split()[-1] == surface:
+                entities.update(other_entities)
+    return owners
+
+
+def ambiguous_aliases(facts: list[dict]) -> dict[str, list[str]]:
+    """Surfaces that map to more than one entity (e.g. a shared surname)."""
+    return {
+        surface: sorted(ents)
+        for surface, ents in _alias_owners(facts).items()
+        if len(ents) > 1
+    }
+
+
+def alias_map_from_facts(facts: list[dict]) -> dict[str, str]:
+    """surface -> entity. Ambiguous surfaces are left out, never attributed."""
+    return {
+        surface: next(iter(ents))
+        for surface, ents in _alias_owners(facts).items()
+        if len(ents) == 1
+    }

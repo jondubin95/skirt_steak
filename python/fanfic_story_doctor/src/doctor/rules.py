@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 
 from doctor.resolve import UNRESOLVED, is_enforceable, resolve
 from doctor.timeline import UNKNOWN, compare, reading_before, scene_of
@@ -238,6 +239,15 @@ def canon_divergence(
                     "Event order leaves canon at or after the declared branch.",
                 )
             )
+    if is_au and not divergence and "DIVERGENCE_EVENT" not in asked:
+        items.append(
+            _question(
+                "DIVERGENCE_EVENT",
+                "au.divergence_event",
+                "Which canon event is the branch point? If the work is a full alternate setting, set au.au_kind: alternate_setting.",
+                [],
+            )
+        )
     return items
 
 
@@ -482,62 +492,196 @@ def timeline_order(graph) -> list[dict]:
     ]
 
 
-def name_spelling(
-    paragraphs: list, aliases: list[str], dismissed: list[str] | None = None
-) -> list[dict]:
-    dismissed = dismissed or []
-    alias_set = set(aliases)
-    folded = {alias.casefold(): alias for alias in aliases}
-    items = []
-    for paragraph in paragraphs:
-        for token in _candidates(paragraph.text):
-            if token in alias_set or token.casefold() in folded or token in dismissed:
-                continue
-            for alias in aliases:
-                limit = 1 if len(alias) <= 5 else 2
-                if _damerau(token, alias) <= limit and token.casefold() not in folded:
-                    if any(
-                        _damerau(token, other) <= limit
-                        for other in aliases
-                        if other != alias and other.casefold() != alias.casefold()
-                    ):
-                        continue
-                    items.append(
-                        {
-                            "rule_id": "CANON.NAME_SPELLING",
-                            "item_state": "finding",
-                            "tier": "A1",
-                            "severity": "info",
-                            "kind": "internal_inconsistency",
-                            "symptom": f"{token} is near the alias {alias} and is not itself an alias.",
-                            "evidence": [
-                                {
-                                    "kind": "prose",
-                                    "paragraph_id": paragraph.id,
-                                    "quote": token,
-                                }
-                            ],
-                            "fact_ids": [],
-                            "depends_on_hash": depends_hash([alias, token]),
-                        }
-                    )
-                    break
-    return items
+# Common English words that are often capitalized at a sentence start and sit
+# within edit distance of short names. The document's own lowercase vocabulary
+# is checked too, so this list only needs the usual suspects.
+COMMON_WORDS = {
+    "shame",
+    "share",
+    "shake",
+    "shade",
+    "shape",
+    "shine",
+    "shone",
+    "shore",
+    "harder",
+    "hidden",
+    "heard",
+    "heart",
+    "haven",
+    "hated",
+    "laden",
+    "maybe",
+    "marry",
+    "mercy",
+    "major",
+    "manor",
+    "dare",
+    "dark",
+    "dave",
+    "davit",
+    "carry",
+    "carol",
+    "eric",
+    "even",
+    "ever",
+    "ella",
+    "else",
+    "into",
+    "idea",
+    "ideal",
+    "just",
+    "june",
+    "jack",
+    "mark",
+    "will",
+    "grace",
+    "faith",
+    "hope",
+    "joy",
+    "may",
+    "art",
+    "bill",
+    "chase",
+    "dawn",
+    "gene",
+    "glen",
+    "mason",
+    "pat",
+    "ray",
+    "rob",
+    "sue",
+    "tim",
+    "wade",
+    "frank",
+    "earnest",
+}
+
+_WORD = re.compile(r"[A-Z][A-Za-z]*(?:['\u2019][A-Za-z]+)?['\u2019]?-*")
+
+
+def _candidate_spans(text: str) -> list[tuple[int, int]]:
+    """Exact spans of 1-3 capitalized words joined by single spaces only.
+
+    A run never crosses punctuation, so every candidate is a substring of the
+    paragraph and quotes always validate.
+    """
+    words = [(m.start(), m.end()) for m in _WORD.finditer(text)]
+    runs: list[list[tuple[int, int]]] = []
+    for span in words:
+        prev = runs[-1][-1] if runs else None
+        joinable = (
+            prev is not None
+            and text[prev[1] : span[0]] == " "
+            and not text[prev[0] : prev[1]].endswith(("-", "'", "\u2019"))
+        )
+        if joinable:
+            runs[-1].append(span)
+        else:
+            runs.append([span])
+    out = []
+    for run in runs:
+        for size in (3, 2, 1):
+            for i in range(len(run) - size + 1):
+                out.append((run[i][0], run[i + size - 1][1]))
+    return out
 
 
 def _candidates(text: str) -> list[str]:
-    words = text.replace('"', " ").split()
-    out = []
-    buf: list[str] = []
-    for word in words:
-        clean = word.strip(".,;:!?")
-        if clean[:1].isupper():
-            buf.append(clean)
-            if len(buf) <= 3:
-                out.append(" ".join(buf))
-        else:
-            buf = []
-    return out
+    return [text[a:b] for a, b in _candidate_spans(text)]
+
+
+def _core(token: str) -> str:
+    core = token.rstrip("-")
+    for suffix in ("'s", "\u2019s", "'", "\u2019"):
+        if core.endswith(suffix):
+            core = core[: -len(suffix)]
+            break
+    return core
+
+
+def _vocabulary(paragraphs: list) -> set[str]:
+    vocab: set[str] = set()
+    for paragraph in paragraphs:
+        for word in re.findall(r"\b[a-z][a-z']+\b", paragraph.text):
+            vocab.add(word)
+    return vocab
+
+
+def surnames_of(aliases: list[str]) -> set[str]:
+    return {alias.split()[-1] for alias in aliases if len(alias.split()) > 1}
+
+
+def name_spelling(
+    paragraphs: list, aliases: list[str], dismissed: list[str] | None = None
+) -> list[dict]:
+    dismissed = set(dismissed or [])
+    alias_set = set(aliases)
+    folded = {alias.casefold(): alias for alias in aliases}
+    surnames = surnames_of(aliases)
+    vocab = _vocabulary(paragraphs)
+    items = []
+    for paragraph in paragraphs:
+        taken: list[tuple[int, int]] = []
+        for start, end in _candidate_spans(paragraph.text):
+            if any(not (end <= a or start >= b) for a, b in taken):
+                continue
+            token = paragraph.text[start:end]
+            core = _core(token)
+            if not core or token in dismissed or core in dismissed:
+                continue
+            if core in alias_set or core.casefold() in folded:
+                continue
+            if core.endswith("s") and core[:-1] in surnames:
+                continue  # plural surname: "the Venns"
+            words = core.split()
+            if len(words) == 1 and (
+                core.lower() in vocab or core.lower() in COMMON_WORDS
+            ):
+                continue
+            hit = None
+            symptom = ""
+            if core.endswith("s") and core[:-1] in alias_set:
+                hit = core[:-1]
+                symptom = f"{token} may be the alias {hit} missing an apostrophe."
+            else:
+                for alias in aliases:
+                    if len(alias.split()) != len(words):
+                        continue
+                    limit = 1 if len(alias) <= 5 else 2
+                    if _damerau(core, alias) <= limit:
+                        others = [
+                            other
+                            for other in aliases
+                            if other.casefold() != alias.casefold()
+                            and len(other.split()) == len(words)
+                            and _damerau(core, other) <= limit
+                        ]
+                        if not others:
+                            hit = alias
+                            symptom = f"{token} is near the alias {alias} and is not itself an alias."
+                        break
+            if hit and token.endswith("-") and hit.startswith(core):
+                hit = None  # interrupted name: "Ter-"
+            if not hit:
+                continue
+            taken.append((start, end))
+            items.append(
+                {
+                    "rule_id": "CANON.NAME_SPELLING",
+                    "item_state": "finding",
+                    "tier": "A1",
+                    "severity": "info",
+                    "kind": "internal_inconsistency",
+                    "symptom": symptom,
+                    "evidence": [
+                        {"kind": "prose", "paragraph_id": paragraph.id, "quote": token}
+                    ],
+                    "fact_ids": [],
+                    "depends_on_hash": depends_hash([hit, token]),
+                }
+            )
+    return items
 
 
 def _damerau(a: str, b: str) -> int:
@@ -592,7 +736,7 @@ def ao3_schema(tags: dict | None) -> list[dict]:
             + ", ".join(sorted(set(missing)))
             + ".",
             "evidence": [
-                {"kind": "file", "path": "tags.yaml", "field": sorted(set(missing))[0]}
+                {"kind": "file", "path": "tags.yaml", "field": min(set(missing))}
             ],
             "fact_ids": [],
             "depends_on_hash": depends_hash(missing),

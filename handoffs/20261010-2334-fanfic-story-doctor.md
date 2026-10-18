@@ -16,7 +16,8 @@ Diagnose-only continuity tool for fanfic drafts. The first fact check is event-o
 
 - Branch `feature/fanfic-story-doctor`, PR #15. Opened 2026-10-17. An adversarial review that day found blockers, and a fix commit on the same branch addressed them. Spec v0.4.3 is new. v0.4.2 is unchanged and lives in private notes, not in this repo.
 - Package `python/fanfic_story_doctor` and skill stub `.cursor/skills/fanfic-story-doctor`. Pull-request CI runs this package's pytest.
-- 60 tests pass locally (pytest in a venv). `CANON.DIVERGENCE` checks event order. Before the branch is a finding (`should`). At or after the branch is coverage. Not AU, or no divergence event: info (plus an intake question). Stale or disputed canon: unverifiable. Canon edges no longer enter the timeline graph for pairs the ledger orders, so a branch is never a `CONT.TIMELINE_ORDER` blocker.
+- A trial run on a public posted AO3 work (box only, outside the repo) drove fixes: punctuation-safe name candidates, per-item validation drop, spelling-noise filters, shared-surname ambiguity, AO3 HTML input, `au_kind: alternate_setting`, and conflicts limited to `status` (aliases were all being marked disputed). Findings went from a crash (95 noisy hits once patched) to 8, about 6 of them worth a look.
+- 71 tests pass locally (pytest in a venv). `CANON.DIVERGENCE` checks event order. Before the branch is a finding (`should`). At or after the branch is coverage. Not AU, or no divergence event: info (plus an intake question). Stale or disputed canon: unverifiable. Canon edges no longer enter the timeline graph for pairs the ledger orders, so a branch is never a `CONT.TIMELINE_ORDER` blocker.
 - `doctor run` loads `$DOCTOR_HOME/canon/<primary>/facts.json` when present. The report schema ships inside the package, and the in-repo guard no longer depends on where the package is installed.
 - Layer B is mock-wired. `--layer-b` runs `OOC.VOICE` and `CANON.RAILS` on the deterministic mock provider (`src/doctor/layerb.py`): info-only notes, closed labels, exact quotes checked, agreement reported. A real provider is refused by gate G9 and none is implemented.
 - Real chapters were not measured. Private files belong under `DOCTOR_HOME`, outside the repo. See private detail: `Sensitive/handoffs/20261010-2334-fanfic-story-doctor.md`.
@@ -50,6 +51,7 @@ Diagnose-only continuity tool for fanfic drafts. The first fact check is event-o
 ## Known Risks or Failure Modes
 
 - Pre-canon timeline rule: confirmed over-broad in review (it applied to every event). Now scoped to the intake `window.event` with `relation: before`. E1–E8 still pass. Recheck when a work crosses its window event.
+- Name spelling still uses heuristics. Nicknames (a short form of a name) can still be flagged, and a real typo that is also a dictionary word is hidden.
 - Dead-reappears table: confirmed in review that the old `expect()` mirrored the code. It has been replaced by a hand-written literal table that also covers alive, unspecified, and out-of-set statuses. That table is still one author's reading of the spec, not a second annotator's.
 - Confirmation, proposer, and holdout code are helpers, not a finished writer loop.
 - Layer B is mock-wired only. Mock labels are hash-derived and say nothing about the text. A real provider stays gated by G9 and needs its own review, prompt, and privacy check before it exists. The Layer B cache is in-memory per run.

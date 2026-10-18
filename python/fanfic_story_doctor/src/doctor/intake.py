@@ -41,6 +41,9 @@ def load_intake(data: dict) -> tuple[dict, list[dict]]:
     window = data.get("window") or {}
     if window.get("relation") not in WINDOWS:
         raise IntakeError("window.relation must be before, after, or same")
+    kind = (data.get("au") or {}).get("au_kind") or "branch"
+    if kind not in {"branch", "alternate_setting"}:
+        raise IntakeError("au.au_kind must be branch or alternate_setting")
     for event in data.get("events") or []:
         if event.get("layer") not in LAYERS:
             raise IntakeError(f"unknown event layer: {event.get('layer')}")

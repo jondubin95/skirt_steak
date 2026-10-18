@@ -185,6 +185,16 @@ def run_layer_b(
     lens: dict[str, dict] = {}
     model = getattr(provider, "name", type(provider).__name__)
     for rule in ("OOC.VOICE", "CANON.RAILS"):
+        if (
+            rule == "CANON.RAILS"
+            and ((intake.get("au") or {}).get("au_kind")) == "alternate_setting"
+        ):
+            lens[rule] = {
+                "rule_id": rule,
+                "state": "skipped",
+                "reason": "alternate_setting",
+            }
+            continue
         if rule == "CANON.RAILS" and not _declared_branch(intake):
             lens[rule] = {
                 "rule_id": rule,

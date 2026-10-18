@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -14,9 +15,17 @@ from doctor.factstore import load_facts
 from doctor.intake import load_intake, load_profile, load_tags
 from doctor.layerb import ProviderRefused, get_provider, run_layer_b
 from doctor.normalize import normalize_sources
-from doctor.pipeline import build_mentions, graph_from, run_rules
+from doctor.pipeline import (
+    applicable_facts,
+    build_mentions,
+    graph_from,
+    run_rules,
+    summarize,
+)
 from doctor.render import render
 from doctor.validate_output import validate_report
+
+SOURCE_SUFFIXES = {".md", ".txt", ".html", ".htm"}
 
 # Marker that identifies a checkout of this repo, wherever it lives.
 REPO_MARKER = Path("python") / "fanfic_story_doctor" / "pyproject.toml"
@@ -105,7 +114,8 @@ def build_report(
         )
     sources = [
         (path.name, path.read_text(encoding="utf-8"))
-        for path in sorted(work.glob("*.md"))
+        for path in sorted(work.iterdir())
+        if path.suffix.lower() in SOURCE_SUFFIXES and path.is_file()
     ]
     doc = normalize_sources(sources)
     extra = []
@@ -115,7 +125,7 @@ def build_report(
     canon = home_canon(
         home if home is not None else doctor_home(), intake.get("primary_canon_source")
     )
-    facts = seeded + canon + extra
+    facts = applicable_facts(seeded + canon + extra, intake)
     graph = graph_from(doc, facts, intake)
     mentions = build_mentions(doc, facts)
     items, lens, summary = run_rules(doc, facts, intake, tags, graph, mentions, layer_b)
@@ -132,10 +142,47 @@ def build_report(
     report = {"summary": summary, "lens": lens, "items": items}
     paragraphs = {paragraph.id: paragraph.text for paragraph in doc.paragraphs}
     fact_index = {fact["id"]: fact for fact in facts}
+    report = drop_invalid_items(report, paragraphs, fact_index)
     errors = validate_report(report, paragraphs, fact_index)
     if errors:
         raise SystemExit("report failed validation: " + "; ".join(errors))
     return report
+
+
+def drop_invalid_items(report: dict, paragraphs: dict, fact_index: dict) -> dict:
+    """Drop any item that fails validation instead of losing the whole report.
+
+    Dropped items are counted in one unverifiable note so the gap is visible.
+    """
+    kept, reasons = [], []
+    for item in report["items"]:
+        errors = validate_report(
+            {"summary": "", "lens": [], "items": [item]}, paragraphs, fact_index
+        )
+        if errors:
+            reasons.append(f"{item.get('rule_id')}: {errors[0]}")
+        else:
+            kept.append(item)
+    if not reasons:
+        return report
+    kept.append(
+        {
+            "rule_id": "REPORT.VALIDATION",
+            "item_state": "unverifiable",
+            "tier": "A1",
+            "severity": "info",
+            "kind": "unverifiable",
+            "symptom": f"{len(reasons)} items failed validation and were dropped. First: {reasons[0]}"[
+                :300
+            ],
+            "evidence": [{"kind": "file", "path": "report.json", "field": "items"}],
+            "fact_ids": [],
+            "depends_on_hash": hashlib.sha256(
+                "|".join(reasons).encode("utf-8")
+            ).hexdigest(),
+        }
+    )
+    return {**report, "items": kept, "summary": summarize(kept)}
 
 
 def run_work(

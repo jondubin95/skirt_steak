@@ -81,6 +81,13 @@ Each canon fact records `confirmed_by`. Corrections to canon rows are counted se
 
 **Evidence.** Closed kinds: `prose` (paragraph id plus exact quote) or `file` (relative path plus field name, no quote).
 
+**Real-fic run (2026-10-17).** A trial run on a public posted work found:
+- name candidates crossing punctuation, which crashed validation;
+- spelling noise from possessives, stammers, plurals, and dictionary words;
+- every multi-alias entity being marked disputed by the conflict pass.
+
+All of these are fixed. Only `status` can conflict now. Also added: AO3 HTML in `doctor run`, `au.au_kind: alternate_setting`, per-item validation drop, and shared-surname ambiguity.
+
 **Never-rewrite source.** A quoted string in free text must be an exact substring of a cited paragraph, or the object or surface string of a cited fact or annotation.
 
 **Host.** Cursor is the MVP runtime host. "Layer A only" means the package makes no provider calls. Real drafts, `works/`, `runs/`, and `cache/` live under `DOCTOR_HOME`, outside the workspace. `.cursorignore` is defense in depth. It is not the privacy boundary. Gate G9: Cursor data and retention settings checked on the actual account before a real draft is processed.
