@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fanfic-story-doctor"
+version = "0.4.3"
+description = "Continuity and canon-divergence checks for fanfic drafts. Diagnose only."
+requires-python = ">=3.12"
+dependencies = [
+  "PyYAML==6.0.3",
+  "jsonschema==4.23.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.4"]
+
+[project.scripts]
+doctor = "doctor.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+doctor = ["schemas/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

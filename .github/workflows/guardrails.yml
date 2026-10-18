@@ -88,6 +88,24 @@ jobs:
       - name: Decision log unit tests (blocking)
         run: python -m unittest discover -s python/decision_log/tests -p "test_*.py"
 
+      - name: Install fanfic story doctor test dependencies
+        run: python -m pip install -r python/fanfic_story_doctor/requirements.lock
+
+      - name: Fanfic story doctor tests (blocking)
+        working-directory: python/fanfic_story_doctor
+        run: python -m pytest -q
+
+      - name: Fanfic story doctor private paths are gitignored (blocking)
+        run: |
+          set -euo pipefail
+          pkg=python/fanfic_story_doctor
+          for path in drafts/x.txt works/x/ch01.md runs/run.json cache/key.json eval/holdout/set.yaml; do
+            git check-ignore -q --no-index "$pkg/$path" || { echo "::error::$pkg/$path is not gitignored"; exit 1; }
+          done
+          for path in tests/fixtures/ashfall/ch01.md; do
+            if git check-ignore -q --no-index "$pkg/$path"; then echo "::error::$pkg/$path should be tracked"; exit 1; fi
+          done
+
       - name: black --check (advisory, does not fail the build)
         run: |
           python -m black --check python || \
