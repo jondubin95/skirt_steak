@@ -53,3 +53,11 @@ Keyed to spec v0.4.3. A row may say "Test passed" only when the named test exist
 | 1 alternate setting | Test passed | test_alternate_setting_drops_canon_status_and_order_keeps_aliases |
 | 1 divergence question | Test passed | test_branch_au_without_divergence_event_gets_question_without_disagreement |
 | 6 conflicts single-valued | Test passed | test_multiple_aliases_and_order_edges_are_not_conflicts |
+| OOC.VOICE presence score | Test passed | test_presence_scores_dialogue_and_skips_passing_mentions |
+| OOC.VOICE references from earlier chapters, bounded | Test passed | test_references_come_from_earlier_chapters_and_are_bounded |
+| Reference text not quotable as evidence | Test passed | test_quote_from_a_reference_is_rejected |
+| Stratified, deterministic selection | Test passed | test_selection_skips_mention_only_and_spreads_across_chapters |
+| Too little reference text: skip with coverage | Test passed | test_character_without_reference_text_is_skipped_with_coverage |
+| Single-chapter work: no voice tasks | Test passed | test_single_chapter_work_has_no_voice_tasks |
+| cursor-agent votes in parallel (3) | Test passed | test_cursor_agent_runs_three_votes_in_parallel |
+| Interpretation paraphrase-only prompt | Test passed | test_prompt_asks_for_paraphrase_only |

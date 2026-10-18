@@ -32,7 +32,17 @@ def _branch_work(tmp_path: Path) -> Path:
     intake["window"] = {"relation": "after", "event": "ev-bridge"}
     (work / "intake.yaml").write_text(yaml.safe_dump(intake), encoding="utf-8")
     (work / "ch01.md").write_text(
-        "Mara crossed the broken bridge alone.\n\n***\n\nTeodor waited at the camp gate.",
+        "Mara crossed the broken bridge alone.\n\n***\n\n"
+        "Teodor waited at the camp gate.\n\n"
+        '"Keep your lantern low," Mara said. "The ash hides more than it shows."\n\n'
+        '"I always keep it low," Teodor said, grinning.\n\n'
+        '"Then keep it lower," Mara said, and did not smile back.\n\n'
+        '"You worry like a quartermaster," Teodor said.',
+        encoding="utf-8",
+    )
+    (work / "ch02.md").write_text(
+        '"We go at dawn," Mara said. "No fires, no songs."\n\n'
+        '"No songs at all?" Teodor said. "That is the cruelest order yet."',
         encoding="utf-8",
     )
     return work
