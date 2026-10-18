@@ -57,6 +57,7 @@ class FakeRunner:
                     "syntax": "plain words",
                     "diction": "camp orders",
                     "range": "stays clipped",
+                    "dialect_or_l2": "no second-language pattern",
                 }
             else:
                 passage = text.split("<<<PASSAGE\n", 1)[1].split("\nPASSAGE>>>", 1)[0]

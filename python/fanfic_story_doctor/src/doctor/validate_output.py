@@ -145,7 +145,7 @@ def _rewrite(item: dict, paragraphs: dict[str, str], facts: dict[str, dict]) -> 
 def _profiles(report: dict) -> list[str]:
     errors = []
     for entity, profile in (report.get("voice_profiles") or {}).items():
-        for field in ("register", "cadence", "syntax", "diction", "range"):
+        for field in ("register", "cadence", "syntax", "diction", "range", "dialect_or_l2"):
             value = str(profile.get(field) or "")
             if profile_prose(value):
                 errors.append(f"voice profile {entity} {field}")

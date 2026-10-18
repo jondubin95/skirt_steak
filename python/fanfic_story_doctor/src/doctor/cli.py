@@ -28,7 +28,7 @@ from doctor.pipeline import (
     run_rules,
     summarize,
 )
-from doctor.render import render, render_html
+from doctor.render import flag_positions, render, render_html
 from doctor.validate_output import validate_report
 
 SOURCE_SUFFIXES = {".md", ".txt", ".html", ".htm"}
@@ -118,6 +118,7 @@ def build_report(
     profile_cache: dict | None = None,
     refresh_profiles: bool = False,
     on_profile=None,
+    reuse_stale: bool = False,
 ) -> dict:
     intake_data = yaml.safe_load((work / "intake.yaml").read_text(encoding="utf-8"))
     profile = {}
@@ -159,6 +160,7 @@ def build_report(
             profile_cache=profile_cache,
             refresh_profiles=refresh_profiles,
             on_profile=on_profile,
+            reuse_stale=reuse_stale,
         )
         opted = {row["rule_id"] for row in lens if row["reason"] == "opted_out"}
         lens = [
@@ -294,6 +296,7 @@ def run_work(
     refresh_profiles: bool = False,
     html_path: Path | None = None,
     json_path: Path | None = None,
+    reuse_stale: bool = False,
 ) -> str:
     """Render a report. With a real provider the cache persists under DOCTOR_HOME/cache."""
     persist = (
@@ -318,6 +321,7 @@ def run_work(
             profile_cache=profile_cache,
             refresh_profiles=refresh_profiles,
             on_profile=(lambda c: save_profile_cache(root, c)) if persist else None,
+            reuse_stale=reuse_stale,
         )
     finally:
         if persist:
@@ -328,7 +332,8 @@ def run_work(
             raise SystemExit(f"refusing to write story text inside this repo: {path}")
     if json_path is not None:
         json_path.parent.mkdir(parents=True, exist_ok=True)
-        json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        payload = {**report, "positions": flag_positions(report)}
+        json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     if html_path is not None:
         document = normalize_sources(chapter_sources(work))
         html_path.parent.mkdir(parents=True, exist_ok=True)
@@ -368,6 +373,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Regenerate cached OOC voice profiles even when the sample is unchanged.",
     )
+    run.add_argument(
+        "--reuse-stale-voice-profiles",
+        action="store_true",
+        help="Keep a cached voice profile when its sample has changed.",
+    )
     canon = sub.add_parser("canon")
     canon_sub = canon.add_subparsers(dest="canon_cmd", required=True)
     load = canon_sub.add_parser("load")
@@ -392,6 +402,7 @@ def main(argv: list[str] | None = None) -> int:
                 refresh_profiles=args.refresh_voice_profiles,
                 html_path=Path(args.html) if args.html else None,
                 json_path=Path(args.json) if args.json else None,
+                reuse_stale=args.reuse_stale_voice_profiles,
             )
         except DuplicateChapter as exc:
             raise SystemExit(str(exc)) from exc

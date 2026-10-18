@@ -21,6 +21,7 @@ GOOD = {
     "syntax": "plain words",
     "diction": "camp orders",
     "range": "stays clipped",
+    "dialect_or_l2": "no second-language pattern",
 }
 PROSE = {**GOOD, "syntax": 'Says "hold" a lot.'}
 TURNS = [
@@ -71,14 +72,21 @@ class ProfileReader:
         }
 
 
-def _resolve(provider, cache, overrides=None, turns=TURNS, refresh=False):
+def _resolve(provider, cache, overrides=None, turns=TURNS, refresh=False, reuse_stale=False):
     intake = {
         "work_id": "ashfall-after",
         "main_cast": [{"entity": "mara", "pronouns": ["she"]}],
         "voice_profiles": overrides or {},
     }
     return resolve_profiles(
-        [{"subject": "mara"}], {"mara": turns}, intake, provider, cache, refresh, None
+        [{"subject": "mara"}],
+        {"mara": turns},
+        intake,
+        provider,
+        cache,
+        refresh,
+        None,
+        reuse_stale=reuse_stale,
     )
 
 
@@ -111,9 +119,12 @@ def test_rejected_profile_is_retried_once_then_cached():
 def test_profile_prompt_states_the_field_limit_the_validator_enforces():
     from doctor.layerb import build_profile_prompt, validate_profile
 
-    assert "at most 200 characters" in build_profile_prompt({"subject": "mara", "segments": ["Hold."]})
+    prompt = build_profile_prompt({"subject": "mara", "segments": ["Hold."]})
+    assert "at most 200 characters" in prompt and "dialect_or_l2" in prompt
+    assert "second-language" in prompt
     assert validate_profile({**GOOD, "range": "x" * 200}, [], set()) is None
-    assert validate_profile({**GOOD, "range": "x" * 201}, [], set()) == "profile_field"
+    assert validate_profile({**GOOD, "dialect_or_l2": "x" * 200}, [], set()) is None
+    assert validate_profile({**GOOD, "dialect_or_l2": "x" * 201}, [], set()) == "profile_field"
 
 
 def test_rejection_cached_by_an_older_profile_prompt_is_retried():
@@ -157,22 +168,27 @@ def test_complete_override_makes_no_call_and_partial_override_merges():
     assert profiles["mara"]["syntax"] == GOOD["syntax"]
 
 
-def test_changed_sample_keeps_the_stale_profile_until_refresh():
+def test_changed_sample_regenerates_unless_reuse_stale_is_set():
     cache: dict = {}
     _resolve(Script(), cache)
     edited = [{**TURNS[0], "dialogue": "Hold the ford until the relief comes."}, *TURNS[1:]]
     provider = Script({**GOOD, "cadence": "longer now"})
     profiles, notes, calls = _resolve(provider, cache, turns=edited)
+    assert calls == 1 and profiles["mara"]["source"] == "generated"
+    assert not profiles["mara"]["stale"] and profiles["mara"]["cadence"] == "longer now"
+    assert not any("stale" in note["symptom"] for note in notes)
+
+    held: dict = {}
+    _resolve(Script(), held)
+    provider = Script({**GOOD, "cadence": "longer now"})
+    profiles, notes, calls = _resolve(provider, held, turns=edited, reuse_stale=True)
     assert calls == provider.calls == 0
     assert profiles["mara"]["source"] == "stale" and profiles["mara"]["stale"]
     assert profiles["mara"]["cadence"] == GOOD["cadence"]
     assert "--refresh-voice-profiles" in notes[-1]["symptom"]
-
-    profiles, _notes, calls = _resolve(provider, cache, turns=edited, refresh=True)
+    profiles, _notes, calls = _resolve(provider, held, turns=edited, refresh=True)
     assert calls == 1 and profiles["mara"]["source"] == "generated"
     assert not profiles["mara"]["stale"] and profiles["mara"]["cadence"] == "longer now"
-    profiles, _notes, calls = _resolve(Script(), cache, turns=edited)
-    assert calls == 0 and profiles["mara"]["cadence"] == "longer now"
 
 
 def test_refresh_regenerates_an_unchanged_or_rejected_profile():
@@ -223,7 +239,7 @@ def test_override_rejected_after_merge_keeps_the_model_profile_cached():
     assert calls == 0 and profiles["mara"]["source"] == "mixed"
 
 
-def test_appended_chapter_reuses_the_cached_profile(tmp_path: Path):
+def test_appended_chapter_regenerates_when_it_enters_the_sample(tmp_path: Path):
     work = _work(tmp_path, chapters=8)
     cache: dict = {}
     first = Recorder()
@@ -236,8 +252,14 @@ def test_appended_chapter_reuses_the_cached_profile(tmp_path: Path):
     )
     second = Recorder()
     report = build_report(work, layer_b=True, home=tmp_path, provider=second, profile_cache=cache)
-    assert not any(request.get("kind") == "voice_profile" for request in second.requests)
+    assert sum(request.get("kind") == "voice_profile" for request in second.requests) == 2
     assert {profile["source"] for profile in report["voice_profiles"].values()} == {"generated"}
+    assert {
+        profile["sample_paragraph_ids"][-1][:4] for profile in report["voice_profiles"].values()
+    } == {"ch09"}
+    third = Recorder()
+    build_report(work, layer_b=True, home=tmp_path, provider=third, profile_cache=cache)
+    assert not any(request.get("kind") == "voice_profile" for request in third.requests)
 
 
 def test_two_of_three_drift_reads_survive_into_the_report(tmp_path: Path):

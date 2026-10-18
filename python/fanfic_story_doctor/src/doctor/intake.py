@@ -24,7 +24,14 @@ CATEGORIES = {"F/F", "F/M", "Gen", "M/M", "Multi", "Other"}
 WINDOWS = {"before", "after", "same"}
 LAYERS = {"canon", "au", "ledger"}
 PRONOUNS = {"he", "she", "they"}
-PROFILE_FIELDS = {"register", "cadence", "syntax", "diction", "range"}
+PROFILE_FIELDS = {
+    "register",
+    "cadence",
+    "syntax",
+    "diction",
+    "range",
+    "dialect_or_l2",
+}
 
 
 class IntakeError(ValueError):

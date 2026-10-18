@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 
 SUMMARIZED_LABELS = ("in_voice", "not_enough_evidence")
+_CHAPTER_ID = re.compile(r"^ch(\d+)\.")
 
 
 def _quote(item: dict) -> str:
@@ -12,6 +14,10 @@ def _quote(item: dict) -> str:
         if evidence.get("kind") == "prose" and evidence.get("quote"):
             return evidence["quote"]
     return ""
+
+
+def _md_attr(text: str) -> str:
+    return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _chapter(item: dict) -> str:
@@ -45,7 +51,7 @@ def _voice_lines(notes: list[dict]) -> list[str]:
         lines.append(
             f"- [note] OOC.VOICE{tentative} {note.get('subject') or '(unknown)'} "
             f"ch{_chapter(note)} label={note.get('label')} agreement={agreement} "
-            f'quote="{_quote(note)}" reason="{note.get("interpretation") or ""}"'
+            f'quote="{_md_attr(_quote(note))}" reason="{_md_attr(note.get("interpretation") or "")}"'
         )
     return lines
 
@@ -93,25 +99,73 @@ def render(report: dict) -> str:
 BASELINE_LABELS = {"in_voice", "not_enough_evidence"}
 
 
-def _flagged_chapters(report: dict) -> set[int]:
+def _item_chapter(item: dict, by_paragraph: dict[str, int]) -> int | None:
+    chapter = item.get("chapter")
+    if isinstance(chapter, int):
+        return chapter
+    for evidence in item.get("evidence") or []:
+        found = by_paragraph.get(evidence.get("paragraph_id"))
+        if found is not None:
+            return found
+    return None
+
+
+def _flagged_chapters(report: dict, paragraphs: list) -> set[int]:
+    by_paragraph = {paragraph.id: paragraph.chapter for paragraph in paragraphs}
     chapters = set()
     for item in report.get("items") or []:
-        if item.get("item_state") in {"finding", "question", "unverifiable"}:
-            for evidence in item.get("evidence") or []:
-                if evidence.get("kind") == "prose" and item.get("chapter") is not None:
-                    chapters.add(item["chapter"])
-        if (
+        chapter = _item_chapter(item, by_paragraph)
+        if chapter is None:
+            continue
+        state = item.get("item_state")
+        if state in {"finding", "question", "unverifiable"}:
+            chapters.add(chapter)
+        elif (
             item.get("rule_id") == "OOC.VOICE"
-            and item.get("item_state") == "note"
+            and state == "note"
             and item.get("label") not in BASELINE_LABELS
-            and item.get("chapter") is not None
         ):
-            chapters.add(item["chapter"])
-        if item.get("item_state") in {"finding", "question", "unverifiable"} and item.get(
-            "chapter"
-        ) is not None:
-            chapters.add(item["chapter"])
+            chapters.add(chapter)
     return chapters
+
+
+def _chapter_from_id(paragraph_id: str | None) -> int | None:
+    if not isinstance(paragraph_id, str):
+        return None
+    match = _CHAPTER_ID.match(paragraph_id)
+    return int(match.group(1)) if match else None
+
+
+def flag_positions(report: dict) -> list[dict]:
+    """One compact row per highlightable flag. Offsets are code points."""
+    rows = []
+    for item in report.get("items") or []:
+        prose = [
+            evidence
+            for evidence in item.get("evidence") or []
+            if evidence.get("kind") == "prose" and evidence.get("span")
+        ]
+        if not prose:
+            continue
+        evidence = prose[0]
+        start, end = evidence["span"]
+        paragraph_id = evidence.get("paragraph_id")
+        chapter = item.get("chapter")
+        if not isinstance(chapter, int):
+            chapter = _chapter_from_id(paragraph_id)
+        rows.append(
+            {
+                "rule": item.get("rule_id"),
+                "character": item.get("subject"),
+                "chapter": chapter,
+                "paragraph_id": paragraph_id,
+                "offset": start,
+                "length": end - start,
+                "label": item.get("label"),
+                "agreement": item.get("agreement"),
+            }
+        )
+    return rows
 
 
 def _segments(text: str, marks: list[tuple[int, int, str]]) -> list[tuple[str, list[str]]]:
@@ -153,12 +207,38 @@ def _json_for_script(payload: object) -> str:
     )
 
 
+def _flag_detail(flag: dict) -> str:
+    reads = [
+        f"<li>{_escape(str(read.get('interpretation') or ''))}</li>"
+        for read in flag.get("reads") or []
+        if read.get("interpretation")
+    ]
+    body = (
+        f"<ul>{''.join(reads)}</ul>"
+        if reads
+        else f"<p>{_escape(flag.get('symptom') or '')}</p>"
+    )
+    summary = " ".join(
+        str(part)
+        for part in (
+            flag["id"],
+            flag.get("rule") or "",
+            flag.get("label") or flag.get("state") or "",
+        )
+        if part
+    )
+    return (
+        f'<details id="{flag["id"]}-detail"><summary>{_escape(summary)}</summary>{body}</details>'
+    )
+
+
 def render_html(report: dict, paragraphs: list) -> str:
     """Self-contained review page. Spans are code points in normalized text."""
     import base64
     import hashlib
 
-    flagged = _flagged_chapters(report)
+    flagged = _flagged_chapters(report, paragraphs)
+    chapters_of = {paragraph.id: paragraph.chapter for paragraph in paragraphs}
     by_paragraph: dict[str, list[tuple[int, int, str]]] = {}
     flags = []
     for number, item in enumerate(report.get("items") or [], 1):
@@ -179,7 +259,7 @@ def render_html(report: dict, paragraphs: list) -> str:
                 "rule": item.get("rule_id"),
                 "state": item.get("item_state"),
                 "label": item.get("label"),
-                "chapter": item.get("chapter"),
+                "chapter": _item_chapter(item, chapters_of),
                 "symptom": item.get("symptom"),
                 "reads": item.get("reads") or [],
             }
@@ -187,12 +267,12 @@ def render_html(report: dict, paragraphs: list) -> str:
     style = (
         "body{font:16px/1.5 Georgia,serif;margin:2rem;}"
         "mark{background:#f6e2a8;}"
-        "aside{border-left:3px solid #999;margin:1rem 0;padding-left:1rem;}"
         "nav a{margin-right:1rem;}"
+        "details{margin:0 0 1rem 1.5rem;}"
     )
     script = (
         "const flags=[...document.querySelectorAll('[data-flag]')];"
-        "let index=0;"
+        "let index=-1;"
         "document.addEventListener('keydown',(event)=>{"
         "if(event.key!=='j'&&event.key!=='k')return;"
         "if(!flags.length)return;"
@@ -240,28 +320,29 @@ def render_html(report: dict, paragraphs: list) -> str:
             f'<a href="#{flag["id"]}">{_escape(flag["id"])} {_escape(str(flag["rule"]))}</a>'
         )
     parts.append("</nav>")
+    flag_by_id = {flag["id"]: flag for flag in flags}
+    opened = None
     for paragraph in paragraphs:
         if paragraph.chapter not in flagged:
             continue
-        parts.append(f"<h2>Chapter {paragraph.chapter}</h2>")
+        if paragraph.chapter != opened:
+            parts.append(f"<h2>Chapter {paragraph.chapter}</h2>")
+            opened = paragraph.chapter
         parts.append(f'<p id="{_escape(paragraph.id)}">')
+        anchored: list[str] = []
         for text, active in _segments(paragraph.text, by_paragraph.get(paragraph.id, [])):
             if active:
                 parts.append(
                     f'<mark id="{_escape(active[0])}" data-flag="{" ".join(active)}">{_escape(text)}</mark>'
                 )
+                for flag_id in active:
+                    if flag_id not in anchored:
+                        anchored.append(flag_id)
             else:
                 parts.append(_escape(text))
         parts.append("</p>")
-    for flag in flags:
-        reads = "".join(
-            f"<li>{_escape(str(read.get('interpretation') or ''))}</li>"
-            for read in flag["reads"]
-        )
-        parts.append(
-            f'<aside id="{flag["id"]}-detail"><strong>{_escape(str(flag["rule"]))}</strong> '
-            f'{_escape(flag.get("symptom") or "")}<ul>{reads}</ul></aside>'
-        )
+        for flag_id in anchored:
+            parts.append(_flag_detail(flag_by_id[flag_id]))
     parts.append(f'<script type="application/json" id="flags">{_json_for_script(flags)}</script>')
     parts.append(f"<script>{script}</script></body></html>")
     return "".join(parts)

@@ -16,6 +16,10 @@
     "items": {
       "type": "array",
       "items": { "$ref": "#/$defs/item" }
+    },
+    "positions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/position" }
     }
   },
   "$defs": {
@@ -105,7 +109,8 @@
         "cadence",
         "syntax",
         "diction",
-        "range"
+        "range",
+        "dialect_or_l2"
       ],
       "properties": {
         "source": { "type": "string" },
@@ -118,7 +123,32 @@
         "cadence": { "type": "string", "maxLength": 200 },
         "syntax": { "type": "string", "maxLength": 200 },
         "diction": { "type": "string", "maxLength": 200 },
-        "range": { "type": "string", "maxLength": 200 }
+        "range": { "type": "string", "maxLength": 200 },
+        "dialect_or_l2": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule",
+        "character",
+        "chapter",
+        "paragraph_id",
+        "offset",
+        "length",
+        "label",
+        "agreement"
+      ],
+      "properties": {
+        "rule": { "type": "string" },
+        "character": { "type": ["string", "null"] },
+        "chapter": { "type": ["integer", "null"] },
+        "paragraph_id": { "type": "string" },
+        "offset": { "type": "integer", "minimum": 0 },
+        "length": { "type": "integer", "minimum": 0 },
+        "label": { "type": ["string", "null"] },
+        "agreement": { "type": ["string", "null"] }
       }
     },
     "tally": {

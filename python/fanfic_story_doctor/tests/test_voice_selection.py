@@ -109,16 +109,27 @@ def test_selection_skips_mention_only_and_spreads_across_chapters(tmp_path: Path
     report = cli.build_report(
         work, layer_b=True, home=tmp_path, provider=provider, max_passages=4
     )
-    targets = sorted({r["paragraph_id"] for r in _voice(provider)})
+    def _ids(home_report):
+        return sorted(
+            {
+                item["evidence"][0]["paragraph_id"]
+                for item in home_report["items"]
+                if item["rule_id"] == "OOC.VOICE" and item["item_state"] == "note"
+            }
+        )
+
+    targets = _ids(report)
     assert len(targets) == 4
     chapters = sorted({int(t[2:4]) for t in targets})
     assert len(chapters) >= 3 and chapters[-1] - chapters[0] >= 6
-    assert all(not t.endswith(".p4") for t in targets)  # the gull paragraph has no cast
+    assert all(not t.endswith(".p6") for t in targets)  # the gull paragraph has no cast
     subjects = {r["subject"] for r in _voice(provider)}
     assert subjects == {"mara", "teodor"}
     again = Recorder()
-    cli.build_report(work, layer_b=True, home=tmp_path, provider=again, max_passages=4)
-    assert sorted({r["paragraph_id"] for r in _voice(again)}) == targets
+    again_report = cli.build_report(
+        work, layer_b=True, home=tmp_path, provider=again, max_passages=4
+    )
+    assert _ids(again_report) == targets
     assert report["summary"]
 
 
@@ -161,6 +172,7 @@ def test_cursor_agent_runs_three_votes_in_parallel(tmp_path: Path):
                 "syntax": "plain words",
                 "diction": "camp orders",
                 "range": "stays clipped",
+                "dialect_or_l2": "no second-language pattern",
             }
         else:
             segment = prompt.split("<<<SEGMENT 1\n", 1)[1].split("\nSEGMENT 1>>>", 1)[0]

@@ -51,11 +51,18 @@ CALL_TIMEOUT_S = 180
 # RAILS-only. OOC.VOICE hashes its exact prompt and profile contract instead.
 # Do not change this value: existing CANON.RAILS cache keys include it.
 PROMPT_VERSION = "voice-refs-2"
-PROFILE_CONTRACT = "voice-profile-1"
+PROFILE_CONTRACT = "voice-profile-2"
 TURN_CHARS = 700
 SAMPLE_MIN = 4
-SAMPLE_MAX = 8
-PROFILE_FIELDS = ("register", "cadence", "syntax", "diction", "range")
+SAMPLE_MAX = 16
+PROFILE_FIELDS = (
+    "register",
+    "cadence",
+    "syntax",
+    "diction",
+    "range",
+    "dialect_or_l2",
+)
 PROFILE_FIELD_CHARS = 200
 
 RUBRICS = {
@@ -66,10 +73,12 @@ RUBRICS = {
             "break, intentional_evolution, not_enough_evidence. Info only. A break "
             "label is not escalated. drift means inconsistent with the supplied "
             "voice profile. intentional_evolution applies only when the passage "
-            "itself marks the change as deliberate. evidence_strength is sufficient "
-            "or thin. thin means a short set phrase or a line with no room for the "
-            "profile's known traits; thin is not drift. Cite an exact quote from "
-            "the speaker's dialogue. Separate observed text from interpretation."
+            "itself marks the change as deliberate. dialect_or_l2 is dialect or "
+            "second-language speech; a pattern that matches it is in voice, not "
+            "drift. evidence_strength is sufficient or thin. thin means a short "
+            "set phrase or a line with no room for the profile's known traits; "
+            "thin is not drift. Cite an exact quote from the speaker's dialogue. "
+            "Separate observed text from interpretation."
         ),
     },
     "CANON.RAILS": {
@@ -113,6 +122,7 @@ class DeterministicMockProvider:
                 "syntax": "plain words",
                 "diction": "camp orders",
                 "range": "stays clipped",
+                "dialect_or_l2": "no second-language pattern",
             }
         surface = request.get("surface")
         quote = surface if surface and surface in text else " ".join(text.split()[:5])
@@ -223,8 +233,11 @@ def build_profile_prompt(request: dict) -> str:
         f"{segments}\n\n"
         "Reply with exactly one JSON object and nothing else, no code fence. "
         f"Each field is one sentence of paraphrase, at most {PROFILE_FIELD_CHARS} "
-        "characters, with no quotation marks and no copied phrases.\n"
-        '{"register": "", "cadence": "", "syntax": "", "diction": "", "range": ""}'
+        "characters, with no quotation marks and no copied phrases. "
+        "dialect_or_l2 is dialect or second-language speech, such as dropped "
+        "articles, or none when there is no such pattern.\n"
+        '{"register": "", "cadence": "", "syntax": "", "diction": "", "range": "", '
+        '"dialect_or_l2": ""}'
     )
 
 
@@ -264,16 +277,6 @@ def build_voice_prompt(request: dict) -> str:
         '"observed": "<exact substring of one speaker segment>", '
         '"interpretation": "<one or two sentences of your reading, in your own words>"}'
     )
-
-
-def parse_profile_output(stdout: str) -> dict:
-    """Parse a voice-profile answer. Failures are rejected and counted."""
-    parsed = parse_cli_output(stdout, allowed=set(PROFILE_FIELDS))
-    if parsed.get("kind") == "rejected":
-        return parsed
-    if set(parsed) != set(PROFILE_FIELDS):
-        return {"kind": "rejected", "reason": "extra_fields"}
-    return parsed
 
 
 def parse_cli_output(stdout: str, allowed: set[str] | None = None) -> dict:
@@ -411,22 +414,27 @@ class CursorAgentProvider:
                     result = {"kind": "rejected", "reason": "cli_exit_nonzero"}
                 else:
                     stdout = done.stdout or ""
-                    if (request or {}).get("kind") == "voice_profile":
-                        result = parse_profile_output(stdout)
-                    elif (request or {}).get("rule") == "OOC.VOICE":
-                        result = parse_cli_output(
-                            stdout,
-                            allowed={
-                                "kind",
-                                "label",
-                                "quote",
-                                "observed",
-                                "interpretation",
-                                "evidence_strength",
-                            },
-                        )
+                    request = request or {}
+                    if request.get("kind") == "voice_profile":
+                        allowed = set(PROFILE_FIELDS)
+                    elif request.get("rule") == "OOC.VOICE":
+                        allowed = {
+                            "kind",
+                            "label",
+                            "quote",
+                            "observed",
+                            "interpretation",
+                            "evidence_strength",
+                        }
                     else:
-                        result = parse_cli_output(stdout)
+                        allowed = None
+                    result = parse_cli_output(stdout, allowed=allowed)
+                    if (
+                        request.get("kind") == "voice_profile"
+                        and result.get("kind") != "rejected"
+                        and set(result) != set(PROFILE_FIELDS)
+                    ):
+                        result = {"kind": "rejected", "reason": "extra_fields"}
                     self._add_usage(stdout)
         with self._lock:
             self.seconds += time.monotonic() - started
@@ -696,33 +704,66 @@ def speaker_turns(
 
 
 def _sample_turns(turns: list[dict]) -> list[dict]:
-    """Earliest chapters first, longest name-tagged turn per chapter, then fill to 4."""
+    """Spread name-tagged lines across the chapter range.
+
+    Deterministic. Longer, more varied lines win inside a chapter. At most
+    SAMPLE_MAX lines; still at least SAMPLE_MIN or nothing.
+    """
     by_chapter: dict[int, list[dict]] = {}
     for turn in turns:
         by_chapter.setdefault(turn["chapter"], []).append(turn)
-    if len(by_chapter) < 2:
+    chapters = sorted(by_chapter)
+    if len(chapters) < 2:
         return []
+
+    def rank(turn: dict) -> tuple:
+        words = [word.casefold() for word in turn["dialogue"].split()]
+        return (turn["words"], len(set(words)), -turn["order"])
+
+    want = min(SAMPLE_MAX, len(chapters))
+    step = (len(chapters) - 1) / max(want - 1, 1)
+    picked: list[int] = []
+    used_index: set[int] = set()
+    for slot in range(want):
+        index = round(slot * step)
+        if index in used_index:
+            for delta in range(1, len(chapters)):
+                for candidate in (index - delta, index + delta):
+                    if 0 <= candidate < len(chapters) and candidate not in used_index:
+                        index = candidate
+                        break
+                else:
+                    continue
+                break
+        used_index.add(index)
+        picked.append(index)
     chosen: list[dict] = []
     used: set[tuple] = set()
-    for chapter in sorted(by_chapter):
-        best = max(by_chapter[chapter], key=lambda turn: (turn["words"], -turn["order"]))
+    for index in picked:
+        pool = [
+            turn
+            for turn in by_chapter[chapters[index]]
+            if (turn["paragraph_id"], turn["turn_index"]) not in used
+        ]
+        if not pool:
+            continue
+        best = max(pool, key=rank)
         chosen.append(best)
         used.add((best["paragraph_id"], best["turn_index"]))
-        if len(chosen) == SAMPLE_MAX:
-            break
     if len(chosen) < SAMPLE_MIN:
         rest = [
             turn
             for turn in turns
             if (turn["paragraph_id"], turn["turn_index"]) not in used
         ]
-        rest.sort(key=lambda turn: (-turn["words"], turn["order"]))
-        for turn in rest:
+        rest.sort(key=rank)
+        for turn in reversed(rest):
             if len(chosen) >= SAMPLE_MIN:
                 break
             chosen.append(turn)
     if len(chosen) < SAMPLE_MIN:
         return []
+    chosen.sort(key=lambda turn: turn["order"])
     return chosen[:SAMPLE_MAX]
 
 
@@ -1082,8 +1123,6 @@ def _generate_profile(provider, request: dict, samples: list[str]) -> tuple[dict
             reason = validate_profile(raw, samples, set()) or ""
             if not reason:
                 return raw, attempt + 1, None, True
-        if attempt == 0:
-            continue
     return None, 2, reason, True
 
 
@@ -1095,6 +1134,7 @@ def resolve_profiles(
     profile_cache: dict,
     refresh: bool,
     on_profile,
+    reuse_stale: bool = False,
 ) -> tuple[dict, list[dict], int]:
     model = getattr(provider, "name", type(provider).__name__)
     work_id = str(intake.get("work_id") or intake.get("_work_name") or "unspecified-work")
@@ -1128,7 +1168,7 @@ def resolve_profiles(
             source = "mixed" if override else "generated"
             profiles[entity] = _profile_record(source, fields, sample, digest, False)
             continue
-        if isinstance(cached, dict) and cached.get("profile") and not refresh:
+        if reuse_stale and isinstance(cached, dict) and cached.get("profile"):
             fields = {**cached["profile"], **override}
             profiles[entity] = {
                 "source": "stale",
@@ -1151,6 +1191,7 @@ def resolve_profiles(
             isinstance(cached, dict)
             and cached.get("rejected")
             and cached.get("prompt") == prompt_id
+            and cached.get("sample_hash") == digest
             and not refresh
         ):
             notes.append(
@@ -1220,6 +1261,7 @@ def run_layer_b(
     profile_cache: dict | None = None,
     refresh_profiles: bool = False,
     on_profile=None,
+    reuse_stale: bool = False,
 ):
     """Return (items, lens rows, voice profiles) for OOC.VOICE and CANON.RAILS.
 
@@ -1229,6 +1271,7 @@ def run_layer_b(
     """
     out = progress if progress is not None else sys.stderr
     chapter_of = {p.id: p.chapter for p in doc.paragraphs}
+    paragraph_hashes = {p.id: p.content_hash for p in doc.paragraphs}
     max_passages = max_passages or default_limit(doc, per_chapter)
     opted = set((intake.get("profile") or {}).get("opt_out") or [])
     profile_cache = {} if profile_cache is None else profile_cache
@@ -1240,7 +1283,14 @@ def run_layer_b(
     else:
         voice, voice_notes, samples = prepare_voice(doc, intake, mentions, max_passages)
         voice_profiles, profile_notes, profile_calls = resolve_profiles(
-            voice, samples, intake, provider, profile_cache, refresh_profiles, on_profile
+            voice,
+            samples,
+            intake,
+            provider,
+            profile_cache,
+            refresh_profiles,
+            on_profile,
+            reuse_stale=reuse_stale,
         )
         voice_notes.extend(profile_notes)
         voice = [task for task in voice if task["subject"] in voice_profiles]
@@ -1325,42 +1375,39 @@ def run_layer_b(
                     cache[key] = responses
                 if on_call is not None:
                     on_call(cache)
+            voice_rule = rule == "OOC.VOICE"
+            judged: list[dict] = []
             good = []
-            if rule != "OOC.VOICE":
-                for response in responses:
-                    checked = (
-                        normalized_response(response)
-                        if isinstance(response, dict)
-                        else response
+            for response in responses:
+                note = isinstance(response, dict) and response.get("kind") == "note"
+                if note:
+                    checked = normalized_response(response)
+                    reason = validate_response(
+                        rule,
+                        checked,
+                        task["paragraph_text"],
+                        task.get("spans") if voice_rule else None,
                     )
-                    reason = validate_response(rule, checked, task["paragraph_text"])
-                    if reason:
-                        rejected += 1
-                        detail = (
-                            response.get("reason") if isinstance(response, dict) else None
-                        )
-                        reasons[f"{reason}:{detail}" if detail else reason] += 1
+                else:
+                    checked = response
+                    reason = "invalid_output"
+                if not reason:
+                    if voice_rule:
+                        judged.append(checked)
                     else:
                         good.append(checked)
-            if rule == "OOC.VOICE":
-                judged = []
-                for response in responses:
-                    if isinstance(response, dict) and response.get("kind") == "note":
-                        checked = normalized_response(response)
-                        reason = validate_response(
-                            rule, checked, task["paragraph_text"], task.get("spans")
-                        )
-                        if reason:
-                            rejected += 1
-                            reasons[reason] += 1
-                            judged.append({"rejected": True})
-                        else:
-                            judged.append(checked)
-                    else:
-                        rejected += 1
-                        detail = response.get("reason") if isinstance(response, dict) else None
-                        reasons[detail or "invalid_output"] += 1
-                        judged.append({"rejected": True})
+                    continue
+                rejected += 1
+                detail = response.get("reason") if isinstance(response, dict) else None
+                if voice_rule and not note:
+                    reasons[detail or "invalid_output"] += 1
+                elif voice_rule:
+                    reasons[reason] += 1
+                else:
+                    reasons[f"{reason}:{detail}" if detail else reason] += 1
+                if voice_rule:
+                    judged.append({"rejected": True})
+            if voice_rule:
                 result = aggregate_voice(judged)
                 label = "none" if result["all_rejected"] else result["label"]
                 stats["hit" if hit else "miss"] += 1
@@ -1400,10 +1447,7 @@ def run_layer_b(
                                     result["quote"],
                                     task.get("spans") or [],
                                 ),
-                                "paragraph_hash": {
-                                    paragraph.id: paragraph.content_hash
-                                    for paragraph in doc.paragraphs
-                                }.get(task["paragraph_id"]),
+                                "paragraph_hash": paragraph_hashes.get(task["paragraph_id"]),
                             }
                         ],
                         "fact_ids": [],

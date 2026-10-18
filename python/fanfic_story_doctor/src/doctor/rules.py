@@ -558,6 +558,7 @@ COMMON_WORDS = {
 }
 
 _WORD = re.compile(r"[A-Z][A-Za-z]*(?:['\u2019][A-Za-z]+)?['\u2019]?-*")
+_DIALOGUE = re.compile(r"[\"\u201c]([^\"\u201c\u201d]*)[\"\u201d]")
 
 
 def _candidate_spans(text: str) -> list[tuple[int, int]]:
@@ -638,6 +639,10 @@ def _is_prefix(core: str, alias: str) -> bool:
     )
 
 
+def _inside_dialogue(text: str, start: int, end: int) -> bool:
+    return any(quote.start() < start and end < quote.end() for quote in _DIALOGUE.finditer(text))
+
+
 def _owner_ids(alias: str, owners: dict[str, set[str]] | None) -> set[str]:
     if not owners:
         return {alias.casefold()}
@@ -708,6 +713,7 @@ def name_spelling(
                     "aliases": matched,
                     "start": start,
                     "end": end,
+                    "dialogue": _inside_dialogue(paragraph.text, start, end),
                 }
             )
     counts: dict[str, int] = {}
@@ -720,7 +726,11 @@ def name_spelling(
             alias
             for alias in row["aliases"]
             if _is_prefix(core, alias)
-            and (counts[core.casefold()] >= 2 or len(alias) - len(core) >= 2)
+            and (
+                row["dialogue"]
+                or counts[core.casefold()] >= 2
+                or len(alias) - len(core) >= 2
+            )
         ]
         if questions:
             for alias in questions:
