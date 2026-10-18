@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from doctor.cli import build_report, load_canon, main, run_work
+from doctor.cli import build_report, load_canon, main, run_work, save_cache
 from doctor.factstore import mark_conflicts
 from doctor.ids import compare_ids
 from doctor.intake import IntakeError, load_intake, load_tags
@@ -552,14 +552,35 @@ def test_mentions_are_alias_exact_and_markers_uncertain():
     assert any(scene.uncertain for scene in graph.scenes)
 
 
-def test_canon_load_refuses_repo_and_missing_quote(tmp_path: Path):
-    inside = ROOT / "drafts"
-    inside.mkdir(exist_ok=True)
-    ledger = inside / "facts.json"
+def _fake_checkout(tmp_path: Path) -> Path:
+    fake = tmp_path / "checkout"
+    package = fake / "python" / "fanfic_story_doctor"
+    package.mkdir(parents=True)
+    (package / "pyproject.toml").write_text("", encoding="utf-8")
+    return fake
+
+
+def test_save_cache_refuses_inside_this_repo(tmp_path: Path, monkeypatch):
+    fake = _fake_checkout(tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    home = fake / "python" / "fanfic_story_doctor"
+    with pytest.raises(SystemExit, match="this repo"):
+        save_cache(home, {"k": 1})
+
+
+def test_canon_load_refuses_repo_and_missing_quote(tmp_path: Path, monkeypatch):
+    fake = _fake_checkout(tmp_path)
+    ledger_dir = fake / "python" / "fanfic_story_doctor" / "drafts"
+    ledger_dir.mkdir()
+    ledger = ledger_dir / "facts.json"
     ledger.write_text("[]", encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
     with pytest.raises(SystemExit):
         load_canon(ledger)
-    ledger.unlink()
     outside = tmp_path / "facts.json"
     chapter = tmp_path / "text"
     chapter.mkdir()
@@ -722,19 +743,19 @@ def test_doctor_home_canon_loads_in_run(tmp_path: Path):
 def test_canon_load_guard_does_not_depend_on_install_location(
     tmp_path: Path, monkeypatch
 ):
-    inside = ROOT / "cache"
-    inside.mkdir(exist_ok=True)
-    ledger = inside / "guard-facts.json"
+    fake = _fake_checkout(tmp_path)
+    ledger_dir = fake / "python" / "fanfic_story_doctor" / "drafts"
+    ledger_dir.mkdir()
+    ledger = ledger_dir / "facts.json"
     ledger.write_text("[]", encoding="utf-8")
-    try:
-        monkeypatch.chdir(tmp_path)  # not inside the repo
-        with pytest.raises(SystemExit):
-            load_canon(ledger)
-    finally:
-        ledger.unlink()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    with pytest.raises(SystemExit):
+        load_canon(ledger)
     outside = tmp_path / "facts.json"
     outside.write_text("[]", encoding="utf-8")
-    monkeypatch.chdir(REPO)
+    monkeypatch.chdir(fake)
     assert load_canon(outside) == []
 
 

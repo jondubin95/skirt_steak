@@ -59,6 +59,28 @@ def _notes(report: dict, rule: str | None = None) -> list[dict]:
     ]
 
 
+def test_prompt_hash_covers_reference_id_and_text():
+    from doctor.layerb import _prompt_hash
+
+    base = {
+        "paragraph_id": "ch02.s1.p1",
+        "paragraph_text": "Mara said go.",
+        "subject": "mara",
+        "references": [{"paragraph_id": "ch01.s1.p1", "text": "Mara said stay."}],
+    }
+    other_text = {
+        **base,
+        "references": [{"paragraph_id": "ch01.s1.p1", "text": "Yes."}],
+    }
+    other_id = {
+        **base,
+        "references": [{"paragraph_id": "ch01.s1.p2", "text": "Mara said stay."}],
+    }
+    assert _prompt_hash("OOC.VOICE", base) != _prompt_hash("OOC.VOICE", other_text)
+    assert _prompt_hash("OOC.VOICE", base) != _prompt_hash("OOC.VOICE", other_id)
+    assert _prompt_hash("OOC.VOICE", base) == _prompt_hash("OOC.VOICE", {**base})
+
+
 def test_without_flag_layer_b_is_skipped_layer_a_only(tmp_path: Path):
     report = build_report(FIXTURE, home=tmp_path)
     lens = {row["rule_id"]: (row["state"], row["reason"]) for row in report["lens"]}
@@ -298,8 +320,8 @@ def test_layer_b_report_on_fixture(tmp_path: Path):
     ]
     assert notes == [
         ("OOC.VOICE", "not_enough_evidence", "2_of_3", "mara", 2),
-        ("OOC.VOICE", "intentional_evolution", "low_agreement", "mara", 2),
-        ("OOC.VOICE", "drift", "2_of_3", "teodor", 2),
+        ("OOC.VOICE", "drift", "low_agreement", "mara", 2),
+        ("OOC.VOICE", "not_enough_evidence", "2_of_3", "teodor", 2),
         ("OOC.VOICE", "in_voice", "low_agreement", "teodor", 2),
         ("CANON.RAILS", "consequence_shown", "2_of_3", "ev-bridge", 1),
         ("CANON.RAILS", "on_rails", "low_agreement", "ev-bridge", 1),
@@ -315,4 +337,8 @@ def test_layer_b_report_on_fixture(tmp_path: Path):
     text = run_work(work, layer_b=True, home=tmp_path)
     assert text == render(report)
     assert "- [note] OOC.VOICE mara: not_enough_evidence x1" in text
-    assert '- [note] OOC.VOICE teodor ch2 label=drift agreement=2_of_3 quote="Teodor"' in text
+    assert (
+        '(tentative) mara ch2 label=drift agreement=low_agreement quote="Mara"'
+        in text
+    )
+    assert "- [note] OOC.VOICE teodor: in_voice x1, not_enough_evidence x1" in text

@@ -348,7 +348,10 @@ def _prompt_hash(rule: str, task: dict) -> str:
             "text": task["paragraph_text"],
             "subject": task.get("subject"),
             "prompt": PROMPT_VERSION,
-            "references": [ref["paragraph_id"] for ref in task.get("references") or []],
+            "references": [
+                {"paragraph_id": ref["paragraph_id"], "text": ref["text"]}
+                for ref in task.get("references") or []
+            ],
         },
         sort_keys=True,
     )

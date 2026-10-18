@@ -221,7 +221,7 @@ def save_cache(home: Path, cache: dict) -> None:
     path = cache_path(home)
     if _inside_repo(path):
         raise SystemExit(
-            f"refusing to write the Layer B cache inside a git repo: {path}"
+            f"refusing to write the Layer B cache inside this repo: {path}"
         )
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix="layerb.", suffix=".tmp", dir=path.parent)
