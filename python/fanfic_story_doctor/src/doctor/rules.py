@@ -558,6 +558,7 @@ COMMON_WORDS = {
 }
 
 _WORD = re.compile(r"[A-Z][A-Za-z]*(?:['\u2019][A-Za-z]+)?['\u2019]?-*")
+_DIALOGUE = re.compile(r"[\"\u201c]([^\"\u201c\u201d]*)[\"\u201d]")
 
 
 def _candidate_spans(text: str) -> list[tuple[int, int]]:
@@ -612,15 +613,61 @@ def surnames_of(aliases: list[str]) -> set[str]:
     return {alias.split()[-1] for alias in aliases if len(alias.split()) > 1}
 
 
+def _unique_aliases(aliases: list[str]) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for alias in aliases:
+        key = alias.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(alias)
+    return unique
+
+
+def _alias_limit(alias: str) -> int:
+    return 1 if len(alias) <= 5 else 2
+
+
+def _is_prefix(core: str, alias: str) -> bool:
+    return (
+        " " not in core
+        and " " not in alias
+        and len(core) >= 3
+        and len(alias) > len(core)
+        and alias.casefold().startswith(core.casefold())
+    )
+
+
+def _inside_dialogue(text: str, start: int, end: int) -> bool:
+    return any(quote.start() < start and end < quote.end() for quote in _DIALOGUE.finditer(text))
+
+
+def _owner_ids(alias: str, owners: dict[str, set[str]] | None) -> set[str]:
+    if not owners:
+        return {alias.casefold()}
+    found = owners.get(alias)
+    if found:
+        return set(found)
+    for surface, ids in owners.items():
+        if surface.casefold() == alias.casefold():
+            return set(ids)
+    return {alias.casefold()}
+
+
 def name_spelling(
-    paragraphs: list, aliases: list[str], dismissed: list[str] | None = None
+    paragraphs: list,
+    aliases: list[str],
+    dismissed: list[str] | None = None,
+    owners: dict[str, set[str]] | None = None,
 ) -> list[dict]:
-    dismissed = set(dismissed or [])
+    dismissed = {item.casefold() for item in (dismissed or [])}
+    aliases = _unique_aliases([str(alias) for alias in aliases])
     alias_set = set(aliases)
     folded = {alias.casefold(): alias for alias in aliases}
     surnames = surnames_of(aliases)
     vocab = _vocabulary(paragraphs)
-    items = []
+    occurrences: list[dict] = []
     for paragraph in paragraphs:
         taken: list[tuple[int, int]] = []
         for start, end in _candidate_spans(paragraph.text):
@@ -628,63 +675,118 @@ def name_spelling(
                 continue
             token = paragraph.text[start:end]
             core = _core(token)
-            if not core or token in dismissed or core in dismissed:
+            if not core or token.casefold() in dismissed or core.casefold() in dismissed:
                 continue
             if core in alias_set or core.casefold() in folded:
                 continue
             if core.endswith("s") and core[:-1] in surnames:
                 continue  # plural surname: "the Venns"
             if _possessive_of_alias(token, core, alias_set, folded):
-                continue  # "Ilyas", "Ilyas'", "Ilya's" for alias Ilya or Ilyas
+                continue
             words = core.split()
             if len(words) == 1 and (
                 core.lower() in vocab or core.lower() in COMMON_WORDS
             ):
                 continue
-            hit = None
-            symptom = ""
-            for alias in aliases:
-                if len(alias.split()) != len(words):
-                    continue
-                limit = 1 if len(alias) <= 5 else 2
-                if _damerau(core, alias) <= limit:
-                    others = [
-                        other
-                        for other in aliases
-                        if other.casefold() != alias.casefold()
-                        and len(other.split()) == len(words)
-                        and _damerau(core, other) <= limit
-                    ]
-                    if not others:
-                        hit = alias
-                        symptom = f"{token} is near the alias {alias} and is not itself an alias."
-                    break
-            if hit and token.endswith("-") and hit.startswith(core):
-                hit = None  # interrupted name: "Ter-"
-            if not hit:
+            if token.endswith("-"):
+                continue  # interrupted name: "Ter-"
+            matched = [
+                alias
+                for alias in aliases
+                if len(alias.split()) == len(words)
+                and (
+                    _damerau(core, alias) <= _alias_limit(alias) or _is_prefix(core, alias)
+                )
+            ]
+            characters = set().union(
+                *(_owner_ids(alias, owners) for alias in matched)
+            ) if matched else set()
+            if len(characters) != 1:
                 continue
             taken.append((start, end))
-            items.append(
+            occurrences.append(
                 {
-                    "rule_id": "CANON.NAME_SPELLING",
-                    "item_state": "finding",
-                    "tier": "A1",
-                    "severity": "info",
-                    "kind": "internal_inconsistency",
-                    "symptom": symptom,
-                    "evidence": [
-                        {"kind": "prose", "paragraph_id": paragraph.id, "quote": token}
-                    ],
-                    "fact_ids": [],
-                    "depends_on_hash": depends_hash([hit, token]),
+                    "paragraph_id": paragraph.id,
+                    "paragraph_hash": paragraph.content_hash,
+                    "token": token,
+                    "core": core,
+                    "aliases": matched,
+                    "start": start,
+                    "end": end,
+                    "dialogue": _inside_dialogue(paragraph.text, start, end),
                 }
             )
+    counts: dict[str, int] = {}
+    for row in occurrences:
+        counts[row["core"].casefold()] = counts.get(row["core"].casefold(), 0) + 1
+    items = []
+    for row in occurrences:
+        core = row["core"]
+        questions = [
+            alias
+            for alias in row["aliases"]
+            if _is_prefix(core, alias)
+            and (
+                row["dialogue"]
+                or counts[core.casefold()] >= 2
+                or len(alias) - len(core) >= 2
+            )
+        ]
+        if questions:
+            for alias in questions:
+                items.append(
+                    _spelling_item(
+                        "question",
+                        "intake_question",
+                        f"Is {row['token']} a nickname for {alias}? Add it to names.",
+                        row,
+                        alias,
+                    )
+                )
+            continue
+        editable = [
+            alias
+            for alias in row["aliases"]
+            if _damerau(core, alias) <= _alias_limit(alias)
+        ] or list(row["aliases"])
+        alias = min(editable, key=lambda item: (_damerau(core, item), -len(item), item.casefold()))
+        items.append(
+            _spelling_item(
+                "finding",
+                "internal_inconsistency",
+                f"{row['token']} is near the alias {alias} and is not itself an alias.",
+                row,
+                alias,
+            )
+        )
     return _dedupe(items)
+
+
+def _spelling_item(state: str, kind: str, symptom: str, row: dict, alias: str) -> dict:
+    return {
+        "rule_id": "CANON.NAME_SPELLING",
+        "item_state": state,
+        "tier": "A1",
+        "severity": "info",
+        "kind": kind,
+        "symptom": symptom,
+        "evidence": [
+            {
+                "kind": "prose",
+                "paragraph_id": row["paragraph_id"],
+                "quote": row["token"],
+                "span": [row["start"], row["end"]],
+                "paragraph_hash": row["paragraph_hash"],
+            }
+        ],
+        "fact_ids": [],
+        "depends_on_hash": depends_hash([alias, row["token"]], state),
+    }
 
 
 def _possessive_of_alias(token: str, core: str, alias_set: set, folded: dict) -> bool:
     """alias+s, alias+s', alias+'s (either apostrophe), or a possessive whose
-    core plus s is an alias (Ilya's when the alias is Ilyas)."""
+    core plus s is an alias (Mara's when the alias is Maras)."""
 
     def known(name: str) -> bool:
         return bool(name) and (name in alias_set or name.casefold() in folded)

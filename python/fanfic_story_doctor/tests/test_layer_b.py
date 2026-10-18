@@ -106,6 +106,30 @@ def test_labels_are_closed_and_match_rubric_files():
         assert listed == LABELS[rule]
 
 
+def test_voice_majority_and_thin_reads_are_one_result():
+    from doctor.layerb import aggregate_voice
+
+    thin = {
+        "kind": "note",
+        "label": "drift",
+        "evidence_strength": "thin",
+        "quote": "Come to dinner",
+        "observed": "Come to dinner",
+        "interpretation": "A set phrase shows little.",
+    }
+    drift = {**thin, "evidence_strength": "sufficient", "interpretation": "The syntax breaks."}
+    steady = {**drift, "label": "in_voice", "interpretation": "This matches."}
+    split = aggregate_voice([drift, {**drift, "label": "break", "interpretation": "A break."}, steady])
+    assert split["label"] == "not_enough_evidence" and split["decision"] == "no_majority"
+    assert split["agreement"] == "0_of_3"
+    majority = aggregate_voice([drift, drift, steady])
+    assert majority["label"] == "drift" and majority["agreement"] == "2_of_3"
+    coerced = aggregate_voice([thin, thin, steady])
+    assert coerced["label"] == "not_enough_evidence"
+    assert coerced["reads"][0]["counted_as"] == "not_enough_evidence"
+    assert aggregate_voice([{"rejected": True}, {"rejected": True}, drift])["label"] == "not_enough_evidence"
+
+
 def test_layer_b_runs_mock_and_contract_holds(tmp_path: Path):
     work = _branch_work(tmp_path)
     plain = build_report(work, home=tmp_path)
@@ -115,7 +139,8 @@ def test_layer_b_runs_mock_and_contract_holds(tmp_path: Path):
     assert lens["CANON.RAILS"]["state"] == "applied"
     assert "provider=mock" in lens["CANON.RAILS"]["reason"]
     rails, voice = _notes(report, "CANON.RAILS"), _notes(report, "OOC.VOICE")
-    assert rails and voice
+    assert rails and voice == []
+    assert any("fewer than 4" in item["symptom"] for item in report["items"])
     for note in rails + voice:
         assert note["severity"] == "info"
         assert note["label"] in LABELS[note["rule_id"]]
@@ -223,7 +248,7 @@ def test_invalid_responses_are_rejected_not_shown(tmp_path: Path):
         for i in report["items"]
         if i.get("tier") == "B" and i["item_state"] == "coverage"
     ]
-    assert rejected and all("rejected" in item["symptom"] for item in rejected)
+    assert any("rejected" in item["symptom"] for item in rejected)
 
 
 def test_normalized_punctuation_note_is_shown(tmp_path: Path):
@@ -319,10 +344,6 @@ def test_layer_b_report_on_fixture(tmp_path: Path):
         if i["item_state"] == "note"
     ]
     assert notes == [
-        ("OOC.VOICE", "not_enough_evidence", "2_of_3", "mara", 2),
-        ("OOC.VOICE", "drift", "low_agreement", "mara", 2),
-        ("OOC.VOICE", "not_enough_evidence", "2_of_3", "teodor", 2),
-        ("OOC.VOICE", "in_voice", "low_agreement", "teodor", 2),
         ("CANON.RAILS", "consequence_shown", "2_of_3", "ev-bridge", 1),
         ("CANON.RAILS", "on_rails", "low_agreement", "ev-bridge", 1),
         ("CANON.RAILS", "on_rails", "2_of_3", "ev-bridge", 1),
@@ -332,13 +353,8 @@ def test_layer_b_report_on_fixture(tmp_path: Path):
         ("CANON.RAILS", "not_enough_evidence", "3_of_3", "ev-bridge", 1),
     ]
     lens = {r["rule_id"]: r["reason"] for r in report["lens"]}
-    assert lens["OOC.VOICE"] == "provider=mock; tasks=2"
+    assert lens["OOC.VOICE"] == "provider=mock; tasks=0; profiles=0"
     assert lens["CANON.RAILS"] == "provider=mock; tasks=4"
     text = run_work(work, layer_b=True, home=tmp_path)
     assert text == render(report)
-    assert "- [note] OOC.VOICE mara: not_enough_evidence x1" in text
-    assert (
-        '(tentative) mara ch2 label=drift agreement=low_agreement quote="Mara"'
-        in text
-    )
-    assert "- [note] OOC.VOICE teodor: in_voice x1, not_enough_evidence x1" in text
+    assert "OOC.VOICE skipped mara" in text

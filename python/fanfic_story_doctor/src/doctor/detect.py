@@ -12,6 +12,15 @@ _MARKER = re.compile(
 )
 
 
+def _letter_bounded(text: str, start: int, end: int) -> bool:
+    """A match must not sit inside a longer word. Apostrophes stay boundaries."""
+    if start > 0 and text[start - 1].isalpha():
+        return False
+    if end < len(text) and text[end].isalpha():
+        return False
+    return True
+
+
 def detect_mentions(paragraphs: list, alias_map: dict[str, str]) -> list[dict]:
     """alias_map is surface -> entity id. Exact match, case-sensitive first."""
     notes = []
@@ -25,7 +34,9 @@ def detect_mentions(paragraphs: list, alias_map: dict[str, str]) -> list[dict]:
                 if at < 0:
                     break
                 end = at + len(surface)
-                if any(not (end <= a or at >= b) for a, b in taken):
+                if not _letter_bounded(paragraph.text, at, end) or any(
+                    not (end <= a or at >= b) for a, b in taken
+                ):
                     start = end
                     continue
                 taken.append((at, end))

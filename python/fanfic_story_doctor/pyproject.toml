@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fanfic-story-doctor"
-version = "0.4.3"
+version = "0.4.4"
 description = "Continuity and canon-divergence checks for fanfic drafts. Diagnose only."
 requires-python = ">=3.12"
 dependencies = [

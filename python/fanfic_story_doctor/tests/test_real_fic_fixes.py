@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import yaml
 
 from doctor.cli import build_report, drop_invalid_items
+from doctor.intake import IntakeError, load_intake
 from doctor.detect import alias_map_from_facts, ambiguous_aliases
 from doctor.normalize import (
     normalize_ao3_work,
@@ -55,6 +58,131 @@ def test_common_words_are_not_flagged_against_short_names():
     assert "Mare" not in found  # lowercase "mare" appears in the document
     assert _spell("Shame burned. Harder now.", ["Shawe", "Harden"]) == []
     assert _spell("Shawn burned.", ["Shawe"]) == ["Shawn"]
+
+
+def test_short_alias_does_not_match_inside_a_longer_word():
+    from doctor.detect import detect_mentions
+
+    doc = normalize_markdown("Marathon day. Mara's pack. Teodor called.", chapter=1)
+    notes = detect_mentions(
+        doc.paragraphs,
+        alias_map_from_facts(
+            [
+                {
+                    "predicate": "alias",
+                    "object": "Mara",
+                    "subject": "mara",
+                    "status": "confirmed",
+                },
+                {
+                    "predicate": "alias",
+                    "object": "Teo",
+                    "subject": "teodor",
+                    "status": "confirmed",
+                },
+            ]
+        ),
+    )
+    assert [note["surface"] for note in notes] == ["Mara"]
+
+
+def test_same_character_aliases_still_flag_and_order_does_not_matter():
+    owners = {"Teodor": {"teodor"}, "Teo": {"teodor"}}
+    text = "Teodo ran."
+    one = name_spelling(
+        normalize_markdown(text, chapter=1).paragraphs,
+        ["Teodor", "Teo"],
+        owners=owners,
+    )
+    two = name_spelling(
+        normalize_markdown(text, chapter=1).paragraphs,
+        ["Teo", "Teodor"],
+        owners=owners,
+    )
+    assert [item["item_state"] for item in one] == ["finding"]
+    assert one[0]["evidence"][0]["quote"] == "Teodo"
+    assert [item["symptom"] for item in two] == [item["symptom"] for item in one]
+
+
+def test_long_or_repeated_prefix_is_one_nickname_question():
+    long_tail = name_spelling(
+        normalize_markdown("Teod ran.", chapter=1).paragraphs,
+        ["Teodor"],
+        owners={"Teodor": {"teodor"}},
+    )
+    assert long_tail[0]["item_state"] == "question"
+    assert "nickname for Teodor" in long_tail[0]["symptom"]
+    repeated = name_spelling(
+        normalize_markdown("Teodo waved.\n\nTeodo left.", chapter=1).paragraphs,
+        ["Teodor"],
+        owners={"Teodor": {"teodor"}},
+    )
+    assert len(repeated) == 1 and repeated[0]["item_state"] == "question"
+    assert (
+        name_spelling(
+            normalize_markdown("Mari waited.", chapter=1).paragraphs,
+            ["Mara", "Maris"],
+            owners={"Mara": {"mara"}, "Maris": {"maris"}},
+        )
+        == []
+    )
+
+
+def test_spelling_span_matches_the_normalized_paragraph():
+    doc = normalize_markdown("Teodr ran.", chapter=1)
+    items = name_spelling(doc.paragraphs, ["Teodor"])
+    evidence = items[0]["evidence"][0]
+    start, end = evidence["span"]
+    assert doc.paragraphs[0].text[start:end] == "Teodr"
+    assert evidence["paragraph_hash"] == doc.paragraphs[0].content_hash
+
+
+def test_html_review_is_escaped_and_refuses_the_repo(tmp_path: Path, monkeypatch):
+    from doctor.cli import run_work
+    from doctor.normalize import normalize_markdown
+    from doctor.render import render_html
+    from test_engine import _fake_checkout
+
+    doc = normalize_markdown("Teodr <ran>.", chapter=1)
+    report = {
+        "summary": "1 finding.",
+        "lens": [{"rule_id": "CANON.NAME_SPELLING", "state": "applied", "reason": "ok"}],
+        "items": name_spelling(doc.paragraphs, ["Teodor"]),
+        "voice_profiles": {},
+    }
+    for item in report["items"]:
+        item["chapter"] = 1
+    html = render_html(report, doc.paragraphs)
+    assert "&lt;ran&gt;" in html and "<ran>" not in html
+    assert "sha256-" in html and "keydown" in html
+    fake = _fake_checkout(tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    with pytest.raises(SystemExit, match="this repo"):
+        run_work(
+            FIXTURE,
+            home=tmp_path / "home",
+            html_path=fake / "python" / "fanfic_story_doctor" / "report.html",
+        )
+
+
+def test_intake_accepts_pronouns_overrides_and_spelling_ignore():
+    data = yaml.safe_load((FIXTURE / "intake.yaml").read_text(encoding="utf-8"))
+    data["main_cast"][0]["pronouns"] = "she"
+    data["voice_profiles"] = {"mara": {"syntax": "short clipped orders"}}
+    data["spelling_ignore"] = ["Brennock"]
+    intake, _facts = load_intake(data)
+    assert intake["main_cast"][0]["pronouns"] == ["she"]
+    data["main_cast"][0]["pronouns"] = ["it"]
+    with pytest.raises(IntakeError, match="pronouns"):
+        load_intake(data)
+
+
+def test_spelling_ignore_suppresses_without_creating_an_alias():
+    doc = normalize_markdown("Brennock arrived.", chapter=1)
+    assert name_spelling(doc.paragraphs, ["Brannoch"], dismissed=["Brennock"]) == []
+    assert name_spelling(doc.paragraphs, ["Brannoch"])[0]["item_state"] == "finding"
 
 
 def test_shared_surname_is_ambiguous_not_attributed():
