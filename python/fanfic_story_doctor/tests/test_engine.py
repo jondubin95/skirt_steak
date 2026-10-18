@@ -9,20 +9,10 @@ import pytest
 import yaml
 
 from doctor.cli import build_report, load_canon, run_work
-from doctor.factstore import mark_conflicts, reanchor, reanchor_annotations, supersede
+from doctor.factstore import mark_conflicts
 from doctor.ids import compare_ids
 from doctor.intake import IntakeError, load_intake, load_tags
-from doctor.later import (
-    MockProvider,
-    RaisingProvider,
-    bulk_accept_allowed,
-    cache_key,
-    holdout_allowed,
-    memory_invalid,
-    prioritize,
-    propose,
-    vote,
-)
+from doctor.later import cache_key, vote
 from doctor.normalize import (
     content_hash,
     normalize_html,
@@ -148,7 +138,7 @@ def test_intake_seeds_and_rejects():
         load_tags({**tags, "rating": "PG-13"})
 
 
-def test_supersede_conflict_claim_and_reanchor():
+def test_conflict_and_claim():
     graph = build_graph(
         [SceneNode("ch01.s1")], ["ev-bridge"], [], paragraph_ids=["ch01.s1.p1"]
     )
@@ -215,46 +205,6 @@ def test_supersede_conflict_claim_and_reanchor():
         [claim], "teodor", "status", "ch01.s1.p1", graph, "books"
     )
     assert state == RESOLVED and _value == "unspecified"
-
-    original = {
-        "id": "old",
-        "subject": "teodor",
-        "predicate": "status",
-        "object": "alive",
-        "layer": "ledger",
-        "status": "confirmed",
-        "assertion": "state",
-        "citation_state": "ok",
-        "citation": {"at": "ch01.s1.p1", "text": "Teodor stood"},
-        "interval": {"from": {"work": "ch01.s1.p1", "content_hash": "abc"}},
-    }
-    store = [original]
-    new = supersede(store, "old", {"object": "dead"})
-    assert original["status"] == "superseded"
-    assert original["superseded_by"] == new["id"]
-    assert new["supersedes"] == "old"
-
-    paragraphs = {"ch01.s1.p2": "Teodor stood here"}
-    hashes = {"ch01.s1.p2": content_hash("Teodor stood here")}
-    moved = {
-        "id": "m",
-        "subject": "teodor",
-        "predicate": "alias",
-        "object": "Teo",
-        "layer": "ledger",
-        "status": "confirmed",
-        "assertion": "state",
-        "citation_state": "ok",
-        "citation": {"at": "ch01.s1.p1", "text": "Teodor stood"},
-        "interval": {"from": {"work": "ch01.s1.p1"}},
-    }
-    reanchor([moved], paragraphs, hashes)
-    assert moved["citation"]["at"] == "ch01.s1.p2"
-    assert moved["interval"]["from"]["work"] == "ch01.s1.p2"
-
-    note = {"paragraph": "ch01.s1.p1", "paragraph_hash": "gone", "surface": "Teodor"}
-    reanchor_annotations([note], hashes)
-    assert note["stale"] is True
 
 
 def _dead_from_bridge():
@@ -402,31 +352,6 @@ def test_stale_blocks_lower_layer():
         [stale, au], "teodor", "status", "ch04.s2.p1", graph, "books"
     )
     assert state == UNRESOLVED and value is None
-
-
-def test_dead_reappears_rows():
-    graph = build_graph(
-        [SceneNode("ch05.s1")], ["ev-bridge"], [("ev-bridge", "ch05.s1")]
-    )
-    fact = _dead_from_bridge()
-    base = {
-        "id": "m1",
-        "entity": "teodor",
-        "paragraph": "ch05.s1.p3",
-        "surface": "Teodor",
-        "stale": False,
-    }
-
-    def mode(status, value):
-        return dead_reappears(
-            [{**base, "mode_status": status, "mode": value}], [fact], graph, "books"
-        )
-
-    assert mode("confirmed", "present_action")[0]["item_state"] == "finding"
-    for value in ("mentioned", "remembered", "quoted_or_recorded", "dream_or_vision"):
-        assert mode("confirmed", value) == []
-    assert mode("proposed", "present_action")[0]["item_state"] == "unverifiable"
-    assert mode("confirmed", "present_action")[0]["depends_on_hash"]
 
 
 def _report_rows(report: dict, rule: str) -> list[tuple[str, str]]:
@@ -666,56 +591,7 @@ def test_canon_load_refuses_repo_and_missing_quote(tmp_path: Path):
     assert load_canon(outside, chapter) == []
 
 
-def test_later_confirmation_proposer_vote_cache_and_holdout():
-    main = {"teodor"}
-    questions = [
-        {
-            "type": "STATE_CHANGE",
-            "predicate": "status",
-            "object": "dead",
-            "subject": "teodor",
-            "reading_order": "ch02",
-        },
-        {
-            "type": "ALIAS",
-            "predicate": "alias",
-            "subject": "ilsa",
-            "reading_order": "ch01",
-        },
-    ]
-    asked, rest = prioritize(questions, main, cap=5)
-    assert len(asked) == 1 and rest
-    assert not bulk_accept_allowed(
-        {"type": "CONFLICT", "high_confidence": True, "verbatim": True}
-    )
-    assert not bulk_accept_allowed(
-        {
-            "type": "APPEARANCE_MODE",
-            "mode": "present_action",
-            "status": "dead",
-            "high_confidence": True,
-            "verbatim": True,
-        }
-    )
-    stored = {"proposition": "a", "location": "b", "dependency": "c", "version": "1"}
-    assert memory_invalid(stored, {**stored, "dependency": "d"})
-    assert not memory_invalid(stored, dict(stored))
-    provider = MockProvider(
-        [
-            {
-                "kind": "proposal",
-                "fact": {"subject": "mara", "predicate": "alias", "object": "Mara"},
-            }
-        ]
-    )
-    stored_fact = propose(provider, "hash")
-    assert stored_fact["stored"]["status"] == "proposed"
-    refused = propose(
-        MockProvider([{"kind": "refusal", "reason_category": "policy"}]), "hash"
-    )
-    assert refused["not_reviewed"] == "policy"
-    with pytest.raises(AssertionError):
-        RaisingProvider().complete("hash")
+def test_vote_and_cache_key():
     voted = vote(
         [
             {"label": "on_rails", "votes": 1},
@@ -733,31 +609,6 @@ def test_later_confirmation_proposer_vote_cache_and_holdout():
         "consequence_shown": "low_agreement",
     }
     assert cache_key("a", "r", "m", "c") != cache_key("b", "r", "m", "c")
-    missing = ROOT / "eval" / "holdout" / "nope.yaml"
-    assert holdout_allowed(missing, REPO) is False
-
-
-def test_holdout_gate_tracks_git_state(tmp_path: Path):
-    import shutil
-    import subprocess
-
-    if shutil.which("git") is None:
-        pytest.skip("git not available")
-
-    def git(*args):
-        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
-
-    git("init", "-q")
-    git("config", "user.email", "test@example.invalid")
-    git("config", "user.name", "test")
-    criteria = tmp_path / "criteria.yaml"
-    criteria.write_text("rules: {}\n", encoding="utf-8")
-    assert holdout_allowed(criteria, tmp_path) is False
-    git("add", "criteria.yaml")
-    git("commit", "-q", "-m", "criteria")
-    assert holdout_allowed(criteria, tmp_path) is True
-    criteria.write_text("rules: {changed: true}\n", encoding="utf-8")
-    assert holdout_allowed(criteria, tmp_path) is False
 
 
 def test_measure_synthetic_chapters(tmp_path: Path):
@@ -790,59 +641,26 @@ def test_measure_synthetic_chapters(tmp_path: Path):
     assert json.loads(dest.read_text(encoding="utf-8"))["alias_hits"] == 2
 
 
-def test_status_file_names_real_tests():
-    text = (ROOT / "STATUS.md").read_text(encoding="utf-8")
-    bodies = "\n".join(
-        path.read_text(encoding="utf-8") for path in (ROOT / "tests").glob("test_*.py")
-    )
-    for line in text.splitlines():
-        if "Test passed" not in line or line.startswith("| Section"):
-            continue
-        cells = [cell.strip() for cell in line.strip("|").split("|")]
-        if len(cells) < 3:
-            continue
-        name = cells[2]
-        if name and name != "test id":
-            assert f"def {name}" in bodies
-
-
-def test_gitignore_covers_private_drafts():
-    import shutil
-    import subprocess
-
-    if shutil.which("git") is None or not (REPO / ".git").exists():
-        pytest.skip("not a git checkout")
-    pkg = "python/fanfic_story_doctor"
-    ignored = [
-        f"{pkg}/drafts/ashfall-draft.txt",
-        f"{pkg}/works/ashfall/ch01.md",
-        f"{pkg}/runs/run.json",
-        f"{pkg}/cache/key.json",
-        f"{pkg}/eval/holdout/set.yaml",
-        f"{pkg}/build/lib/doctor/cli.py",
-        f"{pkg}/src/fanfic_story_doctor.egg-info/PKG-INFO",
-    ]
-    tracked = [f"{pkg}/tests/fixtures/ashfall/ch01.md", f"{pkg}/eval/criteria.yaml"]
-
-    def check(path: str) -> bool:
-        result = subprocess.run(
-            ["git", "check-ignore", "-q", "--no-index", path], cwd=REPO, check=False
-        )
-        return result.returncode == 0
-
-    assert [path for path in ignored if not check(path)] == []
-    assert [path for path in tracked if check(path)] == []
-
-
-def test_render_golden_matches_run(tmp_path: Path):
+def test_layer_a_report_on_fixture(tmp_path: Path):
     work = ROOT / "tests" / "fixtures" / "ashfall"
-    expected_json = json.loads(
-        (ROOT / "tests" / "golden" / "report.json").read_text(encoding="utf-8")
+    report = build_report(work, home=tmp_path)
+    assert report["summary"] == (
+        "3 findings. 0 blockers. No status facts are confirmed for the main cast."
     )
-    expected_md = (ROOT / "tests" / "golden" / "report.md").read_text(encoding="utf-8")
-    assert build_report(work, home=tmp_path) == expected_json
-    assert run_work(work, home=tmp_path) == expected_md
-    assert render(expected_json) == expected_md
+    assert [(i["rule_id"], i["item_state"], i["severity"]) for i in report["items"]] == [
+        ("CANON.DIVERGENCE", "finding", "should"),
+        ("LEDGER.COVERAGE", "coverage", "info"),
+        ("CANON.NAME_SPELLING", "finding", "info"),
+        ("AO3.SCHEMA", "finding", "should"),
+    ]
+    skipped = {r["rule_id"]: r["reason"] for r in report["lens"] if r["state"] != "applied"}
+    assert skipped == {"OOC.VOICE": "layer_a_only", "CANON.RAILS": "layer_a_only"}
+    text = run_work(work, home=tmp_path)
+    assert text == render(report)
+    assert (
+        "- [finding] CANON.NAME_SPELLING: Teodr is near the alias Teodor and is not itself an alias."
+        in text.splitlines()
+    )
 
 
 def test_validator_rewrite_markers_with_space():

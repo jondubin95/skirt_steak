@@ -3,7 +3,6 @@ possessive/dedupe handling in CANON.NAME_SPELLING. Invented Ashfall cast only.""
 
 from __future__ import annotations
 
-import io
 import json
 import re
 from pathlib import Path

@@ -643,23 +643,22 @@ def name_spelling(
                 continue
             hit = None
             symptom = ""
-            if True:
-                for alias in aliases:
-                    if len(alias.split()) != len(words):
-                        continue
-                    limit = 1 if len(alias) <= 5 else 2
-                    if _damerau(core, alias) <= limit:
-                        others = [
-                            other
-                            for other in aliases
-                            if other.casefold() != alias.casefold()
-                            and len(other.split()) == len(words)
-                            and _damerau(core, other) <= limit
-                        ]
-                        if not others:
-                            hit = alias
-                            symptom = f"{token} is near the alias {alias} and is not itself an alias."
-                        break
+            for alias in aliases:
+                if len(alias.split()) != len(words):
+                    continue
+                limit = 1 if len(alias) <= 5 else 2
+                if _damerau(core, alias) <= limit:
+                    others = [
+                        other
+                        for other in aliases
+                        if other.casefold() != alias.casefold()
+                        and len(other.split()) == len(words)
+                        and _damerau(core, other) <= limit
+                    ]
+                    if not others:
+                        hit = alias
+                        symptom = f"{token} is near the alias {alias} and is not itself an alias."
+                    break
             if hit and token.endswith("-") and hit.startswith(core):
                 hit = None  # interrupted name: "Ter-"
             if not hit:

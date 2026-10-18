@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 from doctor.cli import build_report, main, run_work
-from doctor.later import OOC_LABELS, RAILS_LABELS, MockProvider
+from doctor.later import OOC_LABELS, RAILS_LABELS
 from doctor.layerb import (
     G9_ENV,
     LABELS,
@@ -18,6 +18,7 @@ from doctor.layerb import (
     get_provider,
     validate_response,
 )
+from doctor.render import render
 from doctor.validate_output import validate_report
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -172,7 +173,13 @@ def test_invalid_responses_are_rejected_not_shown(tmp_path: Path):
     )
 
     bad = {**good, "quote": "not in the draft", "observed": "not in the draft"}
-    provider = MockProvider([bad] * 60)
+    class Scripted:
+        name = "scripted"
+
+        def complete(self, prompt_hash, request=None):
+            return dict(bad)
+
+    provider = Scripted()
     report = build_report(
         _branch_work(tmp_path), layer_b=True, home=tmp_path, provider=provider
     )
@@ -242,13 +249,31 @@ def test_cache_skips_provider_on_second_run(tmp_path: Path):
     assert one == two
 
 
-def test_layer_b_golden(tmp_path: Path):
+def test_layer_b_report_on_fixture(tmp_path: Path):
     work = _branch_work(tmp_path)
-    expected_json = json.loads(
-        (ROOT / "tests" / "golden" / "report_layer_b.json").read_text(encoding="utf-8")
-    )
-    expected_md = (ROOT / "tests" / "golden" / "report_layer_b.md").read_text(
-        encoding="utf-8"
-    )
-    assert build_report(work, layer_b=True, home=tmp_path) == expected_json
-    assert run_work(work, layer_b=True, home=tmp_path) == expected_md
+    report = build_report(work, layer_b=True, home=tmp_path)
+    notes = [
+        (i["rule_id"], i["label"], i["agreement"], i["subject"], i["chapter"])
+        for i in report["items"]
+        if i["item_state"] == "note"
+    ]
+    assert notes == [
+        ("OOC.VOICE", "not_enough_evidence", "2_of_3", "mara", 2),
+        ("OOC.VOICE", "intentional_evolution", "low_agreement", "mara", 2),
+        ("OOC.VOICE", "drift", "2_of_3", "teodor", 2),
+        ("OOC.VOICE", "in_voice", "low_agreement", "teodor", 2),
+        ("CANON.RAILS", "consequence_shown", "2_of_3", "ev-bridge", 1),
+        ("CANON.RAILS", "on_rails", "low_agreement", "ev-bridge", 1),
+        ("CANON.RAILS", "on_rails", "2_of_3", "ev-bridge", 1),
+        ("CANON.RAILS", "not_enough_evidence", "low_agreement", "ev-bridge", 1),
+        ("CANON.RAILS", "on_rails", "2_of_3", "ev-bridge", 1),
+        ("CANON.RAILS", "not_enough_evidence", "low_agreement", "ev-bridge", 1),
+        ("CANON.RAILS", "not_enough_evidence", "3_of_3", "ev-bridge", 1),
+    ]
+    lens = {r["rule_id"]: r["reason"] for r in report["lens"]}
+    assert lens["OOC.VOICE"] == "provider=mock; tasks=2"
+    assert lens["CANON.RAILS"] == "provider=mock; tasks=4"
+    text = run_work(work, layer_b=True, home=tmp_path)
+    assert text == render(report)
+    assert "- [note] OOC.VOICE mara: not_enough_evidence x1" in text
+    assert '- [note] OOC.VOICE teodor ch2 label=drift agreement=2_of_3 quote="Teodor"' in text

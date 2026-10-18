@@ -18,6 +18,9 @@ MODES = {
     "present": ("confirmed", "present_action"),
     "mentioned": ("confirmed", "mentioned"),
     "proposed": ("proposed", "present_action"),
+    "remembered": ("confirmed", "remembered"),
+    "quoted": ("confirmed", "quoted_or_recorded"),
+    "dream": ("confirmed", "dream_or_vision"),
 }
 
 # (canon status, au override, placement, mode) -> expected item_state or "none"
@@ -34,6 +37,9 @@ ROWS = [
     ("dead", None, "post", "present", "finding"),
     ("dead", None, "post", "mentioned", "none"),
     ("dead", None, "post", "proposed", "unverifiable"),
+    ("dead", None, "post", "remembered", "none"),
+    ("dead", None, "post", "quoted", "none"),
+    ("dead", None, "post", "dream", "none"),
     # Scene before the death: alive by default, nothing to say.
     ("dead", None, "pre", "present", "none"),
     ("dead", None, "pre", "mentioned", "none"),
@@ -123,3 +129,4 @@ def test_dead_reappears_table(canon, au, placement, mode, wanted):
     assert actual == wanted
     if wanted == "finding":
         assert got[0]["severity"] == "blocker"
+        assert got[0]["depends_on_hash"]

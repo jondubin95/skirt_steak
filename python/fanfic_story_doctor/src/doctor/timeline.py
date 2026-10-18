@@ -14,7 +14,6 @@ YES = "YES"
 NO = "NO"
 
 OFFLINE_KINDS = {"flashback", "flash_forward"}
-MAINLINE_KINDS = {"time_skip", "concurrent", "explicit_order", None}
 
 
 @dataclass

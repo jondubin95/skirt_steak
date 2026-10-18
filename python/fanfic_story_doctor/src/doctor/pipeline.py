@@ -217,9 +217,6 @@ def summarize(items: list[dict]) -> str:
     return summary
 
 
-AU_KINDS = {"branch", "alternate_setting"}
-
-
 def au_kind(intake: dict) -> str:
     return ((intake.get("au") or {}).get("au_kind")) or "branch"
 

@@ -58,9 +58,6 @@ class Document:
     author_notes: list[str] = field(default_factory=list)
     scene_ids: list[str] = field(default_factory=list)
 
-    def by_id(self) -> dict[str, Paragraph]:
-        return {paragraph.id: paragraph for paragraph in self.paragraphs}
-
 
 def _is_scene_break(line: str) -> bool:
     stripped = line.strip()

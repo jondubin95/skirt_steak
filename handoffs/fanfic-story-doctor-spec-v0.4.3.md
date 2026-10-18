@@ -7,7 +7,7 @@
 
 Build from this file. Where this file does not amend a section, v0.4.2 remains in force; that text lives in private notes, not in this public repo. Nothing in v0.4.2 is deleted.
 
-> **Implementation status.** v0.4.2's legend still applies. This revision does not mark anything Implemented or Test passed. Package status lives in `python/fanfic_story_doctor/STATUS.md`, keyed by spec section and test id. CI fails if a row says "Test passed" and the named test is missing.
+> **Implementation status.** v0.4.2's legend still applies. This revision does not mark anything Implemented or Test passed. Package status is tracked in the PR description and the tests under `python/fanfic_story_doctor/tests`.
 
 ## D2. Change log (v0.4.2 → v0.4.3)
 

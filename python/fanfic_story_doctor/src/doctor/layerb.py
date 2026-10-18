@@ -27,12 +27,11 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from doctor.later import OOC_LABELS, RAILS_LABELS, cache_get, cache_key, vote
+from doctor.later import OOC_LABELS, RAILS_LABELS, cache_key, vote
 from doctor.timeline import AFTER, compare, scene_of
 
 RULESET_VERSION = "layer-b-0.4.3"
 RUNS = 3
-MAX_TASKS_PER_RULE = 20  # used only when no document is available
 PASSAGES_PER_CHAPTER = 2  # default cap: 2 passages per chapter per rule
 SPEECH_VERBS = (
     "said|says|asked|asks|replied|replies|answered|murmured|whispered|shouted|"
@@ -48,7 +47,6 @@ G9_ENV = "DOCTOR_G9_OPT_IN"
 CLI_ENV = "DOCTOR_CURSOR_AGENT"
 MODEL_ENV = "DOCTOR_CURSOR_MODEL"
 CALL_TIMEOUT_S = 180
-QUOTE_MARKS = re.compile(r"[\"\u201c\u201d]")
 MIN_PRESENCE = 2  # a single passing mention with no dialogue scores 1 and is skipped
 REF_MIN = 2
 PROMPT_VERSION = "voice-refs-2"
@@ -566,18 +564,7 @@ def voice_tasks(doc, intake: dict, mentions: list[dict], limit: int):
     return tasks, skipped, unslotted
 
 
-def _tasks(
-    rule: str,
-    doc,
-    intake: dict,
-    graph,
-    mentions: list[dict],
-    limit: int | None = None,
-) -> list[dict]:
-    if limit is None:
-        limit = default_limit(doc)
-    if rule == "OOC.VOICE":
-        return voice_tasks(doc, intake, mentions, limit)[0]
+def _rails_tasks(doc, intake: dict, graph, limit: int) -> list[dict]:
     tasks: list[dict] = []
     divergence = ((intake.get("au") or {}).get("divergence_event")) or None
     for paragraph in doc.paragraphs:
@@ -592,9 +579,13 @@ def _tasks(
     return tasks[:limit]
 
 
-def _declared_branch(intake: dict) -> bool:
+def _rails_skip(intake: dict) -> str | None:
     au = intake.get("au") or {}
-    return bool(au.get("is_au")) and bool(au.get("divergence_event"))
+    if au.get("au_kind") == "alternate_setting":
+        return "alternate_setting"
+    if not (au.get("is_au") and au.get("divergence_event")):
+        return "no_declared_branch"
+    return None
 
 
 def run_layer_b(
@@ -618,40 +609,30 @@ def run_layer_b(
     """
     out = progress if progress is not None else sys.stderr
     chapter_of = {p.id: p.chapter for p in doc.paragraphs}
-    planned = _planned(doc, intake, graph, mentions, max_passages or default_limit(doc, per_chapter))
-    total = len(planned)
+    max_passages = max_passages or default_limit(doc, per_chapter)
+    voice, skipped, unslotted = voice_tasks(doc, intake, mentions, max_passages)
+    rails_skip = _rails_skip(intake)
+    plan = {
+        "OOC.VOICE": voice,
+        "CANON.RAILS": [] if rails_skip else _rails_tasks(doc, intake, graph, max_passages),
+    }
+    total = len(voice) + len(plan["CANON.RAILS"])
     stats = Counter()
     run_started = time.monotonic()
     out.write(f"[layerb] start tasks={total} calls<={total * RUNS} runs_per_task={RUNS}\n")
     out.flush()
-    max_passages = max_passages or default_limit(doc, per_chapter)
     cache = {} if cache is None else cache
     items: list[dict] = []
     lens: dict[str, dict] = {}
     model = getattr(provider, "name", type(provider).__name__)
     for rule in ("OOC.VOICE", "CANON.RAILS"):
-        if (
-            rule == "CANON.RAILS"
-            and ((intake.get("au") or {}).get("au_kind")) == "alternate_setting"
-        ):
-            lens[rule] = {
-                "rule_id": rule,
-                "state": "skipped",
-                "reason": "alternate_setting",
-            }
-            continue
-        if rule == "CANON.RAILS" and not _declared_branch(intake):
-            lens[rule] = {
-                "rule_id": rule,
-                "state": "skipped",
-                "reason": "no_declared_branch",
-            }
+        if rule == "CANON.RAILS" and rails_skip:
+            lens[rule] = {"rule_id": rule, "state": "skipped", "reason": rails_skip}
             continue
         rejected = 0
         reasons: Counter = Counter()
-        tasks = _tasks(rule, doc, intake, graph, mentions, max_passages)
+        tasks = plan[rule]
         if rule == "OOC.VOICE":
-            _, skipped, unslotted = voice_tasks(doc, intake, mentions, max_passages)
             gaps = [
                 (
                     entity,
@@ -696,7 +677,7 @@ def run_layer_b(
             key = cache_key(
                 task["paragraph_text"], f"{RULESET_VERSION}:{rule}", model, prompt_hash
             )
-            responses = cache_get(cache, key)
+            responses = cache.get(key)
             hit = responses is not None
             if not hit:
                 requests = [
@@ -814,15 +795,3 @@ def run_layer_b(
     out.flush()
     return items, lens
 
-
-def _planned(doc, intake, graph, mentions, limit) -> list:
-    """Every task run_layer_b will send, across both rules, for the start line."""
-    planned = []
-    for rule in ("OOC.VOICE", "CANON.RAILS"):
-        if rule == "CANON.RAILS" and (
-            ((intake.get("au") or {}).get("au_kind")) == "alternate_setting"
-            or not _declared_branch(intake)
-        ):
-            continue
-        planned += _tasks(rule, doc, intake, graph, mentions, limit)
-    return planned

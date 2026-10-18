@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import uuid
-from copy import deepcopy
 
 from doctor.timeline import UNKNOWN, YES, overlap
 
@@ -28,24 +26,6 @@ def validate_fact(fact: dict) -> None:
         raise ValueError(f"unknown assertion: {assertion}")
     if assertion == "claim" and not fact.get("claimant"):
         raise ValueError("claim requires claimant")
-
-
-def supersede(
-    facts: list[dict], old_id: str, updates: dict, who: str = "writer"
-) -> dict:
-    old = next(fact for fact in facts if fact["id"] == old_id)
-    new = deepcopy(old)
-    new.update(updates)
-    new["id"] = new_id("f")
-    new["supersedes"] = old_id
-    new["superseded_by"] = None
-    new["status"] = updates.get("status", "confirmed")
-    new.setdefault("provenance", {})["created_by"] = who
-    validate_fact(new)
-    old["status"] = "superseded"
-    old["superseded_by"] = new["id"]
-    facts.append(new)
-    return new
 
 
 def mark_conflicts(facts: list[dict], graph) -> list[dict]:
@@ -109,70 +89,6 @@ def mark_conflicts(facts: list[dict], graph) -> list[dict]:
     return notices
 
 
-def reanchor(
-    facts: list[dict], paragraphs: dict[str, str], hashes: dict[str, str]
-) -> None:
-    """paragraphs: id -> normalized text. hashes: id -> content hash."""
-    by_chapter_text: dict[int, list[tuple[str, str]]] = {}
-    by_hash: dict[str, list[str]] = {}
-    for pid, text in paragraphs.items():
-        chapter = int(pid.split(".")[0][2:])
-        by_chapter_text.setdefault(chapter, []).append((pid, text))
-        by_hash.setdefault(hashes[pid], []).append(pid)
-    for fact in facts:
-        citation = fact.get("citation") or {}
-        quote = citation.get("text")
-        at = citation.get("at")
-        if quote and at:
-            chapter = int(str(at).split(".")[0][2:])
-            hits = [
-                pid for pid, text in by_chapter_text.get(chapter, []) if quote in text
-            ]
-            if len(hits) == 1:
-                citation["at"] = hits[0]
-                fact["citation_state"] = "ok"
-            else:
-                fact["citation_state"] = "stale"
-        interval = fact.get("interval") or {}
-        for key in ("from", "to"):
-            bound = interval.get(key)
-            if not bound or "work" not in bound:
-                continue
-            if (
-                citation.get("at")
-                and bound["work"] == at
-                and fact.get("citation_state") == "ok"
-            ):
-                bound["work"] = citation["at"]
-                continue
-            stored = bound.get("content_hash")
-            if not stored:
-                continue
-            hits = by_hash.get(stored, [])
-            if len(hits) == 1:
-                bound["work"] = hits[0]
-            else:
-                fact["citation_state"] = "stale"
-
-
-def reanchor_annotations(annotations: list[dict], hashes: dict[str, str]) -> None:
-    hash_to_ids: dict[str, list[str]] = {}
-    for pid, digest in hashes.items():
-        hash_to_ids.setdefault(digest, []).append(pid)
-    for note in annotations:
-        stored = note.get("paragraph_hash")
-        hits = hash_to_ids.get(stored, [])
-        if stored and len(hits) == 1:
-            note["paragraph"] = hits[0]
-            note["mode_status"] = note.get("mode_status")
-        else:
-            note["stale"] = True
-
-
-def dump_facts(facts: list[dict]) -> str:
-    return json.dumps(facts, indent=2, sort_keys=True)
-
-
 def load_facts(raw: str) -> list[dict]:
     data = json.loads(raw)
     if not isinstance(data, list):
@@ -180,16 +96,3 @@ def load_facts(raw: str) -> list[dict]:
     for fact in data:
         validate_fact(fact)
     return data
-
-
-def proposition_hash(fact: dict) -> str:
-    payload = json.dumps(
-        {
-            "subject": fact.get("subject"),
-            "predicate": fact.get("predicate"),
-            "object": fact.get("object"),
-            "interval": fact.get("interval"),
-        },
-        sort_keys=True,
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
