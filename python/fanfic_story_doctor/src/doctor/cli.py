@@ -20,7 +20,7 @@ from doctor.layerb import (
     get_provider,
     run_layer_b,
 )
-from doctor.normalize import normalize_sources
+from doctor.normalize import DuplicateChapter, normalize_sources
 from doctor.pipeline import (
     applicable_facts,
     build_mentions,
@@ -313,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
                 max_passages=args.max_passages,
                 per_chapter=args.per_chapter,
             )
-        except ValueError as exc:
+        except DuplicateChapter as exc:
             raise SystemExit(str(exc)) from exc
         sys.stdout.write(text)
         stats = getattr(provider, "failures", None)

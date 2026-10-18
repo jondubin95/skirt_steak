@@ -143,41 +143,54 @@ def _many_chapters(name: str, text: str) -> bool:
     return _is_html(name) and len(set(re.findall(r'id="chapter-(\d+)"', text))) > 1
 
 
+class DuplicateChapter(ValueError):
+    """Two source files claim the same chapter number."""
+
+
+def _parse(name: str, text: str, chapter: int) -> Document:
+    if not _is_html(name):
+        return normalize_markdown(text, chapter=chapter)
+    if _many_chapters(name, text):
+        return normalize_ao3_work(text, chapter)
+    return normalize_html(text, chapter)
+
+
 def normalize_sources(sources: list[tuple[str, str]]) -> Document:
     """sources are (filename or label, text).
 
-    Files with an explicit chapter number merge in that order, not reading
-    order. Two of those files for the same chapter raise ValueError. A file
-    with no digit keeps its input position as the chapter and is not part of
-    the duplicate check. A full-work HTML file (more than one chapter-N id)
-    is also exempt; paragraphs inside one file stay in page order.
+    Files merge in chapter order. A file's chapter comes from its name; a
+    full-work HTML file claims every chapter on its page. A file with no digit
+    is numbered after the highest claimed chapter, in input order. Two files
+    claiming one chapter raise DuplicateChapter, so paragraph ids stay unique.
 
     `.md` and `.txt` are Markdown or plain text, one chapter each. `.html` is
     AO3 HTML: a chapter page, or a full-work download that holds several
     `chapter-N` blocks (chapters then come from the page itself).
     """
-    resolved: list[tuple[int, int, str, str]] = []
-    explicit: dict[int, str] = {}
-    for offset, (name, text) in enumerate(sources, start=1):
-        chapter, named = _chapter_from_name(name, offset)
-        if named and not _many_chapters(name, text):
-            prior = explicit.get(chapter)
-            if prior is not None:
-                raise ValueError(f"duplicate chapter {chapter}: {prior}, {name}")
-            explicit[chapter] = name
-        resolved.append((chapter, offset, name, text))
-    resolved.sort(key=lambda row: (row[0], row[1]))
+    parts: list[tuple[int, int, Document]] = []
+    unnamed: list[tuple[int, str, str]] = []
+    owner: dict[int, str] = {}
+    for offset, (name, text) in enumerate(sources):
+        chapter, named = _chapter_from_name(name, 0)
+        if not named and not _many_chapters(name, text):
+            unnamed.append((offset, name, text))
+            continue
+        part = _parse(name, text, chapter or 1)
+        claimed = sorted({p.chapter for p in part.paragraphs} or {chapter})
+        for number in claimed:
+            if number in owner:
+                raise DuplicateChapter(
+                    f"duplicate chapter {number}: {owner[number]}, {name}"
+                )
+            owner[number] = name
+        parts.append((claimed[0], offset, part))
+    next_chapter = max(owner, default=0) + 1
+    for offset, name, text in unnamed:
+        parts.append((next_chapter, offset, _parse(name, text, next_chapter)))
+        next_chapter += 1
+    parts.sort(key=lambda row: (row[0], row[1]))
     merged = Document()
-    for chapter, _index, name, text in resolved:
-        if _is_html(name):
-            many = _many_chapters(name, text)
-            part = (
-                normalize_ao3_work(text, chapter)
-                if many
-                else normalize_html(text, chapter)
-            )
-        else:
-            part = normalize_markdown(text, chapter=chapter)
+    for _chapter, _offset, part in parts:
         merged.paragraphs.extend(part.paragraphs)
         merged.author_notes.extend(part.author_notes)
         for scene_id in part.scene_ids:

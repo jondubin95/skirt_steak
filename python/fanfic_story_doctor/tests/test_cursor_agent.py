@@ -190,6 +190,7 @@ def test_max_passages_caps_calls(tmp_path: Path):
             match = tasks.search(line)
             assert match is not None
             found.append(int(match.group(1)))
+    assert found and all(n <= 1 for n in found)  # the cap holds per rule
     assert sum(found) >= 1
     assert len(runner.calls) == 3 * sum(found)
 

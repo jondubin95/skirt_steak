@@ -14,6 +14,7 @@ from doctor.ids import compare_ids
 from doctor.intake import IntakeError, load_intake, load_tags
 from doctor.later import cache_key, vote
 from doctor.normalize import (
+    DuplicateChapter,
     content_hash,
     normalize_html,
     normalize_markdown,
@@ -779,16 +780,31 @@ def test_duplicate_explicit_chapter_raises():
     assert "chapter-1-draft.md" in str(exc.value)
 
 
+def _unique_ids(doc) -> bool:
+    ids = [p.id for p in doc.paragraphs]
+    return len(ids) == len(set(ids))
+
+
 def test_no_digit_filename_does_not_collide():
     doc = normalize_sources([("notes.md", "A note.\n"), ("ch01.md", "Mara.\n")])
-    assert [p.chapter for p in doc.paragraphs] == [1, 1]
+    assert [p.id for p in doc.paragraphs] == ["ch01.s1.p1", "ch02.s1.p1"]
+    assert _unique_ids(doc)
 
 
-def test_multichapter_html_is_exempt():
+def test_multichapter_html_chapters_are_claimed():
     from test_real_fic_fixes import AO3_WORK
 
-    doc = normalize_sources([("work.html", AO3_WORK), ("ch01.md", "Mara waited.\n")])
-    assert doc.paragraphs
+    doc = normalize_sources([("work.html", AO3_WORK), ("notes.md", "Mara waited.\n")])
+    chapters = sorted({p.chapter for p in doc.paragraphs})
+    assert chapters == [1, 2, 3] and doc.paragraphs[-1].chapter == 3
+    assert _unique_ids(doc)
+
+
+def test_multichapter_html_next_to_ch01_raises():
+    from test_real_fic_fixes import AO3_WORK
+
+    with pytest.raises(DuplicateChapter, match="duplicate chapter 1: work.html, ch01.md"):
+        normalize_sources([("work.html", AO3_WORK), ("ch01.md", "Mara waited.\n")])
 
 
 def test_duplicate_chapter_exits_cleanly(tmp_path: Path):
