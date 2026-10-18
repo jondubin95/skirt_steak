@@ -171,6 +171,18 @@ def test_invalid_responses_are_rejected_not_shown(tmp_path: Path):
     assert (
         validate_response("CANON.RAILS", {"kind": "refusal"}, text) == "invalid_output"
     )
+    assert (
+        validate_response("CANON.RAILS", {**good, "observed": ""}, text)
+        == "observed_not_verbatim"
+    )
+    assert (
+        validate_response("CANON.RAILS", {**good, "observed": " "}, text)
+        == "observed_not_verbatim"
+    )
+    assert (
+        validate_response("CANON.RAILS", {**good, "quote": " "}, text)
+        == "quote_not_in_paragraph"
+    )
 
     bad = {**good, "quote": "not in the draft", "observed": "not in the draft"}
     class Scripted:
@@ -190,6 +202,33 @@ def test_invalid_responses_are_rejected_not_shown(tmp_path: Path):
         if i.get("tier") == "B" and i["item_state"] == "coverage"
     ]
     assert rejected and all("rejected" in item["symptom"] for item in rejected)
+
+
+def test_normalized_punctuation_note_is_shown(tmp_path: Path):
+    work = _branch_work(tmp_path)
+    (work / "ch02.md").unlink()
+    straight = 'Mara said "Go" - now.'
+    (work / "ch01.md").write_text(straight + "\n", encoding="utf-8")
+    curly = "Mara said \u201cGo\u201d \u2014 now."
+
+    class Scripted:
+        name = "scripted"
+
+        def complete(self, prompt_hash, request=None):
+            return {
+                "kind": "note",
+                "label": "on_rails",
+                "quote": curly,
+                "observed": curly,
+                "interpretation": "The order is given on the page.",
+            }
+
+    report = build_report(work, layer_b=True, home=tmp_path, provider=Scripted())
+    notes = [item for item in report["items"] if item["item_state"] == "note"]
+    assert len(notes) == 1
+    assert notes[0]["evidence"][0]["quote"] == straight
+    assert notes[0]["observed"] == straight
+    assert not any(item["rule_id"] == "REPORT.VALIDATION" for item in report["items"])
 
 
 def test_validator_blocks_layer_b_above_info():

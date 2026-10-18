@@ -28,6 +28,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from doctor.later import OOC_LABELS, RAILS_LABELS, cache_key, vote
+from doctor.normalize import normalize_inline
 from doctor.timeline import AFTER, compare, scene_of
 
 RULESET_VERSION = "layer-b-0.4.3"
@@ -354,6 +355,20 @@ def _prompt_hash(rule: str, task: dict) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def normalized_response(response: dict) -> dict:
+    """Copy with quote and observed run through the same inline normalizer as the draft.
+
+    The stored paragraph is already normalized. The caller must not mutate the
+    original dict or a cache entry.
+    """
+    copied = dict(response)
+    for field in ("quote", "observed"):
+        value = copied.get(field)
+        if isinstance(value, str):
+            copied[field] = normalize_inline(value)
+    return copied
+
+
 def validate_response(rule: str, response: dict, paragraph_text: str) -> str | None:
     """Return a rejection reason, or None if the response meets the contract."""
     if not isinstance(response, dict) or response.get("kind") != "note":
@@ -361,11 +376,15 @@ def validate_response(rule: str, response: dict, paragraph_text: str) -> str | N
     if response.get("label") not in LABELS[rule]:
         return "label_not_closed"
     quote = response.get("quote")
-    if not isinstance(quote, str) or not quote or quote not in paragraph_text:
+    if not isinstance(quote, str) or not quote.strip() or quote not in paragraph_text:
         return "quote_not_in_paragraph"
     observed = response.get("observed")
     interpretation = response.get("interpretation")
-    if not isinstance(observed, str) or observed not in paragraph_text:
+    if (
+        not isinstance(observed, str)
+        or not observed.strip()
+        or observed not in paragraph_text
+    ):
         return "observed_not_verbatim"
     if not isinstance(interpretation, str) or not interpretation.strip():
         return "missing_interpretation"
@@ -723,7 +742,12 @@ def run_layer_b(
                     on_call(cache)
             good = []
             for response in responses:
-                reason = validate_response(rule, response, task["paragraph_text"])
+                checked = (
+                    normalized_response(response)
+                    if isinstance(response, dict)
+                    else response
+                )
+                reason = validate_response(rule, checked, task["paragraph_text"])
                 if reason:
                     rejected += 1
                     detail = (
@@ -731,7 +755,7 @@ def run_layer_b(
                     )
                     reasons[f"{reason}:{detail}" if detail else reason] += 1
                 else:
-                    good.append(response)
+                    good.append(checked)
             tallies = [
                 {"label": response["label"], "votes": 1, "response": response}
                 for response in good
