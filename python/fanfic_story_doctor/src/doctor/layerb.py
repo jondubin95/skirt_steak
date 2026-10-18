@@ -610,11 +610,19 @@ def run_layer_b(
     out = progress if progress is not None else sys.stderr
     chapter_of = {p.id: p.chapter for p in doc.paragraphs}
     max_passages = max_passages or default_limit(doc, per_chapter)
-    voice, skipped, unslotted = voice_tasks(doc, intake, mentions, max_passages)
-    rails_skip = _rails_skip(intake)
+    opted = set((intake.get("profile") or {}).get("opt_out") or [])
+    if "OOC.VOICE" in opted:
+        voice, skipped, unslotted = [], [], []
+    else:
+        voice, skipped, unslotted = voice_tasks(doc, intake, mentions, max_passages)
+    rails_skip = None if "CANON.RAILS" in opted else _rails_skip(intake)
     plan = {
         "OOC.VOICE": voice,
-        "CANON.RAILS": [] if rails_skip else _rails_tasks(doc, intake, graph, max_passages),
+        "CANON.RAILS": (
+            []
+            if "CANON.RAILS" in opted or rails_skip
+            else _rails_tasks(doc, intake, graph, max_passages)
+        ),
     }
     total = len(voice) + len(plan["CANON.RAILS"])
     stats = Counter()
@@ -626,6 +634,9 @@ def run_layer_b(
     lens: dict[str, dict] = {}
     model = getattr(provider, "name", type(provider).__name__)
     for rule in ("OOC.VOICE", "CANON.RAILS"):
+        if rule in opted:
+            lens[rule] = {"rule_id": rule, "state": "skipped", "reason": "opted_out"}
+            continue
         if rule == "CANON.RAILS" and rails_skip:
             lens[rule] = {"rule_id": rule, "state": "skipped", "reason": rails_skip}
             continue

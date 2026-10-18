@@ -249,6 +249,21 @@ def test_cap_smaller_than_cast_reports_no_slot(tmp_path: Path):
     assert any("no slot for teodor" in n for n in notes)
 
 
+def test_opt_out_skips_provider_call_for_that_rule(tmp_path: Path):
+    from test_layer_b import _branch_work
+
+    work = _branch_work(tmp_path)
+    (work / "profile.yaml").write_text(
+        yaml.safe_dump({"opt_out": ["OOC.VOICE"]}), encoding="utf-8"
+    )
+    provider = Recorder()
+    report = build_report(work, layer_b=True, home=tmp_path, provider=provider)
+    assert all(request["rule"] != "OOC.VOICE" for request in provider.requests)
+    assert any(request["rule"] == "CANON.RAILS" for request in provider.requests)
+    lens = {row["rule_id"]: row["reason"] for row in report["lens"]}
+    assert lens["OOC.VOICE"] == "opted_out"
+
+
 def test_default_cap_is_two_per_chapter_and_configurable(tmp_path: Path):
     from doctor.normalize import normalize_sources
 
