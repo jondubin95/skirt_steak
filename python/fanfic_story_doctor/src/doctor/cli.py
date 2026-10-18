@@ -107,6 +107,9 @@ def build_report(
     max_passages: int | None = None,
     per_chapter: int | None = None,
     on_call=None,
+    profile_cache: dict | None = None,
+    refresh_profiles: bool = False,
+    on_profile=None,
 ) -> dict:
     intake_data = yaml.safe_load((work / "intake.yaml").read_text(encoding="utf-8"))
     profile = {}
@@ -115,6 +118,7 @@ def build_report(
             yaml.safe_load((work / "profile.yaml").read_text(encoding="utf-8"))
         )
     intake_data["profile"] = profile
+    intake_data["_work_name"] = work.name
     intake, seeded = load_intake(intake_data)
     tags = None
     if (work / "tags.yaml").exists():
@@ -139,7 +143,7 @@ def build_report(
     mentions = build_mentions(doc, facts)
     items, lens, summary = run_rules(doc, facts, intake, tags, graph, mentions, layer_b)
     if layer_b:
-        b_items, b_lens = run_layer_b(
+        b_items, b_lens, voice_profiles = run_layer_b(
             doc,
             intake,
             graph,
@@ -149,6 +153,9 @@ def build_report(
             max_passages,
             per_chapter or PASSAGES_PER_CHAPTER,
             on_call=on_call,
+            profile_cache=profile_cache,
+            refresh_profiles=refresh_profiles,
+            on_profile=on_profile,
         )
         opted = {row["rule_id"] for row in lens if row["reason"] == "opted_out"}
         lens = [
@@ -157,6 +164,8 @@ def build_report(
         ]
         items.extend(item for item in b_items if item["rule_id"] not in opted)
     report = {"summary": summary, "lens": lens, "items": items}
+    if layer_b:
+        report["voice_profiles"] = voice_profiles
     paragraphs = {paragraph.id: paragraph.text for paragraph in doc.paragraphs}
     hashes = {paragraph.id: paragraph.content_hash for paragraph in doc.paragraphs}
     fact_index = {fact["id"]: fact for fact in facts}
@@ -238,6 +247,39 @@ def save_cache(home: Path, cache: dict) -> None:
         raise
 
 
+def profiles_path(home: Path) -> Path:
+    return home / "cache" / "profiles.json"
+
+
+def load_profile_cache(home: Path) -> dict:
+    path = profiles_path(home)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_profile_cache(home: Path, cache: dict) -> None:
+    path = profiles_path(home)
+    if _inside_repo(path):
+        raise SystemExit(
+            f"refusing to write the voice-profile cache inside this repo: {path}"
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="profiles.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(cache, sort_keys=True))
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
 def run_work(
     work: Path,
     layer_b: bool = False,
@@ -246,6 +288,7 @@ def run_work(
     cache: dict | None = None,
     max_passages: int | None = None,
     per_chapter: int | None = None,
+    refresh_profiles: bool = False,
 ) -> str:
     """Render a report. With a real provider the cache persists under DOCTOR_HOME/cache."""
     persist = (
@@ -254,6 +297,9 @@ def run_work(
     root = home if home is not None else doctor_home()
     if persist:
         cache = load_cache(root)
+        profile_cache = load_profile_cache(root)
+    else:
+        profile_cache = None
     try:
         report = build_report(
             work,
@@ -264,10 +310,14 @@ def run_work(
             max_passages=max_passages,
             per_chapter=per_chapter,
             on_call=(lambda c: save_cache(root, c)) if persist else None,
+            profile_cache=profile_cache,
+            refresh_profiles=refresh_profiles,
+            on_profile=(lambda c: save_profile_cache(root, c)) if persist else None,
         )
     finally:
         if persist:
             save_cache(root, cache)
+            save_profile_cache(root, profile_cache)
     return render(report)
 
 
@@ -294,6 +344,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=f"Default cap: this many passages per chapter per rule ({PASSAGES_PER_CHAPTER}).",
     )
+    run.add_argument(
+        "--refresh-voice-profiles",
+        action="store_true",
+        help="Regenerate cached OOC voice profiles even when the sample is unchanged.",
+    )
     canon = sub.add_parser("canon")
     canon_sub = canon.add_subparsers(dest="canon_cmd", required=True)
     load = canon_sub.add_parser("load")
@@ -315,6 +370,7 @@ def main(argv: list[str] | None = None) -> int:
                 provider=provider,
                 max_passages=args.max_passages,
                 per_chapter=args.per_chapter,
+                refresh_profiles=args.refresh_voice_profiles,
             )
         except DuplicateChapter as exc:
             raise SystemExit(str(exc)) from exc

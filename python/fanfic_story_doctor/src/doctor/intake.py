@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from doctor.factstore import validate_fact
+from doctor.validate_output import profile_prose
 
 RATINGS = {
     "Not Rated",
@@ -22,6 +23,8 @@ WARNINGS = {
 CATEGORIES = {"F/F", "F/M", "Gen", "M/M", "Multi", "Other"}
 WINDOWS = {"before", "after", "same"}
 LAYERS = {"canon", "au", "ledger"}
+PRONOUNS = {"he", "she", "they"}
+PROFILE_FIELDS = {"register", "cadence", "syntax", "diction", "range"}
 
 
 class IntakeError(ValueError):
@@ -54,17 +57,48 @@ def load_intake(data: dict) -> tuple[dict, list[dict]]:
     return data, facts
 
 
+def _pronouns(value, entity: str) -> list[str]:
+    if isinstance(value, str):
+        value = [value]
+    if (
+        not isinstance(value, list)
+        or not value
+        or any(not isinstance(item, str) or item not in PRONOUNS for item in value)
+    ):
+        raise IntakeError(f"{entity} pronouns must be he, she, they, or a list of those")
+    return value
+
+
 def _validate_cast(data: dict) -> None:
     people = list(data.get("main_cast") or []) + list(data.get("other_entities") or [])
+    entities = set()
     for person in people:
         entity = person.get("entity")
         if not isinstance(entity, str) or not entity:
             raise IntakeError("every cast entry needs an entity")
+        entities.add(entity)
+        if "pronouns" in person and person.get("pronouns") is not None:
+            person["pronouns"] = _pronouns(person.get("pronouns"), entity)
     ignored = data.get("spelling_ignore") or []
     if not isinstance(ignored, list) or any(
         not isinstance(item, str) or not item.strip() for item in ignored
     ):
         raise IntakeError("spelling_ignore must be a list of names")
+    profiles = data.get("voice_profiles") or {}
+    if not isinstance(profiles, dict):
+        raise IntakeError("voice_profiles must be a mapping of entity to fields")
+    for entity, profile in profiles.items():
+        if entity not in entities:
+            raise IntakeError(f"voice profile has no cast entity: {entity}")
+        if not isinstance(profile, dict) or not set(profile) <= PROFILE_FIELDS:
+            raise IntakeError(f"{entity} voice profile has an unknown field")
+        for field, text in profile.items():
+            if not isinstance(text, str) or not text.strip() or len(text) > 200:
+                raise IntakeError(f"{entity} voice profile {field} must be 1-200 characters")
+            if profile_prose(text):
+                raise IntakeError(
+                    f"{entity} voice profile {field} must not quote the draft or suggest a rewrite"
+                )
 
 
 def _seed(data: dict, primary: str) -> list[dict]:

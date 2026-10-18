@@ -5,6 +5,10 @@
   "required": ["summary", "lens", "items"],
   "properties": {
     "summary": { "type": "string" },
+    "voice_profiles": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/voice_profile" }
+    },
     "lens": {
       "type": "array",
       "items": { "$ref": "#/$defs/lens" }
@@ -78,8 +82,83 @@
         "subject": { "type": ["string", "null"] },
         "chapter": { "type": ["integer", "null"] },
         "agreement": { "type": ["string", "null"] },
+        "decision": { "type": ["string", "null"] },
+        "tally": { "$ref": "#/$defs/tally" },
+        "reads": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/read" }
+        },
         "covered": { "type": "integer" },
         "total": { "type": "integer" }
+      }
+    },
+    "voice_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "sample_count",
+        "sample_paragraph_ids",
+        "sample_hash",
+        "depends_on_hash",
+        "register",
+        "cadence",
+        "syntax",
+        "diction",
+        "range"
+      ],
+      "properties": {
+        "source": { "type": "string" },
+        "sample_count": { "type": "integer" },
+        "sample_paragraph_ids": { "type": "array", "items": { "type": "string" } },
+        "sample_hash": { "type": "string" },
+        "depends_on_hash": { "type": "string" },
+        "stale": { "type": "boolean" },
+        "register": { "type": "string", "maxLength": 200 },
+        "cadence": { "type": "string", "maxLength": 200 },
+        "syntax": { "type": "string", "maxLength": 200 },
+        "diction": { "type": "string", "maxLength": 200 },
+        "range": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "tally": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "break",
+        "drift",
+        "in_voice",
+        "intentional_evolution",
+        "not_enough_evidence",
+        "rejected"
+      ],
+      "properties": {
+        "break": { "type": "integer" },
+        "drift": { "type": "integer" },
+        "in_voice": { "type": "integer" },
+        "intentional_evolution": { "type": "integer" },
+        "not_enough_evidence": { "type": "integer" },
+        "rejected": { "type": "integer" }
+      }
+    },
+    "read": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "counted_as",
+        "evidence_strength",
+        "quote",
+        "observed",
+        "interpretation"
+      ],
+      "properties": {
+        "label": { "type": "string" },
+        "counted_as": { "type": "string" },
+        "evidence_strength": { "enum": ["sufficient", "thin"] },
+        "quote": { "type": "string" },
+        "observed": { "type": "string" },
+        "interpretation": { "type": "string" }
       }
     }
   }

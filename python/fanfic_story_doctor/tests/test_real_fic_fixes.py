@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import yaml
 
 from doctor.cli import build_report, drop_invalid_items
+from doctor.intake import IntakeError, load_intake
 from doctor.detect import alias_map_from_facts, ambiguous_aliases
 from doctor.normalize import (
     normalize_ao3_work,
@@ -132,6 +135,18 @@ def test_spelling_span_matches_the_normalized_paragraph():
     start, end = evidence["span"]
     assert doc.paragraphs[0].text[start:end] == "Teodr"
     assert evidence["paragraph_hash"] == doc.paragraphs[0].content_hash
+
+
+def test_intake_accepts_pronouns_overrides_and_spelling_ignore():
+    data = yaml.safe_load((FIXTURE / "intake.yaml").read_text(encoding="utf-8"))
+    data["main_cast"][0]["pronouns"] = "she"
+    data["voice_profiles"] = {"mara": {"syntax": "short clipped orders"}}
+    data["spelling_ignore"] = ["Brennock"]
+    intake, _facts = load_intake(data)
+    assert intake["main_cast"][0]["pronouns"] == ["she"]
+    data["main_cast"][0]["pronouns"] = ["it"]
+    with pytest.raises(IntakeError, match="pronouns"):
+        load_intake(data)
 
 
 def test_spelling_ignore_suppresses_without_creating_an_alias():

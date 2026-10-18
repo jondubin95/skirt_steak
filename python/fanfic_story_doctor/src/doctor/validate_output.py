@@ -6,10 +6,18 @@ import json
 import re
 from pathlib import Path
 
+from doctor.normalize import normalize_inline
+
 REWRITE = re.compile(
     r"\b(?:rewrite as\b|replace with\b|try:|for example:)", re.IGNORECASE
 )
 QUOTED = re.compile(r'"([^"]+)"')
+
+
+def profile_prose(text: str) -> bool:
+    """A voice-profile field must not quote text or propose a rewrite."""
+    return '"' in normalize_inline(text) or bool(REWRITE.search(text))
+
 
 # Shipped inside the package (see [tool.setuptools.package-data]).
 SCHEMA_PATH = Path(__file__).resolve().parent / "schemas" / "report.schema.json"
@@ -36,6 +44,7 @@ def validate_report(
         errors.append(f"schema: {exc.message}")
         return errors
     hashes = hashes or {}
+    errors.extend(_profiles(report))
     for item in report.get("items") or []:
         for evidence in item.get("evidence") or []:
             if evidence.get("kind") == "prose":
@@ -120,4 +129,24 @@ def _rewrite(item: dict, paragraphs: dict[str, str], facts: dict[str, dict]) -> 
         for quote in QUOTED.findall(value):
             if quote not in allowed and not any(quote in blob for blob in allowed):
                 return True
+    for read in item.get("reads") or []:
+        for field in ("quote", "observed", "interpretation"):
+            value = read.get(field) or ""
+            if field != "quote":
+                allowed.add(read.get("quote") or "")
+            if REWRITE.search(value):
+                return True
+            for quote in QUOTED.findall(value):
+                if quote not in allowed and not any(quote in blob for blob in allowed):
+                    return True
     return False
+
+
+def _profiles(report: dict) -> list[str]:
+    errors = []
+    for entity, profile in (report.get("voice_profiles") or {}).items():
+        for field in ("register", "cadence", "syntax", "diction", "range"):
+            value = str(profile.get(field) or "")
+            if profile_prose(value):
+                errors.append(f"voice profile {entity} {field}")
+    return errors

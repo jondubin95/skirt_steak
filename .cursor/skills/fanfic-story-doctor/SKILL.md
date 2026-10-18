@@ -33,7 +33,7 @@ A rule that is not built is reported as **skipped**. Skipped is not "nothing fou
 
 `CANON.DIVERGENCE` checks event order against the declared branch point. `CANON.RAILS` is a Layer B note, info only, and it is not a fact check.
 
-Intake `names` holds nicknames. `spelling_ignore` suppresses real near-names without making them aliases.
+`OOC.VOICE` judges attributed dialogue against one cached early-work profile per character. It does not judge narration. Intake `names` holds nicknames, `pronouns` are `he`, `she`, or `they`, and `voice_profiles` can override profile fields in paraphrase, without quotation marks or rewrite phrasing. `spelling_ignore` suppresses real near-names without making them aliases. `--refresh-voice-profiles` rebuilds a stale profile. A paid provider still needs `DOCTOR_G9_OPT_IN=1` on that command only.
 
 ## Hard rules
 

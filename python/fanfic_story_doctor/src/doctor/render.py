@@ -45,7 +45,7 @@ def _voice_lines(notes: list[dict]) -> list[str]:
         lines.append(
             f"- [note] OOC.VOICE{tentative} {note.get('subject') or '(unknown)'} "
             f"ch{_chapter(note)} label={note.get('label')} agreement={agreement} "
-            f'quote="{_quote(note)}"'
+            f'quote="{_quote(note)}" reason="{note.get("interpretation") or ""}"'
         )
     return lines
 
@@ -71,6 +71,17 @@ def render(report: dict) -> str:
         lines.append("")
         lines.append("## Voice notes (info only; agreement is not correctness)")
         lines.extend(_voice_lines(voice))
+    profiles = report.get("voice_profiles") or {}
+    if profiles:
+        lines.append("")
+        lines.append("## Voice profiles")
+        for entity, profile in profiles.items():
+            state = " stale" if profile.get("stale") else ""
+            sample = ", ".join(profile.get("sample_paragraph_ids") or [])
+            lines.append(
+                f"- {entity}: source={profile.get('source')}{state} "
+                f"sample_count={profile.get('sample_count')} sample={sample}"
+            )
     lines.append("")
     lines.append(
         "Archive Warnings were not scanned. Whether a warning applies is your call."
