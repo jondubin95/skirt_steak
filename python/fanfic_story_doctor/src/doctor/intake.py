@@ -47,10 +47,24 @@ def load_intake(data: dict) -> tuple[dict, list[dict]]:
     for event in data.get("events") or []:
         if event.get("layer") not in LAYERS:
             raise IntakeError(f"unknown event layer: {event.get('layer')}")
+    _validate_cast(data)
     facts = _seed(data, primary)
     for fact in facts:
         validate_fact(fact)
     return data, facts
+
+
+def _validate_cast(data: dict) -> None:
+    people = list(data.get("main_cast") or []) + list(data.get("other_entities") or [])
+    for person in people:
+        entity = person.get("entity")
+        if not isinstance(entity, str) or not entity:
+            raise IntakeError("every cast entry needs an entity")
+    ignored = data.get("spelling_ignore") or []
+    if not isinstance(ignored, list) or any(
+        not isinstance(item, str) or not item.strip() for item in ignored
+    ):
+        raise IntakeError("spelling_ignore must be a list of names")
 
 
 def _seed(data: dict, primary: str) -> list[dict]:

@@ -57,6 +57,89 @@ def test_common_words_are_not_flagged_against_short_names():
     assert _spell("Shawn burned.", ["Shawe"]) == ["Shawn"]
 
 
+def test_short_alias_does_not_match_inside_a_longer_word():
+    from doctor.detect import detect_mentions
+
+    doc = normalize_markdown("Marathon day. Mara's pack. Teodor called.", chapter=1)
+    notes = detect_mentions(
+        doc.paragraphs,
+        alias_map_from_facts(
+            [
+                {
+                    "predicate": "alias",
+                    "object": "Mara",
+                    "subject": "mara",
+                    "status": "confirmed",
+                },
+                {
+                    "predicate": "alias",
+                    "object": "Teo",
+                    "subject": "teodor",
+                    "status": "confirmed",
+                },
+            ]
+        ),
+    )
+    assert [note["surface"] for note in notes] == ["Mara"]
+
+
+def test_same_character_aliases_still_flag_and_order_does_not_matter():
+    owners = {"Teodor": {"teodor"}, "Teo": {"teodor"}}
+    text = "Teodo ran."
+    one = name_spelling(
+        normalize_markdown(text, chapter=1).paragraphs,
+        ["Teodor", "Teo"],
+        owners=owners,
+    )
+    two = name_spelling(
+        normalize_markdown(text, chapter=1).paragraphs,
+        ["Teo", "Teodor"],
+        owners=owners,
+    )
+    assert [item["item_state"] for item in one] == ["finding"]
+    assert one[0]["evidence"][0]["quote"] == "Teodo"
+    assert [item["symptom"] for item in two] == [item["symptom"] for item in one]
+
+
+def test_long_or_repeated_prefix_is_one_nickname_question():
+    long_tail = name_spelling(
+        normalize_markdown("Teod ran.", chapter=1).paragraphs,
+        ["Teodor"],
+        owners={"Teodor": {"teodor"}},
+    )
+    assert long_tail[0]["item_state"] == "question"
+    assert "nickname for Teodor" in long_tail[0]["symptom"]
+    repeated = name_spelling(
+        normalize_markdown("Teodo waved.\n\nTeodo left.", chapter=1).paragraphs,
+        ["Teodor"],
+        owners={"Teodor": {"teodor"}},
+    )
+    assert len(repeated) == 1 and repeated[0]["item_state"] == "question"
+    assert (
+        name_spelling(
+            normalize_markdown("Mari waited.", chapter=1).paragraphs,
+            ["Mara", "Maris"],
+            owners={"Mara": {"mara"}, "Maris": {"maris"}},
+        )
+        == []
+    )
+
+
+def test_spelling_span_matches_the_normalized_paragraph():
+    doc = normalize_markdown("Teodr ran.", chapter=1)
+    items = name_spelling(doc.paragraphs, ["Teodor"])
+    evidence = items[0]["evidence"][0]
+    start, end = evidence["span"]
+    assert doc.paragraphs[0].text[start:end] == "Teodr"
+    assert evidence["paragraph_hash"] == doc.paragraphs[0].content_hash
+
+
+def test_spelling_ignore_suppresses_without_creating_an_alias():
+    doc = normalize_markdown("Brennock arrived.", chapter=1)
+    assert name_spelling(doc.paragraphs, ["Brannoch"], dismissed=["Brennock"]) == []
+    assert name_spelling(doc.paragraphs, ["Brannoch"])[0]["item_state"] == "finding"
+
+
 def test_shared_surname_is_ambiguous_not_attributed():
     facts = [
         {

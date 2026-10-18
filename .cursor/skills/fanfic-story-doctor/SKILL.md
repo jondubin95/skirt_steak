@@ -33,6 +33,8 @@ A rule that is not built is reported as **skipped**. Skipped is not "nothing fou
 
 `CANON.DIVERGENCE` checks event order against the declared branch point. `CANON.RAILS` is a Layer B note, info only, and it is not a fact check.
 
+Intake `names` holds nicknames. `spelling_ignore` suppresses real near-names without making them aliases.
+
 ## Hard rules
 
 - Never produce replacement prose.

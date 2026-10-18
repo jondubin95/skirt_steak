@@ -33,6 +33,14 @@
         "kind": { "enum": ["prose", "file"] },
         "paragraph_id": { "type": "string" },
         "quote": { "type": "string" },
+        "span": {
+          "type": ["array", "null"],
+          "prefixItems": [{ "type": "integer" }, { "type": "integer" }],
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "integer" }
+        },
+        "paragraph_hash": { "type": ["string", "null"] },
         "path": { "type": "string" },
         "field": { "type": "string" }
       }

@@ -110,9 +110,9 @@ def _spell(text, aliases):
 
 
 def test_possessive_forms_of_alias_are_not_flagged():
-    text = "Ilyas coat. Ilyas' coat. Ilya's coat. Ilya\u2019s map. Ilyas's knife."
-    assert _spell(text, ["Ilya"]) == []
-    assert _spell(text, ["Ilyas"]) == []
+    text = "Maras coat. Maras' coat. Mara's coat. Mara\u2019s map. Maras's knife."
+    assert _spell(text, ["Mara"]) == []
+    assert _spell(text, ["Maras"]) == []
 
 
 def test_identical_spelling_findings_are_deduped_with_count():

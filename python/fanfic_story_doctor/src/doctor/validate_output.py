@@ -20,7 +20,10 @@ def load_schema() -> dict:
 
 
 def validate_report(
-    report: dict, paragraphs: dict[str, str], facts: dict[str, dict]
+    report: dict,
+    paragraphs: dict[str, str],
+    facts: dict[str, dict],
+    hashes: dict[str, str] | None = None,
 ) -> list[str]:
     errors: list[str] = []
     try:
@@ -32,6 +35,7 @@ def validate_report(
     except jsonschema.ValidationError as exc:
         errors.append(f"schema: {exc.message}")
         return errors
+    hashes = hashes or {}
     for item in report.get("items") or []:
         for evidence in item.get("evidence") or []:
             if evidence.get("kind") == "prose":
@@ -41,6 +45,18 @@ def validate_report(
                     errors.append(f"unknown paragraph {pid}")
                 elif quote and quote not in paragraphs[pid]:
                     errors.append(f"quote is not in {pid}")
+                span = evidence.get("span", None)
+                if "span" in evidence and span is not None:
+                    if (
+                        not isinstance(span, list)
+                        or len(span) != 2
+                        or pid not in paragraphs
+                        or paragraphs[pid][span[0] : span[1]] != quote
+                    ):
+                        errors.append(f"span does not match {pid}")
+                digest = evidence.get("paragraph_hash")
+                if digest is not None and hashes and hashes.get(pid) not in {None, digest}:
+                    errors.append(f"paragraph hash does not match {pid}")
         for fact_id in item.get("fact_ids") or []:
             if fact_id and fact_id not in facts:
                 errors.append(f"unknown fact {fact_id}")

@@ -158,15 +158,18 @@ def build_report(
         items.extend(item for item in b_items if item["rule_id"] not in opted)
     report = {"summary": summary, "lens": lens, "items": items}
     paragraphs = {paragraph.id: paragraph.text for paragraph in doc.paragraphs}
+    hashes = {paragraph.id: paragraph.content_hash for paragraph in doc.paragraphs}
     fact_index = {fact["id"]: fact for fact in facts}
-    report = drop_invalid_items(report, paragraphs, fact_index)
-    errors = validate_report(report, paragraphs, fact_index)
+    report = drop_invalid_items(report, paragraphs, fact_index, hashes)
+    errors = validate_report(report, paragraphs, fact_index, hashes)
     if errors:
         raise SystemExit("report failed validation: " + "; ".join(errors))
     return report
 
 
-def drop_invalid_items(report: dict, paragraphs: dict, fact_index: dict) -> dict:
+def drop_invalid_items(
+    report: dict, paragraphs: dict, fact_index: dict, hashes: dict | None = None
+) -> dict:
     """Drop any item that fails validation instead of losing the whole report.
 
     Dropped items are counted in one unverifiable note so the gap is visible.
@@ -174,7 +177,7 @@ def drop_invalid_items(report: dict, paragraphs: dict, fact_index: dict) -> dict
     kept, reasons = [], []
     for item in report["items"]:
         errors = validate_report(
-            {"summary": "", "lens": [], "items": [item]}, paragraphs, fact_index
+            {"summary": "", "lens": [], "items": [item]}, paragraphs, fact_index, hashes
         )
         if errors:
             reasons.append(f"{item.get('rule_id')}: {errors[0]}")

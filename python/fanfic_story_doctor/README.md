@@ -2,7 +2,7 @@
 
 Diagnose continuity and canon divergence. Do not rewrite prose.
 
-Spec: [handoffs/fanfic-story-doctor-spec-v0.4.3.md](../../handoffs/fanfic-story-doctor-spec-v0.4.3.md). Earlier drafts (v0.4.2 and before) are kept privately and are not in this repo.
+Spec: [handoffs/fanfic-story-doctor-spec-v0.4.4.md](../../handoffs/fanfic-story-doctor-spec-v0.4.4.md). v0.4.3 remains in force where the amendment is silent.
 
 ## Run
 
@@ -18,6 +18,8 @@ Real drafts and books go in `$DOCTOR_HOME` (default `%USERPROFILE%\doctor-home` 
 `CANON.DIVERGENCE` checks event order against the declared branch. `CANON.RAILS` is a Layer B note. Layer A makes no model call.
 
 Layer B has two providers: `mock` (default, deterministic, no network) and `cursor-agent` (the Cursor CLI). `doctor run <work> --layer-b` runs `OOC.VOICE` (main-cast mentions) and `CANON.RAILS` (passages after a declared AU branch; skipped as `no_declared_branch` otherwise) three times per passage, votes, and adds `note` items. Notes are severity `info`, never findings or blockers, carry closed labels, an exact quote checked against the cited paragraph, and `observed` separate from `interpretation`. Agreement (`2_of_3`, `3_of_3`, `low_agreement`) is not correctness. Invalid responses are rejected and counted. Without `--layer-b` both rules report `skipped (layer_a_only)`.
+
+`CANON.NAME_SPELLING` ignores possessives, stammers, plural surnames, dictionary words, and names listed in intake `spelling_ignore`. A declared nickname belongs in `names`. An undeclared prefix of at least three characters becomes a question when it recurs or drops at least two characters; a one-character truncation seen once stays a finding. A typo that matches more than one character is suppressed. Alias matches use letter boundaries, so a short nickname does not match inside a longer word.
 
 **Gate G9.** Any `--provider` other than `mock` is refused unless `DOCTOR_G9_OPT_IN=1` is set for that run, after checking Cursor data and retention settings on the actual account. There is no per-work exception: a public AO3 work needs the same opt-in as a private draft. Set it only for the command that should send text, not in your profile.
 
