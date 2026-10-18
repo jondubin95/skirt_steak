@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -105,6 +106,7 @@ def build_report(
     cache: dict | None = None,
     max_passages: int | None = None,
     per_chapter: int | None = None,
+    on_call=None,
 ) -> dict:
     intake_data = yaml.safe_load((work / "intake.yaml").read_text(encoding="utf-8"))
     profile = {}
@@ -146,6 +148,7 @@ def build_report(
             cache,
             max_passages,
             per_chapter or PASSAGES_PER_CHAPTER,
+            on_call=on_call,
         )
         opted = {row["rule_id"] for row in lens if row["reason"] == "opted_out"}
         lens = [
@@ -221,9 +224,15 @@ def save_cache(home: Path, cache: dict) -> None:
             f"refusing to write the Layer B cache inside a git repo: {path}"
         )
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(cache, sort_keys=True), encoding="utf-8")
-    tmp.replace(path)
+    fd, tmp = tempfile.mkstemp(prefix="layerb.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(cache, sort_keys=True))
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
 
 
 def run_work(
@@ -251,6 +260,7 @@ def run_work(
             cache=cache,
             max_passages=max_passages,
             per_chapter=per_chapter,
+            on_call=(lambda c: save_cache(root, c)) if persist else None,
         )
     finally:
         if persist:

@@ -19,8 +19,10 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
+import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -604,11 +606,24 @@ def run_layer_b(
     cache: dict | None = None,
     max_passages: int | None = None,
     per_chapter: int = PASSAGES_PER_CHAPTER,
+    on_call=None,
+    progress=None,
 ):
     """Return (items, lens rows) for OOC.VOICE and CANON.RAILS.
 
     The cap per rule is max_passages if given, else per_chapter x chapters.
+    on_call(cache) runs after every task that reached the provider, so the
+    caller can persist the cache. progress is a text stream (default stderr)
+    for one line per task.
     """
+    out = progress if progress is not None else sys.stderr
+    chapter_of = {p.id: p.chapter for p in doc.paragraphs}
+    planned = _planned(doc, intake, graph, mentions, max_passages or default_limit(doc, per_chapter))
+    total = len(planned)
+    stats = Counter()
+    run_started = time.monotonic()
+    out.write(f"[layerb] start tasks={total} calls<={total * RUNS} runs_per_task={RUNS}\n")
+    out.flush()
     max_passages = max_passages or default_limit(doc, per_chapter)
     cache = {} if cache is None else cache
     items: list[dict] = []
@@ -675,12 +690,15 @@ def run_layer_b(
                     }
                 )
         for task in tasks:
+            stats["done"] += 1
+            started = time.monotonic()
             prompt_hash = _prompt_hash(rule, task)
             key = cache_key(
                 task["paragraph_text"], f"{RULESET_VERSION}:{rule}", model, prompt_hash
             )
             responses = cache_get(cache, key)
-            if responses is None:
+            hit = responses is not None
+            if not hit:
                 requests = [
                     {
                         **task,
@@ -709,6 +727,8 @@ def run_layer_b(
                     if isinstance(response, dict)
                 ):
                     cache[key] = responses
+                if on_call is not None:
+                    on_call(cache)
             good = []
             for response in responses:
                 reason = validate_response(rule, response, task["paragraph_text"])
@@ -724,7 +744,16 @@ def run_layer_b(
                 {"label": response["label"], "votes": 1, "response": response}
                 for response in good
             ]
-            for note in vote(tallies):
+            notes = vote(tallies)
+            stats["hit" if hit else "miss"] += 1
+            label = notes[0]["label"] if notes else "none"
+            out.write(
+                f"[layerb] {stats['done']}/{total} ch={chapter_of.get(task['paragraph_id'], '?')} "
+                f"char={task.get('subject') if rule == 'OOC.VOICE' else '-'} cache={'hit' if hit else 'miss'} "
+                f"{time.monotonic() - started:.1f}s label={label}\n"
+            )
+            out.flush()
+            for note in notes:
                 response = note["response"]
                 items.append(
                     {
@@ -747,6 +776,8 @@ def run_layer_b(
                         "interpretation": response["interpretation"],
                         "label": note["label"],
                         "agreement": note["agreement"],
+                        "subject": task.get("subject"),
+                        "chapter": chapter_of.get(task["paragraph_id"]),
                     }
                 )
         if rejected:
@@ -776,4 +807,22 @@ def run_layer_b(
             "state": "applied",
             "reason": f"provider={model}; tasks={len(tasks)}",
         }
+    out.write(
+        f"[layerb] done tasks={stats['done']}/{total} cache_hits={stats['hit']} "
+        f"cache_misses={stats['miss']} {time.monotonic() - run_started:.1f}s\n"
+    )
+    out.flush()
     return items, lens
+
+
+def _planned(doc, intake, graph, mentions, limit) -> list:
+    """Every task run_layer_b will send, across both rules, for the start line."""
+    planned = []
+    for rule in ("OOC.VOICE", "CANON.RAILS"):
+        if rule == "CANON.RAILS" and (
+            ((intake.get("au") or {}).get("au_kind")) == "alternate_setting"
+            or not _declared_branch(intake)
+        ):
+            continue
+        planned += _tasks(rule, doc, intake, graph, mentions, limit)
+    return planned

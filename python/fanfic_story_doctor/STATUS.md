@@ -46,7 +46,7 @@ Keyed to spec v0.4.3. A row may say "Test passed" only when the named test exist
 | 12 html in run | Test passed | test_html_chapter_files_and_full_work_run_through_doctor_run |
 | 8.6 candidates | Test passed | test_candidates_never_cross_punctuation_and_are_substrings |
 | 8.6 spelling noise | Test passed | test_possessives_stammers_and_plural_surnames_are_not_flagged |
-| 8.6 spelling hits | Test passed | test_missing_apostrophe_and_real_typo_are_flagged |
+| 8.6 spelling hits | Test passed | test_alias_plus_s_is_not_flagged_but_real_typo_is |
 | 8.6 common words | Test passed | test_common_words_are_not_flagged_against_short_names |
 | 8.6 shared surname | Test passed | test_shared_surname_is_ambiguous_not_attributed |
 | 11 drop invalid item | Test passed | test_invalid_item_is_dropped_not_fatal |

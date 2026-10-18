@@ -21,6 +21,7 @@
     },
     {
       "agreement": "2_of_3",
+      "chapter": 2,
       "depends_on_hash": "08c450805762cb1bbb9dfe76703677ec2aaeaf3375a16aa91a86f7d3d69108ab",
       "evidence": [
         {
@@ -37,11 +38,13 @@
       "observed": "Mara",
       "rule_id": "OOC.VOICE",
       "severity": "info",
+      "subject": "mara",
       "symptom": "OOC.VOICE label not_enough_evidence (2_of_3). Agreement is not correctness.",
       "tier": "B"
     },
     {
       "agreement": "low_agreement",
+      "chapter": 2,
       "depends_on_hash": "08c450805762cb1bbb9dfe76703677ec2aaeaf3375a16aa91a86f7d3d69108ab",
       "evidence": [
         {
@@ -58,11 +61,13 @@
       "observed": "Mara",
       "rule_id": "OOC.VOICE",
       "severity": "info",
+      "subject": "mara",
       "symptom": "OOC.VOICE label intentional_evolution (low_agreement). Agreement is not correctness.",
       "tier": "B"
     },
     {
       "agreement": "2_of_3",
+      "chapter": 2,
       "depends_on_hash": "c1ce20b7dd208c98cd164372463f5e362534eed9505c502b2f38380847ecdb7a",
       "evidence": [
         {
@@ -79,11 +84,13 @@
       "observed": "Teodor",
       "rule_id": "OOC.VOICE",
       "severity": "info",
+      "subject": "teodor",
       "symptom": "OOC.VOICE label drift (2_of_3). Agreement is not correctness.",
       "tier": "B"
     },
     {
       "agreement": "low_agreement",
+      "chapter": 2,
       "depends_on_hash": "c1ce20b7dd208c98cd164372463f5e362534eed9505c502b2f38380847ecdb7a",
       "evidence": [
         {
@@ -100,11 +107,13 @@
       "observed": "Teodor",
       "rule_id": "OOC.VOICE",
       "severity": "info",
+      "subject": "teodor",
       "symptom": "OOC.VOICE label in_voice (low_agreement). Agreement is not correctness.",
       "tier": "B"
     },
     {
       "agreement": "2_of_3",
+      "chapter": 1,
       "depends_on_hash": "7a86fcf446c44db6a7f3c7a87a472eaf633571c3d1e9caaab0205d3c1b0f839d",
       "evidence": [
         {
@@ -121,11 +130,13 @@
       "observed": "Mara crossed the broken bridge",
       "rule_id": "CANON.RAILS",
       "severity": "info",
+      "subject": "ev-bridge",
       "symptom": "CANON.RAILS label consequence_shown (2_of_3). Agreement is not correctness.",
       "tier": "B"
     },
     {
       "agreement": "low_agreement",
+      "chapter": 1,
       "depends_on_hash": "7a86fcf446c44db6a7f3c7a87a472eaf633571c3d1e9caaab0205d3c1b0f839d",
       "evidence": [
         {
@@ -142,11 +153,13 @@
       "observed": "Mara crossed the broken bridge",
       "rule_id": "CANON.RAILS",
       "severity": "info",
+      "subject": "ev-bridge",
       "symptom": "CANON.RAILS label on_rails (low_agreement). Agreement is not correctness.",
       "tier": "B"
     },
     {
       "agreement": "2_of_3",
+      "chapter": 1,
       "depends_on_hash": "fa4732337db17ab32e777137139dae3d16e76cefa9c67eecfd3c2e25671af2ff",
       "evidence": [
         {
@@ -163,11 +176,13 @@
       "observed": "Teodor waited at the camp",
       "rule_id": "CANON.RAILS",
       "severity": "info",
+      "subject": "ev-bridge",
       "symptom": "CANON.RAILS label on_rails (2_of_3). Agreement is not correctness.",
       "tier": "B"
     },
     {
       "agreement": "low_agreement",
+      "chapter": 1,
       "depends_on_hash": "fa4732337db17ab32e777137139dae3d16e76cefa9c67eecfd3c2e25671af2ff",
       "evidence": [
         {
@@ -184,11 +199,13 @@
       "observed": "Teodor waited at the camp",
       "rule_id": "CANON.RAILS",
       "severity": "info",
+      "subject": "ev-bridge",
       "symptom": "CANON.RAILS label not_enough_evidence (low_agreement). Agreement is not correctness.",
       "tier": "B"
     },
     {
       "agreement": "2_of_3",
+      "chapter": 1,
       "depends_on_hash": "280c46e1914daf702f381e916bbb5d2ea4b0343e21d9c4e457503226f2253845",
       "evidence": [
         {
@@ -205,11 +222,13 @@
       "observed": "\"Keep your lantern low,\" Mara",
       "rule_id": "CANON.RAILS",
       "severity": "info",
+      "subject": "ev-bridge",
       "symptom": "CANON.RAILS label on_rails (2_of_3). Agreement is not correctness.",
       "tier": "B"
     },
     {
       "agreement": "low_agreement",
+      "chapter": 1,
       "depends_on_hash": "280c46e1914daf702f381e916bbb5d2ea4b0343e21d9c4e457503226f2253845",
       "evidence": [
         {
@@ -226,11 +245,13 @@
       "observed": "\"Keep your lantern low,\" Mara",
       "rule_id": "CANON.RAILS",
       "severity": "info",
+      "subject": "ev-bridge",
       "symptom": "CANON.RAILS label not_enough_evidence (low_agreement). Agreement is not correctness.",
       "tier": "B"
     },
     {
       "agreement": "3_of_3",
+      "chapter": 1,
       "depends_on_hash": "120cfda37943ebd0bc6ed4752d9caefb1cb2abd4bf68bc8b8642bb7533971fb6",
       "evidence": [
         {
@@ -247,6 +268,7 @@
       "observed": "\"I always keep it low,\"",
       "rule_id": "CANON.RAILS",
       "severity": "info",
+      "subject": "ev-bridge",
       "symptom": "CANON.RAILS label not_enough_evidence (3_of_3). Agreement is not correctness.",
       "tier": "B"
     }

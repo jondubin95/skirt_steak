@@ -17,10 +17,6 @@
 
 ## Items
 - [coverage] LEDGER.COVERAGE: status facts cover 0 of 2 main-cast characters.
-- [note] OOC.VOICE: OOC.VOICE label not_enough_evidence (2_of_3). Agreement is not correctness.
-- [note] OOC.VOICE: OOC.VOICE label intentional_evolution (low_agreement). Agreement is not correctness.
-- [note] OOC.VOICE: OOC.VOICE label drift (2_of_3). Agreement is not correctness.
-- [note] OOC.VOICE: OOC.VOICE label in_voice (low_agreement). Agreement is not correctness.
 - [note] CANON.RAILS: CANON.RAILS label consequence_shown (2_of_3). Agreement is not correctness.
 - [note] CANON.RAILS: CANON.RAILS label on_rails (low_agreement). Agreement is not correctness.
 - [note] CANON.RAILS: CANON.RAILS label on_rails (2_of_3). Agreement is not correctness.
@@ -28,5 +24,11 @@
 - [note] CANON.RAILS: CANON.RAILS label on_rails (2_of_3). Agreement is not correctness.
 - [note] CANON.RAILS: CANON.RAILS label not_enough_evidence (low_agreement). Agreement is not correctness.
 - [note] CANON.RAILS: CANON.RAILS label not_enough_evidence (3_of_3). Agreement is not correctness.
+
+## Voice notes (info only; agreement is not correctness)
+- [note] OOC.VOICE mara: not_enough_evidence x1
+- [note] OOC.VOICE teodor: in_voice x1
+- [note] OOC.VOICE (tentative) mara ch2 label=intentional_evolution agreement=low_agreement quote="Mara"
+- [note] OOC.VOICE teodor ch2 label=drift agreement=2_of_3 quote="Teodor"
 
 Archive Warnings were not scanned. Whether a warning applies is your call.

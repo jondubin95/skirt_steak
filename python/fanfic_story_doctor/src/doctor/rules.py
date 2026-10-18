@@ -634,6 +634,8 @@ def name_spelling(
                 continue
             if core.endswith("s") and core[:-1] in surnames:
                 continue  # plural surname: "the Venns"
+            if _possessive_of_alias(token, core, alias_set, folded):
+                continue  # "Ilyas", "Ilyas'", "Ilya's" for alias Ilya or Ilyas
             words = core.split()
             if len(words) == 1 and (
                 core.lower() in vocab or core.lower() in COMMON_WORDS
@@ -641,10 +643,7 @@ def name_spelling(
                 continue
             hit = None
             symptom = ""
-            if core.endswith("s") and core[:-1] in alias_set:
-                hit = core[:-1]
-                symptom = f"{token} may be the alias {hit} missing an apostrophe."
-            else:
+            if True:
                 for alias in aliases:
                     if len(alias.split()) != len(words):
                         continue
@@ -681,7 +680,44 @@ def name_spelling(
                     "depends_on_hash": depends_hash([hit, token]),
                 }
             )
-    return items
+    return _dedupe(items)
+
+
+def _possessive_of_alias(token: str, core: str, alias_set: set, folded: dict) -> bool:
+    """alias+s, alias+s', alias+'s (either apostrophe), or a possessive whose
+    core plus s is an alias (Ilya's when the alias is Ilyas)."""
+
+    def known(name: str) -> bool:
+        return bool(name) and (name in alias_set or name.casefold() in folded)
+
+    bare = token.rstrip("-")
+    for suffix in ("s'", "s\u2019", "s"):
+        if bare.endswith(suffix) and known(bare[: -len(suffix)]):
+            return True
+    if bare != core and (known(core + "s") or (core.endswith("s") and known(core[:-1]))):
+        return True
+    return False
+
+
+def _dedupe(items: list[dict]) -> list[dict]:
+    """Identical findings (same symptom) collapse into one item with a count."""
+    merged: dict[str, dict] = {}
+    counts: dict[str, int] = {}
+    for item in items:
+        key = item["symptom"]
+        if key not in merged:
+            merged[key] = {**item, "evidence": list(item["evidence"])}
+            counts[key] = 0
+        elif len(merged[key]["evidence"]) < 5:
+            merged[key]["evidence"].append(item["evidence"][0])
+        counts[key] += 1
+    out = []
+    for key, item in merged.items():
+        if counts[key] > 1:
+            item["total"] = counts[key]
+            item["symptom"] = f"{key} Seen {counts[key]} times."[:300]
+        out.append(item)
+    return out
 
 
 def _damerau(a: str, b: str) -> int:

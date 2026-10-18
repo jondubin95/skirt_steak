@@ -67,6 +67,8 @@
         "suggested_fix": { "type": ["string", "null"], "maxLength": 240 },
         "ooc_label": { "type": ["string", "null"] },
         "label": { "type": ["string", "null"] },
+        "subject": { "type": ["string", "null"] },
+        "chapter": { "type": ["integer", "null"] },
         "agreement": { "type": ["string", "null"] },
         "covered": { "type": "integer" },
         "total": { "type": "integer" }

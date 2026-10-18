@@ -41,9 +41,10 @@ def test_possessives_stammers_and_plural_surnames_are_not_flagged():
     assert _spell(text) == []
 
 
-def test_missing_apostrophe_and_real_typo_are_flagged():
+def test_alias_plus_s_is_not_flagged_but_real_typo_is():
+    # alias+s ("Teodors") is read as a possessive without the apostrophe, not a typo.
     found = _spell("She took Teodors knife. Then Teodr left.")
-    assert found == ["Teodors", "Teodr"]
+    assert found == ["Teodr"]
 
 
 def test_common_words_are_not_flagged_against_short_names():
