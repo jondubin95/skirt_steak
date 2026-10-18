@@ -137,6 +137,36 @@ def test_spelling_span_matches_the_normalized_paragraph():
     assert evidence["paragraph_hash"] == doc.paragraphs[0].content_hash
 
 
+def test_html_review_is_escaped_and_refuses_the_repo(tmp_path: Path, monkeypatch):
+    from doctor.cli import run_work
+    from doctor.normalize import normalize_markdown
+    from doctor.render import render_html
+    from test_engine import _fake_checkout
+
+    doc = normalize_markdown("Teodr <ran>.", chapter=1)
+    report = {
+        "summary": "1 finding.",
+        "lens": [{"rule_id": "CANON.NAME_SPELLING", "state": "applied", "reason": "ok"}],
+        "items": name_spelling(doc.paragraphs, ["Teodor"]),
+        "voice_profiles": {},
+    }
+    for item in report["items"]:
+        item["chapter"] = 1
+    html = render_html(report, doc.paragraphs)
+    assert "&lt;ran&gt;" in html and "<ran>" not in html
+    assert "sha256-" in html and "keydown" in html
+    fake = _fake_checkout(tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    with pytest.raises(SystemExit, match="this repo"):
+        run_work(
+            FIXTURE,
+            home=tmp_path / "home",
+            html_path=fake / "python" / "fanfic_story_doctor" / "report.html",
+        )
+
+
 def test_intake_accepts_pronouns_overrides_and_spelling_ignore():
     data = yaml.safe_load((FIXTURE / "intake.yaml").read_text(encoding="utf-8"))
     data["main_cast"][0]["pronouns"] = "she"

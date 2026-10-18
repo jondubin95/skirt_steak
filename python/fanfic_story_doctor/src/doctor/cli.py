@@ -28,7 +28,7 @@ from doctor.pipeline import (
     run_rules,
     summarize,
 )
-from doctor.render import render
+from doctor.render import render, render_html
 from doctor.validate_output import validate_report
 
 SOURCE_SUFFIXES = {".md", ".txt", ".html", ".htm"}
@@ -98,6 +98,14 @@ def load_canon(path: Path, text_dir: Path | None = None) -> list[dict]:
     return [fact for fact in facts if fact.get("status") in {"confirmed", "disputed"}]
 
 
+def chapter_sources(work: Path) -> list[tuple[str, str]]:
+    return [
+        (path.name, path.read_text(encoding="utf-8"))
+        for path in sorted(work.iterdir())
+        if path.suffix.lower() in SOURCE_SUFFIXES and path.is_file()
+    ]
+
+
 def build_report(
     work: Path,
     layer_b: bool = False,
@@ -125,12 +133,7 @@ def build_report(
         tags = load_tags(
             yaml.safe_load((work / "tags.yaml").read_text(encoding="utf-8"))
         )
-    sources = [
-        (path.name, path.read_text(encoding="utf-8"))
-        for path in sorted(work.iterdir())
-        if path.suffix.lower() in SOURCE_SUFFIXES and path.is_file()
-    ]
-    doc = normalize_sources(sources)
+    doc = normalize_sources(chapter_sources(work))
     extra = []
     facts_path = work / "facts.json"
     if facts_path.exists():
@@ -289,6 +292,8 @@ def run_work(
     max_passages: int | None = None,
     per_chapter: int | None = None,
     refresh_profiles: bool = False,
+    html_path: Path | None = None,
+    json_path: Path | None = None,
 ) -> str:
     """Render a report. With a real provider the cache persists under DOCTOR_HOME/cache."""
     persist = (
@@ -318,6 +323,18 @@ def run_work(
         if persist:
             save_cache(root, cache)
             save_profile_cache(root, profile_cache)
+    for path in (html_path, json_path):
+        if path is not None and _inside_repo(path):
+            raise SystemExit(f"refusing to write story text inside this repo: {path}")
+    if json_path is not None:
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    if html_path is not None:
+        document = normalize_sources(chapter_sources(work))
+        html_path.parent.mkdir(parents=True, exist_ok=True)
+        html_path.write_text(
+            render_html(report, document.paragraphs), encoding="utf-8"
+        )
     return render(report)
 
 
@@ -344,6 +361,8 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=f"Default cap: this many passages per chapter per rule ({PASSAGES_PER_CHAPTER}).",
     )
+    run.add_argument("--html", default=None, help="Write a self-contained review page outside this repo.")
+    run.add_argument("--json", default=None, help="Write the validated report outside this repo.")
     run.add_argument(
         "--refresh-voice-profiles",
         action="store_true",
@@ -371,6 +390,8 @@ def main(argv: list[str] | None = None) -> int:
                 max_passages=args.max_passages,
                 per_chapter=args.per_chapter,
                 refresh_profiles=args.refresh_voice_profiles,
+                html_path=Path(args.html) if args.html else None,
+                json_path=Path(args.json) if args.json else None,
             )
         except DuplicateChapter as exc:
             raise SystemExit(str(exc)) from exc
