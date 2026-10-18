@@ -56,6 +56,7 @@ TURN_CHARS = 700
 SAMPLE_MIN = 4
 SAMPLE_MAX = 8
 PROFILE_FIELDS = ("register", "cadence", "syntax", "diction", "range")
+PROFILE_FIELD_CHARS = 200
 
 RUBRICS = {
     "OOC.VOICE": {
@@ -221,8 +222,8 @@ def build_profile_prompt(request: dict) -> str:
         "Dialogue from this character, for comparison only. Do not copy it.\n"
         f"{segments}\n\n"
         "Reply with exactly one JSON object and nothing else, no code fence. "
-        "Each field is one or two sentences of paraphrase: no quotation marks and "
-        "no copied phrases.\n"
+        f"Each field is one sentence of paraphrase, at most {PROFILE_FIELD_CHARS} "
+        "characters, with no quotation marks and no copied phrases.\n"
         '{"register": "", "cadence": "", "syntax": "", "diction": "", "range": ""}'
     )
 
@@ -882,7 +883,7 @@ def validate_profile(
         return "profile_contract"
     for field in PROFILE_FIELDS:
         value = profile[field]
-        if not isinstance(value, str) or not value.strip() or len(value) > 200:
+        if not isinstance(value, str) or not value.strip() or len(value) > PROFILE_FIELD_CHARS:
             return "profile_field"
         text = normalize_inline(value)
         if profile_prose(value):
@@ -1106,6 +1107,7 @@ def resolve_profiles(
         )
     overrides = intake.get("voice_profiles") or {}
     pronouns = _pronoun_map(intake)
+    prompt_id = hashlib.sha256(build_profile_prompt({}).encode("utf-8")).hexdigest()[:16]
     profiles: dict[str, dict] = {}
     calls = 0
     for entity in sorted({task["subject"] for task in tasks}):
@@ -1144,7 +1146,13 @@ def resolve_profiles(
                 )
             )
             continue
-        if isinstance(cached, dict) and cached.get("rejected") and not refresh:
+        # A cached rejection only holds for the profile prompt that produced it.
+        if (
+            isinstance(cached, dict)
+            and cached.get("rejected")
+            and cached.get("prompt") == prompt_id
+            and not refresh
+        ):
             notes.append(
                 _coverage(
                     f"OOC.VOICE profile for {entity} was rejected ({cached.get('reason')})."
@@ -1167,6 +1175,7 @@ def resolve_profiles(
                 profile_cache[key] = {
                     "rejected": True,
                     "reason": reason,
+                    "prompt": prompt_id,
                     "sample_hash": digest,
                     "sample_paragraph_ids": [turn["paragraph_id"] for turn in sample],
                 }

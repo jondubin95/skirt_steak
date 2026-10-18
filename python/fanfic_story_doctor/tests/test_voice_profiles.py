@@ -108,6 +108,24 @@ def test_rejected_profile_is_retried_once_then_cached():
     assert "was rejected (profile_prose)" in notes[-1]["symptom"]
 
 
+def test_profile_prompt_states_the_field_limit_the_validator_enforces():
+    from doctor.layerb import build_profile_prompt, validate_profile
+
+    assert "at most 200 characters" in build_profile_prompt({"subject": "mara", "segments": ["Hold."]})
+    assert validate_profile({**GOOD, "range": "x" * 200}, [], set()) is None
+    assert validate_profile({**GOOD, "range": "x" * 201}, [], set()) == "profile_field"
+
+
+def test_rejection_cached_by_an_older_profile_prompt_is_retried():
+    cache: dict = {}
+    _resolve(Script(PROSE, PROSE), cache)
+    (entry,) = cache.values()
+    del entry["prompt"]
+    profiles, _notes, calls = _resolve(Script(), cache)
+    assert calls == 1 and profiles["mara"]["source"] == "generated"
+    assert [entry.get("profile") for entry in cache.values()] == [GOOD]
+
+
 def test_timeout_is_not_cached_so_the_next_run_retries():
     cache: dict = {}
     profiles, notes, calls = _resolve(Script({"kind": "rejected", "reason": "timeout"}), cache)
