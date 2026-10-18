@@ -100,7 +100,7 @@ All of these are fixed. Only `status` can conflict now. Also added: AO3 HTML in 
 
 `CANON.RAILS` labels: `consequence_shown`, `on_rails`, `not_enough_evidence`. It asks whether a declared branch has an on-page consequence in a later passage. It ships with the mock provider first.
 
-> **Status (2026-10-17).** `doctor run --layer-b` runs both rules on the deterministic mock provider (three runs, vote, cache). `OOC.VOICE` labels: `in_voice`, `drift`, `break`, `intentional_evolution`, `not_enough_evidence`. `CANON.RAILS` runs only when the work declares an AU with a divergence event, and only on passages ordered after it. Notes are item_state `note`, severity `info`; the validator rejects any Layer B item above info or as a finding. A non-mock provider is refused while gate G9 is closed (`DOCTOR_G9_OPT_IN`), and no real provider exists yet.
+> **Status (2026-10-17).** `doctor run --layer-b` runs both rules on the deterministic mock provider (three runs, vote, cache). `OOC.VOICE` labels: `in_voice`, `drift`, `break`, `intentional_evolution`, `not_enough_evidence`. `CANON.RAILS` runs only when the work declares an AU with a divergence event, and only on passages ordered after it. Notes are item_state `note`, severity `info`; the validator rejects any Layer B item above info or as a finding. A real provider, `cursor-agent` (Cursor CLI print mode, ask mode, empty temp workspace, strict JSON, persisted cache, `--max-passages`), runs only with `DOCTOR_G9_OPT_IN=1` for that run; there is no per-work exception. Unparseable answers are rejected and counted by reason.
 
 ## 8. What the first code packet includes
 

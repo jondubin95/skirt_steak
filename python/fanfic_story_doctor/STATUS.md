@@ -34,7 +34,13 @@ Keyed to spec v0.4.3. A row may say "Test passed" only when the named test exist
 | 7 cache | Test passed | test_cache_skips_provider_on_second_run |
 | 7 golden | Test passed | test_layer_b_golden |
 | G9 gate | Test passed | test_non_mock_provider_refuses_without_g9_opt_in |
-| 7 real provider | Not built | gated by G9 |
+| 7 real provider (cursor-agent) | Test passed (fake subprocess) | test_argv_is_read_only_print_mode_with_stdin_prompt |
+| cursor-agent G9 refusal | Test passed | test_cursor_agent_refused_without_g9_even_for_public_work |
+| cursor-agent CLI refusal | Test passed | test_cli_cursor_agent_refused_without_opt_in |
+| cursor-agent parse failures rejected | Test passed | test_parse_failures_become_rejected |
+| cursor-agent rejections counted, persisted cache | Test passed | test_rejections_counted_with_reasons_and_cache_persists |
+| cursor-agent timeouts not cached | Test passed | test_timeouts_are_rejected_and_not_cached |
+| --max-passages cap | Test passed | test_max_passages_caps_calls |
 | 18 privacy | Test passed | test_gitignore_covers_private_drafts |
 | 12 ao3 full work | Test passed | test_ao3_full_work_splits_chapters_and_strips_notes |
 | 12 html in run | Test passed | test_html_chapter_files_and_full_work_run_through_doctor_run |

@@ -13,7 +13,12 @@ import yaml
 
 from doctor.factstore import load_facts
 from doctor.intake import load_intake, load_profile, load_tags
-from doctor.layerb import ProviderRefused, get_provider, run_layer_b
+from doctor.layerb import (
+    MAX_TASKS_PER_RULE,
+    ProviderRefused,
+    get_provider,
+    run_layer_b,
+)
 from doctor.normalize import normalize_sources
 from doctor.pipeline import (
     applicable_facts,
@@ -98,6 +103,7 @@ def build_report(
     home: Path | None = None,
     provider=None,
     cache: dict | None = None,
+    max_passages: int | None = None,
 ) -> dict:
     intake_data = yaml.safe_load((work / "intake.yaml").read_text(encoding="utf-8"))
     profile = {}
@@ -131,7 +137,13 @@ def build_report(
     items, lens, summary = run_rules(doc, facts, intake, tags, graph, mentions, layer_b)
     if layer_b:
         b_items, b_lens = run_layer_b(
-            doc, intake, graph, mentions, provider or get_provider("mock"), cache
+            doc,
+            intake,
+            graph,
+            mentions,
+            provider or get_provider("mock"),
+            cache,
+            max_passages or MAX_TASKS_PER_RULE,
         )
         opted = {row["rule_id"] for row in lens if row["reason"] == "opted_out"}
         lens = [
@@ -185,16 +197,61 @@ def drop_invalid_items(report: dict, paragraphs: dict, fact_index: dict) -> dict
     return {**report, "items": kept, "summary": summarize(kept)}
 
 
+def cache_path(home: Path) -> Path:
+    return home / "cache" / "layerb.json"
+
+
+def load_cache(home: Path) -> dict:
+    path = cache_path(home)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_cache(home: Path, cache: dict) -> None:
+    path = cache_path(home)
+    if _inside_repo(path):
+        raise SystemExit(
+            f"refusing to write the Layer B cache inside a git repo: {path}"
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cache, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
+
+
 def run_work(
     work: Path,
     layer_b: bool = False,
     home: Path | None = None,
     provider=None,
     cache: dict | None = None,
+    max_passages: int | None = None,
 ) -> str:
-    return render(
-        build_report(work, layer_b=layer_b, home=home, provider=provider, cache=cache)
+    """Render a report. With a real provider the cache persists under DOCTOR_HOME/cache."""
+    persist = (
+        cache is None and layer_b and provider is not None and provider.name != "mock"
     )
+    root = home if home is not None else doctor_home()
+    if persist:
+        cache = load_cache(root)
+    try:
+        report = build_report(
+            work,
+            layer_b=layer_b,
+            home=home,
+            provider=provider,
+            cache=cache,
+            max_passages=max_passages,
+        )
+    finally:
+        if persist:
+            save_cache(root, cache)
+    return render(report)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -206,7 +263,13 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument(
         "--provider",
         default="mock",
-        help="Layer B provider. Only 'mock' runs; others are refused by gate G9.",
+        help="Layer B provider: 'mock' or 'cursor-agent'. Non-mock needs DOCTOR_G9_OPT_IN=1.",
+    )
+    run.add_argument(
+        "--max-passages",
+        type=int,
+        default=None,
+        help="Cap on Layer B passages per rule (default 20).",
     )
     canon = sub.add_parser("canon")
     canon_sub = canon.add_subparsers(dest="canon_cmd", required=True)
@@ -223,8 +286,27 @@ def main(argv: list[str] | None = None) -> int:
                 sys.stderr.write(f"{exc}\n")
                 return 3
         sys.stdout.write(
-            run_work(Path(args.work), layer_b=args.layer_b, provider=provider)
+            run_work(
+                Path(args.work),
+                layer_b=args.layer_b,
+                provider=provider,
+                max_passages=args.max_passages,
+            )
         )
+        stats = getattr(provider, "failures", None)
+        if stats is not None:
+            sys.stderr.write(
+                json.dumps(
+                    {
+                        "provider": provider.name,
+                        "calls": provider.calls,
+                        "seconds": round(provider.seconds, 1),
+                        "failures": dict(stats),
+                        "usage": dict(provider.usage),
+                    }
+                )
+                + "\n"
+            )
         return 0
     if args.cmd == "canon" and args.canon_cmd == "load":
         text = Path(args.text) if args.text else None
