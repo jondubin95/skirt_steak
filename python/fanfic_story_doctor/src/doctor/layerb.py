@@ -704,11 +704,7 @@ def speaker_turns(
 
 
 def _sample_turns(turns: list[dict]) -> list[dict]:
-    """Spread name-tagged lines across the chapter range.
-
-    Deterministic. Longer, more varied lines win inside a chapter. At most
-    SAMPLE_MAX lines; still at least SAMPLE_MIN or nothing.
-    """
+    """Up to SAMPLE_MAX name-tagged lines, spread across the chapter range."""
     by_chapter: dict[int, list[dict]] = {}
     for turn in turns:
         by_chapter.setdefault(turn["chapter"], []).append(turn)
@@ -722,32 +718,15 @@ def _sample_turns(turns: list[dict]) -> list[dict]:
 
     want = min(SAMPLE_MAX, len(chapters))
     step = (len(chapters) - 1) / max(want - 1, 1)
-    picked: list[int] = []
-    used_index: set[int] = set()
-    for slot in range(want):
-        index = round(slot * step)
-        if index in used_index:
-            for delta in range(1, len(chapters)):
-                for candidate in (index - delta, index + delta):
-                    if 0 <= candidate < len(chapters) and candidate not in used_index:
-                        index = candidate
-                        break
-                else:
-                    continue
-                break
-        used_index.add(index)
-        picked.append(index)
     chosen: list[dict] = []
     used: set[tuple] = set()
-    for index in picked:
-        pool = [
-            turn
-            for turn in by_chapter[chapters[index]]
-            if (turn["paragraph_id"], turn["turn_index"]) not in used
-        ]
-        if not pool:
+    seen: set[int] = set()
+    for slot in range(want):
+        index = round(slot * step)
+        if index in seen:
             continue
-        best = max(pool, key=rank)
+        seen.add(index)
+        best = max(by_chapter[chapters[index]], key=rank)
         chosen.append(best)
         used.add((best["paragraph_id"], best["turn_index"]))
     if len(chosen) < SAMPLE_MIN:
@@ -1375,39 +1354,42 @@ def run_layer_b(
                     cache[key] = responses
                 if on_call is not None:
                     on_call(cache)
-            voice_rule = rule == "OOC.VOICE"
-            judged: list[dict] = []
             good = []
-            for response in responses:
-                note = isinstance(response, dict) and response.get("kind") == "note"
-                if note:
-                    checked = normalized_response(response)
-                    reason = validate_response(
-                        rule,
-                        checked,
-                        task["paragraph_text"],
-                        task.get("spans") if voice_rule else None,
+            if rule != "OOC.VOICE":
+                for response in responses:
+                    checked = (
+                        normalized_response(response)
+                        if isinstance(response, dict)
+                        else response
                     )
-                else:
-                    checked = response
-                    reason = "invalid_output"
-                if not reason:
-                    if voice_rule:
-                        judged.append(checked)
+                    reason = validate_response(rule, checked, task["paragraph_text"])
+                    if reason:
+                        rejected += 1
+                        detail = (
+                            response.get("reason") if isinstance(response, dict) else None
+                        )
+                        reasons[f"{reason}:{detail}" if detail else reason] += 1
                     else:
                         good.append(checked)
-                    continue
-                rejected += 1
-                detail = response.get("reason") if isinstance(response, dict) else None
-                if voice_rule and not note:
-                    reasons[detail or "invalid_output"] += 1
-                elif voice_rule:
-                    reasons[reason] += 1
-                else:
-                    reasons[f"{reason}:{detail}" if detail else reason] += 1
-                if voice_rule:
-                    judged.append({"rejected": True})
-            if voice_rule:
+            if rule == "OOC.VOICE":
+                judged = []
+                for response in responses:
+                    if isinstance(response, dict) and response.get("kind") == "note":
+                        checked = normalized_response(response)
+                        reason = validate_response(
+                            rule, checked, task["paragraph_text"], task.get("spans")
+                        )
+                        if reason:
+                            rejected += 1
+                            reasons[reason] += 1
+                            judged.append({"rejected": True})
+                        else:
+                            judged.append(checked)
+                    else:
+                        rejected += 1
+                        detail = response.get("reason") if isinstance(response, dict) else None
+                        reasons[detail or "invalid_output"] += 1
+                        judged.append({"rejected": True})
                 result = aggregate_voice(judged)
                 label = "none" if result["all_rejected"] else result["label"]
                 stats["hit" if hit else "miss"] += 1

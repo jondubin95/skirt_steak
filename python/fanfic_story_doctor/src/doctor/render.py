@@ -104,9 +104,12 @@ def _item_chapter(item: dict, by_paragraph: dict[str, int]) -> int | None:
     if isinstance(chapter, int):
         return chapter
     for evidence in item.get("evidence") or []:
-        found = by_paragraph.get(evidence.get("paragraph_id"))
-        if found is not None:
-            return found
+        paragraph_id = evidence.get("paragraph_id")
+        if paragraph_id in by_paragraph:
+            return by_paragraph[paragraph_id]
+        match = _CHAPTER_ID.match(paragraph_id) if isinstance(paragraph_id, str) else None
+        if match:
+            return int(match.group(1))
     return None
 
 
@@ -129,15 +132,7 @@ def _flagged_chapters(report: dict, paragraphs: list) -> set[int]:
     return chapters
 
 
-def _chapter_from_id(paragraph_id: str | None) -> int | None:
-    if not isinstance(paragraph_id, str):
-        return None
-    match = _CHAPTER_ID.match(paragraph_id)
-    return int(match.group(1)) if match else None
-
-
 def flag_positions(report: dict) -> list[dict]:
-    """One compact row per highlightable flag. Offsets are code points."""
     rows = []
     for item in report.get("items") or []:
         prose = [
@@ -149,16 +144,12 @@ def flag_positions(report: dict) -> list[dict]:
             continue
         evidence = prose[0]
         start, end = evidence["span"]
-        paragraph_id = evidence.get("paragraph_id")
-        chapter = item.get("chapter")
-        if not isinstance(chapter, int):
-            chapter = _chapter_from_id(paragraph_id)
         rows.append(
             {
                 "rule": item.get("rule_id"),
                 "character": item.get("subject"),
-                "chapter": chapter,
-                "paragraph_id": paragraph_id,
+                "chapter": _item_chapter(item, {}),
+                "paragraph_id": evidence.get("paragraph_id"),
                 "offset": start,
                 "length": end - start,
                 "label": item.get("label"),
