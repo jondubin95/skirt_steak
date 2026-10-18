@@ -61,3 +61,10 @@ Keyed to spec v0.4.3. A row may say "Test passed" only when the named test exist
 | Single-chapter work: no voice tasks | Test passed | test_single_chapter_work_has_no_voice_tasks |
 | cursor-agent votes in parallel (3) | Test passed | test_cursor_agent_runs_three_votes_in_parallel |
 | Interpretation paraphrase-only prompt | Test passed | test_prompt_asks_for_paraphrase_only |
+| Speaker from tag after quote | Test passed | test_speaker_from_tag_after_quote |
+| Speaker from tag before quote | Test passed | test_speaker_from_tag_before_quote |
+| Pronoun tag only when unambiguous | Test passed | test_pronoun_tag_only_when_unambiguous |
+| Untagged quote to first-named; mentions get no credit | Test passed | test_untagged_quote_goes_to_first_named_and_mentions_get_nothing |
+| One slot per character with references | Test passed | test_each_character_with_references_gets_a_slot |
+| Cap smaller than cast: coverage note | Test passed | test_cap_smaller_than_cast_reports_no_slot |
+| Default cap 2 per chapter, configurable | Test passed | test_default_cap_is_two_per_chapter_and_configurable |

@@ -18,7 +18,7 @@ Synthetic fixtures in the repo use an invented cast. No series text belongs in g
 
 ## What is built
 
-Layer A runs local Python. It makes no model call. `--layer-b` adds `OOC.VOICE` and `CANON.RAILS` notes: info, never a blocker, agreement is not correctness. Providers: `mock` (default) and `cursor-agent` (Cursor CLI, print mode, ask mode, empty temp workspace, cached in `DOCTOR_HOME/cache`). Any non-mock provider is refused by gate G9 unless `DOCTOR_G9_OPT_IN=1` is set for that run, public work or not. Never set it for a private draft without the author's say-so. Cap cost with `--max-passages`. OOC.VOICE targets are passages where the character speaks or carries the narration, spread across chapters, each with 2-4 earlier-chapter reference passages; a character without enough reference text is skipped with a coverage note.
+Layer A runs local Python. It makes no model call. `--layer-b` adds `OOC.VOICE` and `CANON.RAILS` notes: info, never a blocker, agreement is not correctness. Providers: `mock` (default) and `cursor-agent` (Cursor CLI, print mode, ask mode, empty temp workspace, cached in `DOCTOR_HOME/cache`). Any non-mock provider is refused by gate G9 unless `DOCTOR_G9_OPT_IN=1` is set for that run, public work or not. Never set it for a private draft without the author's say-so. Default cap is 2 passages per chapter per rule (`--per-chapter`); `--max-passages` overrides. OOC.VOICE targets are passages where the character speaks or carries the narration, spread across chapters, each with 2-4 earlier-chapter reference passages; a character without enough reference text is skipped with a coverage note.
 
 ```powershell
 $env:DOCTOR_HOME = "$env:USERPROFILE\doctor-home"

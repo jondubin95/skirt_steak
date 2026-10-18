@@ -14,7 +14,7 @@ import yaml
 from doctor.factstore import load_facts
 from doctor.intake import load_intake, load_profile, load_tags
 from doctor.layerb import (
-    MAX_TASKS_PER_RULE,
+    PASSAGES_PER_CHAPTER,
     ProviderRefused,
     get_provider,
     run_layer_b,
@@ -104,6 +104,7 @@ def build_report(
     provider=None,
     cache: dict | None = None,
     max_passages: int | None = None,
+    per_chapter: int | None = None,
 ) -> dict:
     intake_data = yaml.safe_load((work / "intake.yaml").read_text(encoding="utf-8"))
     profile = {}
@@ -143,7 +144,8 @@ def build_report(
             mentions,
             provider or get_provider("mock"),
             cache,
-            max_passages or MAX_TASKS_PER_RULE,
+            max_passages,
+            per_chapter or PASSAGES_PER_CHAPTER,
         )
         opted = {row["rule_id"] for row in lens if row["reason"] == "opted_out"}
         lens = [
@@ -231,6 +233,7 @@ def run_work(
     provider=None,
     cache: dict | None = None,
     max_passages: int | None = None,
+    per_chapter: int | None = None,
 ) -> str:
     """Render a report. With a real provider the cache persists under DOCTOR_HOME/cache."""
     persist = (
@@ -247,6 +250,7 @@ def run_work(
             provider=provider,
             cache=cache,
             max_passages=max_passages,
+            per_chapter=per_chapter,
         )
     finally:
         if persist:
@@ -269,7 +273,13 @@ def main(argv: list[str] | None = None) -> int:
         "--max-passages",
         type=int,
         default=None,
-        help="Cap on Layer B passages per rule (default 20).",
+        help="Cap on Layer B passages per rule. Overrides --per-chapter.",
+    )
+    run.add_argument(
+        "--per-chapter",
+        type=int,
+        default=None,
+        help=f"Default cap: this many passages per chapter per rule ({PASSAGES_PER_CHAPTER}).",
     )
     canon = sub.add_parser("canon")
     canon_sub = canon.add_subparsers(dest="canon_cmd", required=True)
@@ -291,6 +301,7 @@ def main(argv: list[str] | None = None) -> int:
                 layer_b=args.layer_b,
                 provider=provider,
                 max_passages=args.max_passages,
+                per_chapter=args.per_chapter,
             )
         )
         stats = getattr(provider, "failures", None)

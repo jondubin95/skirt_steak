@@ -30,7 +30,18 @@ from doctor.timeline import AFTER, compare, scene_of
 
 RULESET_VERSION = "layer-b-0.4.3"
 RUNS = 3
-MAX_TASKS_PER_RULE = 20
+MAX_TASKS_PER_RULE = 20  # used only when no document is available
+PASSAGES_PER_CHAPTER = 2  # default cap: 2 passages per chapter per rule
+SPEECH_VERBS = (
+    "said|says|asked|asks|replied|replies|answered|murmured|whispered|shouted|"
+    "snapped|called|added|muttered|told|tells|yelled|breathed|growled|demanded|"
+    "continued|insisted|admitted|offered|agreed|repeated|sighed|laughed|hissed"
+)
+_QUOTED = re.compile(r"[\"\u201c]([^\"\u201c\u201d]*)[\"\u201d]")
+_PRONOUN_TAG = re.compile(
+    rf"^\W*(?:(?:he|she|they)\s+(?:\w+ly\s+)?(?:{SPEECH_VERBS})\b|(?:{SPEECH_VERBS})\s+(?:he|she|they)\b)",
+    re.IGNORECASE,
+)
 G9_ENV = "DOCTOR_G9_OPT_IN"
 CLI_ENV = "DOCTOR_CURSOR_AGENT"
 MODEL_ENV = "DOCTOR_CURSOR_MODEL"
@@ -363,66 +374,152 @@ def validate_response(rule: str, response: dict, paragraph_text: str) -> str | N
     return None
 
 
-def presence(text: str, mention_count: int) -> int:
+def presence(text: str, mention_count: int, speaks: bool = False) -> int:
     """How much a character is present in a paragraph. Deterministic.
 
-    One point per mention, three for dialogue in a paragraph that names them
-    (fic convention: one speaker per paragraph), one for a long paragraph
-    (POV narration). A single passing mention with no dialogue scores 1.
+    One point per mention, three if they speak a quoted line here (see
+    speakers), one for a long paragraph (POV narration). A single passing
+    mention with no line of their own scores 1.
     """
     score = mention_count
-    if QUOTE_MARKS.search(text):
+    if speaks:
         score += 3
     if len(text.split()) >= 60:
         score += 1
     return score
 
 
-def _stratified(tasks: list[dict], limit: int, cast: list[str]) -> list[dict]:
-    """Spread picks across chapters, rotating characters; best score wins a slot."""
+def speakers(text: str, named: list[tuple[int, int, str]]) -> set[str]:
+    """Entities credited with a quoted line in this paragraph.
+
+    named is (start, end, entity) for every mention in the paragraph. For each
+    quote: a name right next to a speech verb in the tag after or before the
+    quote wins; a pronoun tag goes to the only character named in the
+    paragraph, if there is exactly one; otherwise the paragraph's first-named
+    character. Characters who are only mentioned get no credit.
+    """
+    named = sorted(named)
+    if not named:
+        return set()
+    distinct = {entity for _, _, entity in named}
+    first = named[0][2]
+    verb = re.compile(rf"^\W*(?:\w+ly\s+)?(?:{SPEECH_VERBS})\b", re.IGNORECASE)
+    verb_end = re.compile(rf"\b(?:{SPEECH_VERBS})(?:\s+\w+ly)?\W*$", re.IGNORECASE)
+    credited: set[str] = set()
+    for quote in _QUOTED.finditer(text):
+        after_text = text[quote.end() : quote.end() + 80]
+        before_text = text[max(0, quote.start() - 80) : quote.start()]
+        speaker = None
+        for start, end, entity in named:
+            if quote.end() <= start <= quote.end() + 80:
+                # "..." Mara said / "..." said Mara
+                lead = text[quote.end() : start]
+                tail = text[end : end + 40]
+                if (verb_end.search(lead) and len(lead) < 30) or (
+                    lead.strip(" ,.!?") == "" and verb.search(tail)
+                ):
+                    speaker = entity
+                    break
+            if quote.start() - 80 <= start and end <= quote.start():
+                # Mara said, "..."
+                between = text[end : quote.start()]
+                if verb.search(between) and len(between) < 30:
+                    speaker = entity
+                    break
+        if speaker is None and (
+            _PRONOUN_TAG.search(after_text) or _PRONOUN_TAG.search(before_text[-30:])
+        ):
+            speaker = next(iter(distinct)) if len(distinct) == 1 else first
+        if speaker is None:
+            speaker = first
+        credited.add(speaker)
+    return credited
+
+
+def _best(pool: list[dict]) -> dict:
+    return max(pool, key=lambda t: (t["score"], -t["order"]))
+
+
+def _stratified(
+    tasks: list[dict], limit: int, cast: list[str]
+) -> tuple[list[dict], list[str]]:
+    """Pick up to limit tasks. Returns (tasks, characters that got no slot).
+
+    First one slot per character (best score, in cast order), then the rest
+    spread evenly across chapters, rotating characters; best score wins a slot.
+    """
     if len(tasks) <= limit:
-        return tasks
-    chapters = sorted({task["chapter"] for task in tasks})
-    by_chapter = {c: [t for t in tasks if t["chapter"] == c] for c in chapters}
-    if len(chapters) >= limit:
-        step = (len(chapters) - 1) / max(limit - 1, 1)
-        slots = [chapters[round(i * step)] for i in range(limit)]
-    else:
-        slots = [chapters[i % len(chapters)] for i in range(limit)]
+        return tasks, []
     picked: list[dict] = []
     used: set[tuple] = set()
-    for number, chapter in enumerate(slots):
-        pool = [
-            t
-            for t in by_chapter[chapter]
-            if (t["paragraph_id"], t["subject"]) not in used
-        ]
-        if not pool:
+    unslotted: list[str] = []
+    for entity in cast:
+        own = [t for t in tasks if t["subject"] == entity]
+        if not own:
             continue
-        want = cast[number % len(cast)] if cast else None
-        preferred = [t for t in pool if t["subject"] == want] or pool
-        best = max(preferred, key=lambda t: (t["score"], -t["order"]))
+        if len(picked) >= limit:
+            unslotted.append(entity)
+            continue
+        middle = own[len(own) // 2]["order"]
+        best = max(own, key=lambda t: (t["score"], -abs(t["order"] - middle)))
         used.add((best["paragraph_id"], best["subject"]))
         picked.append(best)
-    return sorted(picked, key=lambda t: (t["order"], t["subject"]))
+    remaining = limit - len(picked)
+    all_chapters = sorted({task["chapter"] for task in tasks})
+    by_chapter = {c: [t for t in tasks if t["chapter"] == c] for c in all_chapters}
+    taken = {t["chapter"] for t in picked}
+    chapters = [c for c in all_chapters if c not in taken]
+    if len(chapters) < remaining:
+        chapters = all_chapters
+    if remaining > 0:
+        if len(chapters) >= remaining:
+            step = (len(chapters) - 1) / max(remaining - 1, 1)
+            slots = [chapters[round(i * step)] for i in range(remaining)]
+        else:
+            slots = [chapters[i % len(chapters)] for i in range(remaining)]
+        for number, chapter in enumerate(slots):
+            pool = [
+                t
+                for t in by_chapter[chapter]
+                if (t["paragraph_id"], t["subject"]) not in used
+            ]
+            if not pool:
+                continue
+            want = cast[number % len(cast)] if cast else None
+            best = _best([t for t in pool if t["subject"] == want] or pool)
+            used.add((best["paragraph_id"], best["subject"]))
+            picked.append(best)
+    return sorted(picked, key=lambda t: (t["order"], t["subject"])), unslotted
+
+
+def default_limit(doc, per_chapter: int = PASSAGES_PER_CHAPTER) -> int:
+    return max(1, per_chapter * len({p.chapter for p in doc.paragraphs}))
 
 
 def voice_tasks(doc, intake: dict, mentions: list[dict], limit: int):
-    """Return (tasks, skipped characters) for OOC.VOICE."""
+    """Return (tasks, skipped characters, characters with no slot) for OOC.VOICE."""
     cast = [person["entity"] for person in intake.get("main_cast") or []]
     paragraphs = {p.id: p for p in doc.paragraphs}
     order = {p.id: number for number, p in enumerate(doc.paragraphs)}
     counts: Counter = Counter()
     surfaces: dict[tuple, str] = {}
+    named: dict[str, list[tuple[int, int, str]]] = {}
     for mention in mentions:
+        span = mention.get("span") or [0, 0]
+        named.setdefault(mention["paragraph"], []).append(
+            (span[0], span[1], mention["entity"])
+        )
         if mention["entity"] in cast:
             key = (mention["entity"], mention["paragraph"])
             counts[key] += 1
             surfaces.setdefault(key, mention.get("surface"))
+    speaking = {
+        pid: speakers(paragraphs[pid].text, rows) for pid, rows in named.items()
+    }
     present: dict[str, list[dict]] = {entity: [] for entity in cast}
     for (entity, pid), count in counts.items():
         paragraph = paragraphs[pid]
-        score = presence(paragraph.text, count)
+        score = presence(paragraph.text, count, entity in speaking.get(pid, set()))
         if score >= MIN_PRESENCE:
             present[entity].append(
                 {
@@ -461,10 +558,10 @@ def voice_tasks(doc, intake: dict, mentions: list[dict], limit: int):
             found = True
         if not found and any(key[0] == entity for key in counts):
             skipped.append(entity)
-    tasks = _stratified(
+    tasks, unslotted = _stratified(
         sorted(eligible, key=lambda t: (t["order"], t["subject"])), limit, cast
     )
-    return tasks, skipped
+    return tasks, skipped, unslotted
 
 
 def _tasks(
@@ -473,8 +570,10 @@ def _tasks(
     intake: dict,
     graph,
     mentions: list[dict],
-    limit: int = MAX_TASKS_PER_RULE,
+    limit: int | None = None,
 ) -> list[dict]:
+    if limit is None:
+        limit = default_limit(doc)
     if rule == "OOC.VOICE":
         return voice_tasks(doc, intake, mentions, limit)[0]
     tasks: list[dict] = []
@@ -503,9 +602,14 @@ def run_layer_b(
     mentions: list[dict],
     provider,
     cache: dict | None = None,
-    max_passages: int = MAX_TASKS_PER_RULE,
+    max_passages: int | None = None,
+    per_chapter: int = PASSAGES_PER_CHAPTER,
 ):
-    """Return (items, lens rows) for OOC.VOICE and CANON.RAILS."""
+    """Return (items, lens rows) for OOC.VOICE and CANON.RAILS.
+
+    The cap per rule is max_passages if given, else per_chapter x chapters.
+    """
+    max_passages = max_passages or default_limit(doc, per_chapter)
     cache = {} if cache is None else cache
     items: list[dict] = []
     lens: dict[str, dict] = {}
@@ -532,7 +636,27 @@ def run_layer_b(
         reasons: Counter = Counter()
         tasks = _tasks(rule, doc, intake, graph, mentions, max_passages)
         if rule == "OOC.VOICE":
-            for entity in voice_tasks(doc, intake, mentions, max_passages)[1]:
+            _, skipped, unslotted = voice_tasks(doc, intake, mentions, max_passages)
+            gaps = [
+                (
+                    entity,
+                    (
+                        f"OOC.VOICE skipped {entity}: fewer than {REF_MIN} earlier-chapter "
+                        "reference passages where they speak or carry the narration."
+                    ),
+                )
+                for entity in skipped
+            ] + [
+                (
+                    entity,
+                    (
+                        f"OOC.VOICE has no slot for {entity}: the cap of {max_passages} "
+                        "passages is smaller than the main cast."
+                    ),
+                )
+                for entity in unslotted
+            ]
+            for entity, symptom in gaps:
                 items.append(
                     {
                         "rule_id": rule,
@@ -540,16 +664,13 @@ def run_layer_b(
                         "tier": "B",
                         "severity": "info",
                         "kind": "coverage",
-                        "symptom": (
-                            f"OOC.VOICE skipped {entity}: fewer than {REF_MIN} earlier-chapter "
-                            "reference passages where they speak or carry the narration."
-                        ),
+                        "symptom": symptom,
                         "evidence": [
                             {"kind": "file", "path": "report.json", "field": rule}
                         ],
                         "fact_ids": [],
                         "depends_on_hash": hashlib.sha256(
-                            f"{rule}:skip:{entity}".encode()
+                            f"{rule}:{symptom}".encode()
                         ).hexdigest(),
                     }
                 )

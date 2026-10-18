@@ -20,7 +20,9 @@ from doctor.layerb import (
     CursorAgentProvider,
     DeterministicMockProvider,
     build_prompt,
+    default_limit,
     presence,
+    speakers,
     validate_response,
 )
 
@@ -61,7 +63,8 @@ def _voice(provider):
 
 
 def test_presence_scores_dialogue_and_skips_passing_mentions():
-    assert presence('"Go," Mara said.', 1) == 4
+    assert presence('"Go," Mara said.', 1, speaks=True) == 4
+    assert presence('"Go," Mara told Teodor.', 1, speaks=False) == 1
     assert presence("The wind moved past Teodor.", 1) == 1
     assert presence(" ".join(["word"] * 60) + " Mara", 1) == 2
 
@@ -189,3 +192,83 @@ def test_prompt_asks_for_paraphrase_only():
         {"rule": "OOC.VOICE", "labels": ["in_voice"], "paragraph_text": "Mara ran."}
     )
     assert "paraphrase only: no quotation marks" in prompt
+
+
+def _named(text: str, **names: str) -> list[tuple[int, int, str]]:
+    rows = []
+    for entity, surface in names.items():
+        at = text.find(surface)
+        while at >= 0:
+            rows.append((at, at + len(surface), entity))
+            at = text.find(surface, at + 1)
+    return rows
+
+
+def test_speaker_from_tag_after_quote():
+    text = '"Hold the line," Mara said, glancing at Teodor.'
+    assert speakers(text, _named(text, mara="Mara", teodor="Teodor")) == {"mara"}
+    text = '"Hold the line," said Teodor, while Mara watched.'
+    assert speakers(text, _named(text, mara="Mara", teodor="Teodor")) == {"teodor"}
+
+
+def test_speaker_from_tag_before_quote():
+    text = 'Mara watched as Teodor asked, "Where is the ford?"'
+    assert speakers(text, _named(text, mara="Mara", teodor="Teodor")) == {"teodor"}
+
+
+def test_pronoun_tag_only_when_unambiguous():
+    text = 'Teodor shrugged. "Fine," he said.'
+    assert speakers(text, _named(text, teodor="Teodor")) == {"teodor"}
+    text = 'Mara looked at Teodor. "Fine," she said.'
+    # Two characters named: fall back to the first-named, not a guess by pronoun.
+    assert speakers(text, _named(text, mara="Mara", teodor="Teodor")) == {"mara"}
+
+
+def test_untagged_quote_goes_to_first_named_and_mentions_get_nothing():
+    text = 'Mara set down the map. "We cross at dawn." Teodor would hate it.'
+    assert speakers(text, _named(text, mara="Mara", teodor="Teodor")) == {"mara"}
+    text = "Mara thought about Teodor for a long time."
+    assert speakers(text, _named(text, mara="Mara", teodor="Teodor")) == set()
+
+
+def test_each_character_with_references_gets_a_slot(tmp_path: Path):
+    provider = Recorder()
+    work = _work(tmp_path, chapters=10)
+    build_report(work, layer_b=True, home=tmp_path, provider=provider, max_passages=2)
+    assert {r["subject"] for r in _voice(provider)} == {"mara", "teodor"}
+
+
+def test_cap_smaller_than_cast_reports_no_slot(tmp_path: Path):
+    provider = Recorder()
+    work = _work(tmp_path, chapters=6)
+    report = build_report(
+        work, layer_b=True, home=tmp_path, provider=provider, max_passages=1
+    )
+    assert {r["subject"] for r in _voice(provider)} == {"mara"}
+    notes = [i["symptom"] for i in report["items"] if i["item_state"] == "coverage"]
+    assert any("no slot for teodor" in n for n in notes)
+
+
+def test_default_cap_is_two_per_chapter_and_configurable(tmp_path: Path):
+    from doctor.normalize import normalize_sources
+
+    doc = normalize_sources([("ch01.md", "a"), ("ch02.md", "b"), ("ch03.md", "c")])
+    assert default_limit(doc) == 6 and default_limit(doc, 1) == 3
+    provider = Recorder()
+    work = _work(tmp_path, chapters=12)
+    build_report(work, layer_b=True, home=tmp_path, provider=provider)
+    default = len({(r["paragraph_id"], r["subject"]) for r in _voice(provider)})
+    one = Recorder()
+    build_report(work, layer_b=True, home=tmp_path, provider=one, per_chapter=1)
+    fewer = len({(r["paragraph_id"], r["subject"]) for r in _voice(one)})
+    capped = Recorder()
+    build_report(
+        work,
+        layer_b=True,
+        home=tmp_path,
+        provider=capped,
+        per_chapter=1,
+        max_passages=3,
+    )
+    assert 10 <= fewer <= 12 and default > fewer
+    assert len({(r["paragraph_id"], r["subject"]) for r in _voice(capped)}) == 3

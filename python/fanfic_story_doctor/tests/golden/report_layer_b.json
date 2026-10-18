@@ -249,132 +249,6 @@
       "severity": "info",
       "symptom": "CANON.RAILS label not_enough_evidence (3_of_3). Agreement is not correctness.",
       "tier": "B"
-    },
-    {
-      "agreement": "3_of_3",
-      "depends_on_hash": "f918158be9424631af51333060e7d724fe88dc1f9c0f5f88c0ff4ce16ac87cf2",
-      "evidence": [
-        {
-          "kind": "prose",
-          "paragraph_id": "ch01.s2.p4",
-          "quote": "\"Then keep it lower,\" Mara"
-        }
-      ],
-      "fact_ids": [],
-      "interpretation": "Mock provider judgment for tests. Not a reading of the text.",
-      "item_state": "note",
-      "kind": "judgment",
-      "label": "on_rails",
-      "observed": "\"Then keep it lower,\" Mara",
-      "rule_id": "CANON.RAILS",
-      "severity": "info",
-      "symptom": "CANON.RAILS label on_rails (3_of_3). Agreement is not correctness.",
-      "tier": "B"
-    },
-    {
-      "agreement": "3_of_3",
-      "depends_on_hash": "e3c29ffc4734a1b5a62ce2a4822b861a7b591371f6ac4c20c0abab0646de3b9d",
-      "evidence": [
-        {
-          "kind": "prose",
-          "paragraph_id": "ch01.s2.p5",
-          "quote": "\"You worry like a quartermaster,\""
-        }
-      ],
-      "fact_ids": [],
-      "interpretation": "Mock provider judgment for tests. Not a reading of the text.",
-      "item_state": "note",
-      "kind": "judgment",
-      "label": "consequence_shown",
-      "observed": "\"You worry like a quartermaster,\"",
-      "rule_id": "CANON.RAILS",
-      "severity": "info",
-      "symptom": "CANON.RAILS label consequence_shown (3_of_3). Agreement is not correctness.",
-      "tier": "B"
-    },
-    {
-      "agreement": "2_of_3",
-      "depends_on_hash": "cc1985cd81c07475bcfb2e07b6ba441b10e534dab8b9b605250dd20d5e4d8deb",
-      "evidence": [
-        {
-          "kind": "prose",
-          "paragraph_id": "ch02.s1.p1",
-          "quote": "\"We go at dawn,\" Mara"
-        }
-      ],
-      "fact_ids": [],
-      "interpretation": "Mock provider judgment for tests. Not a reading of the text.",
-      "item_state": "note",
-      "kind": "judgment",
-      "label": "not_enough_evidence",
-      "observed": "\"We go at dawn,\" Mara",
-      "rule_id": "CANON.RAILS",
-      "severity": "info",
-      "symptom": "CANON.RAILS label not_enough_evidence (2_of_3). Agreement is not correctness.",
-      "tier": "B"
-    },
-    {
-      "agreement": "low_agreement",
-      "depends_on_hash": "cc1985cd81c07475bcfb2e07b6ba441b10e534dab8b9b605250dd20d5e4d8deb",
-      "evidence": [
-        {
-          "kind": "prose",
-          "paragraph_id": "ch02.s1.p1",
-          "quote": "\"We go at dawn,\" Mara"
-        }
-      ],
-      "fact_ids": [],
-      "interpretation": "Mock provider judgment for tests. Not a reading of the text.",
-      "item_state": "note",
-      "kind": "judgment",
-      "label": "consequence_shown",
-      "observed": "\"We go at dawn,\" Mara",
-      "rule_id": "CANON.RAILS",
-      "severity": "info",
-      "symptom": "CANON.RAILS label consequence_shown (low_agreement). Agreement is not correctness.",
-      "tier": "B"
-    },
-    {
-      "agreement": "2_of_3",
-      "depends_on_hash": "5a5053d63a3d54af883d01551cbc8507175578cb137e07aaf509845fa1b020c0",
-      "evidence": [
-        {
-          "kind": "prose",
-          "paragraph_id": "ch02.s1.p2",
-          "quote": "\"No songs at all?\" Teodor"
-        }
-      ],
-      "fact_ids": [],
-      "interpretation": "Mock provider judgment for tests. Not a reading of the text.",
-      "item_state": "note",
-      "kind": "judgment",
-      "label": "not_enough_evidence",
-      "observed": "\"No songs at all?\" Teodor",
-      "rule_id": "CANON.RAILS",
-      "severity": "info",
-      "symptom": "CANON.RAILS label not_enough_evidence (2_of_3). Agreement is not correctness.",
-      "tier": "B"
-    },
-    {
-      "agreement": "low_agreement",
-      "depends_on_hash": "5a5053d63a3d54af883d01551cbc8507175578cb137e07aaf509845fa1b020c0",
-      "evidence": [
-        {
-          "kind": "prose",
-          "paragraph_id": "ch02.s1.p2",
-          "quote": "\"No songs at all?\" Teodor"
-        }
-      ],
-      "fact_ids": [],
-      "interpretation": "Mock provider judgment for tests. Not a reading of the text.",
-      "item_state": "note",
-      "kind": "judgment",
-      "label": "on_rails",
-      "observed": "\"No songs at all?\" Teodor",
-      "rule_id": "CANON.RAILS",
-      "severity": "info",
-      "symptom": "CANON.RAILS label on_rails (low_agreement). Agreement is not correctness.",
-      "tier": "B"
     }
   ],
   "lens": [
@@ -429,7 +303,7 @@
       "state": "applied"
     },
     {
-      "reason": "provider=mock; tasks=8",
+      "reason": "provider=mock; tasks=4",
       "rule_id": "CANON.RAILS",
       "state": "applied"
     }
