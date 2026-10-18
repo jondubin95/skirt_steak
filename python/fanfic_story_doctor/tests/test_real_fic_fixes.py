@@ -131,7 +131,13 @@ def test_html_chapter_files_and_full_work_run_through_doctor_run(tmp_path: Path)
         )
     (work / "work.html").write_text(AO3_WORK, encoding="utf-8")
     report = build_report(work, home=tmp_path)
-    assert report["summary"].endswith("main cast.") or "findings" in report["summary"]
+    assert [
+        (item["rule_id"], item["item_state"], item["severity"])
+        for item in report["items"]
+    ] == [
+        ("LEDGER.COVERAGE", "coverage", "info"),
+        ("AO3.SCHEMA", "finding", "should"),
+    ]
     single = normalize_sources(
         [("ch03.html", '<div class="userstuff"><p>Mara slept.</p></div>')]
     )

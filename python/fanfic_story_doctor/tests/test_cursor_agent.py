@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -178,11 +179,19 @@ def test_max_passages_caps_calls(tmp_path: Path):
     work = _branch_work(tmp_path)
     runner = FakeRunner()
     provider = CursorAgentProvider(env=ENV, runner=runner)
-    run_work(work, layer_b=True, home=tmp_path / "h", provider=provider, max_passages=1)
-    rules_run = 1 + int(
-        "CANON.RAILS" in json.dumps([c["input"][:200] for c in runner.calls])
+    text = run_work(
+        work, layer_b=True, home=tmp_path / "h", provider=provider, max_passages=1
     )
-    assert len(runner.calls) <= 3 * rules_run
+    lens = re.compile(r"^- (?:OOC\.VOICE|CANON\.RAILS): applied \(")
+    tasks = re.compile(r"tasks=(\d+)")
+    found = []
+    for line in text.splitlines():
+        if lens.match(line):
+            match = tasks.search(line)
+            assert match is not None
+            found.append(int(match.group(1)))
+    assert sum(found) >= 1
+    assert len(runner.calls) == 3 * sum(found)
 
 
 def test_cli_cursor_agent_refused_without_opt_in(monkeypatch, capsys):
