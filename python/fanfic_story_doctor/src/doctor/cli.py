@@ -305,15 +305,17 @@ def main(argv: list[str] | None = None) -> int:
             except ProviderRefused as exc:
                 sys.stderr.write(f"{exc}\n")
                 return 3
-        sys.stdout.write(
-            run_work(
+        try:
+            text = run_work(
                 Path(args.work),
                 layer_b=args.layer_b,
                 provider=provider,
                 max_passages=args.max_passages,
                 per_chapter=args.per_chapter,
             )
-        )
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+        sys.stdout.write(text)
         stats = getattr(provider, "failures", None)
         if stats is not None:
             sys.stderr.write(

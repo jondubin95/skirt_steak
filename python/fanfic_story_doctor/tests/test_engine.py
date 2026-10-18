@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from doctor.cli import build_report, load_canon, run_work
+from doctor.cli import build_report, load_canon, main, run_work
 from doctor.factstore import mark_conflicts
 from doctor.ids import compare_ids
 from doctor.intake import IntakeError, load_intake, load_tags
@@ -736,6 +736,53 @@ def test_canon_load_guard_does_not_depend_on_install_location(
     outside.write_text("[]", encoding="utf-8")
     monkeypatch.chdir(REPO)
     assert load_canon(outside) == []
+
+
+def test_chapter_files_merge_in_numeric_order():
+    doc = normalize_sources(
+        [("ch2.md", "Second.\n"), ("ch10.md", "Tenth.\n"), ("ch1.md", "First.\n")]
+    )
+    assert [p.id for p in doc.paragraphs] == [
+        "ch01.s1.p1",
+        "ch02.s1.p1",
+        "ch10.s1.p1",
+    ]
+    assert doc.scene_ids == ["ch01.s1", "ch02.s1", "ch10.s1"]
+
+
+def test_duplicate_explicit_chapter_raises():
+    with pytest.raises(ValueError, match="ch01.md") as exc:
+        normalize_sources(
+            [("ch01.md", "One.\n"), ("chapter-1-draft.md", "Two.\n")]
+        )
+    assert "chapter-1-draft.md" in str(exc.value)
+
+
+def test_no_digit_filename_does_not_collide():
+    doc = normalize_sources([("notes.md", "A note.\n"), ("ch01.md", "Mara.\n")])
+    assert [p.chapter for p in doc.paragraphs] == [1, 1]
+
+
+def test_multichapter_html_is_exempt():
+    from test_real_fic_fixes import AO3_WORK
+
+    doc = normalize_sources([("work.html", AO3_WORK), ("ch01.md", "Mara waited.\n")])
+    assert doc.paragraphs
+
+
+def test_duplicate_chapter_exits_cleanly(tmp_path: Path):
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "intake.yaml").write_text(
+        (ROOT / "tests" / "fixtures" / "ashfall" / "intake.yaml").read_text(
+            encoding="utf-8"
+        ),
+        encoding="utf-8",
+    )
+    (work / "ch01.md").write_text("One.\n", encoding="utf-8")
+    (work / "chapter-1-draft.md").write_text("Two.\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="duplicate chapter"):
+        main(["run", str(work)])
 
 
 def test_ao3_lens_skips_without_tags(tmp_path: Path):

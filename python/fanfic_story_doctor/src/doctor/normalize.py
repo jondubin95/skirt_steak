@@ -67,14 +67,15 @@ def _is_scene_break(line: str) -> bool:
     return bool(compact) and set(compact) <= set("*~-_") and len(compact) >= 3
 
 
-def _chapter_from_name(name: str, fallback: int) -> int:
+def _chapter_from_name(name: str, fallback: int) -> tuple[int, bool]:
+    """Return (chapter, explicit). A file with no digit keeps `fallback` and is not explicit."""
     match = re.search(r"ch(?:apter)?[^\d]*(\d+)", name, re.IGNORECASE)
     if match:
-        return int(match.group(1))
+        return int(match.group(1)), True
     match = re.search(r"(\d+)", name)
     if match:
-        return int(match.group(1))
-    return fallback
+        return int(match.group(1)), True
+    return fallback, False
 
 
 def normalize_markdown(text: str, chapter: int = 1) -> Document:
@@ -138,18 +139,38 @@ def _is_html(name: str) -> bool:
     return name.lower().endswith((".html", ".htm"))
 
 
+def _many_chapters(name: str, text: str) -> bool:
+    return _is_html(name) and len(set(re.findall(r'id="chapter-(\d+)"', text))) > 1
+
+
 def normalize_sources(sources: list[tuple[str, str]]) -> Document:
-    """sources are (filename or label, text) in reading order.
+    """sources are (filename or label, text).
+
+    Files with an explicit chapter number merge in that order, not reading
+    order. Two of those files for the same chapter raise ValueError. A file
+    with no digit keeps its input position as the chapter and is not part of
+    the duplicate check. A full-work HTML file (more than one chapter-N id)
+    is also exempt; paragraphs inside one file stay in page order.
 
     `.md` and `.txt` are Markdown or plain text, one chapter each. `.html` is
     AO3 HTML: a chapter page, or a full-work download that holds several
     `chapter-N` blocks (chapters then come from the page itself).
     """
-    merged = Document()
+    resolved: list[tuple[int, int, str, str]] = []
+    explicit: dict[int, str] = {}
     for offset, (name, text) in enumerate(sources, start=1):
-        chapter = _chapter_from_name(name, offset)
+        chapter, named = _chapter_from_name(name, offset)
+        if named and not _many_chapters(name, text):
+            prior = explicit.get(chapter)
+            if prior is not None:
+                raise ValueError(f"duplicate chapter {chapter}: {prior}, {name}")
+            explicit[chapter] = name
+        resolved.append((chapter, offset, name, text))
+    resolved.sort(key=lambda row: (row[0], row[1]))
+    merged = Document()
+    for chapter, _index, name, text in resolved:
         if _is_html(name):
-            many = len(set(re.findall(r'id="chapter-(\d+)"', text))) > 1
+            many = _many_chapters(name, text)
             part = (
                 normalize_ao3_work(text, chapter)
                 if many
