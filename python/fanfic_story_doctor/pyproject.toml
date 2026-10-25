@@ -28,6 +28,7 @@ doctor = ["schemas/*.json"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 
-[tool.ruff.lint]
-# Blocking in CI. Fail Fast, plus PEP 8 naming shape. Name verbosity is not checked.
-select = ["E722", "S110", "BLE001", "N"]
+[tool.ruff]
+# Selection lives in the repo-root ruff.toml. This extend keeps `ruff check`
+# inside this package from stopping at this file and using Ruff defaults.
+extend = "../../ruff.toml"

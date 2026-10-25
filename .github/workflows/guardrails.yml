@@ -60,7 +60,7 @@ jobs:
           echo "PR body does not contain raw template placeholders."
 
   lint:
-    name: Lint (advisory)
+    name: Blocking lint and tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -107,7 +107,7 @@ jobs:
           done
 
       - name: ruff fail-fast and naming
-        run: python -m ruff check --config python/fanfic_story_doctor/pyproject.toml python
+        run: python -m ruff check python
 
       - name: black --check (advisory, does not fail the build)
         run: |

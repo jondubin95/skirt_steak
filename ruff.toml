@@ -1,0 +1,5 @@
+# Blocking in CI. Fail Fast, plus every pep8-naming rule (N).
+# N includes camelCase functions, arguments, and locals. Name verbosity is not checked.
+
+[lint]
+select = ["E722", "S110", "BLE001", "N"]
