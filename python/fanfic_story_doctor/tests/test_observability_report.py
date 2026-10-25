@@ -38,7 +38,7 @@ def test_progress_lines_on_stderr_and_cache_hits_on_rerun(tmp_path: Path, capsys
     total = int(rows[0].group(2))
     assert [int(r.group(1)) for r in rows] == list(range(1, total + 1))
     assert {r.group(3) for r in rows} == {"miss"}
-    assert any("char=mara" in line or "char=teodor" in line for line in err)
+    assert any("char=-" in line for line in err)
     runner = FakeRunner()
     run_work(work, layer_b=True, home=tmp_path, provider=_provider(runner))
     err = capsys.readouterr().err.splitlines()
@@ -110,9 +110,9 @@ def _spell(text, aliases):
 
 
 def test_possessive_forms_of_alias_are_not_flagged():
-    text = "Ilyas coat. Ilyas' coat. Ilya's coat. Ilya\u2019s map. Ilyas's knife."
-    assert _spell(text, ["Ilya"]) == []
-    assert _spell(text, ["Ilyas"]) == []
+    text = "Maras coat. Maras' coat. Mara's coat. Mara\u2019s map. Maras's knife."
+    assert _spell(text, ["Mara"]) == []
+    assert _spell(text, ["Maras"]) == []
 
 
 def test_identical_spelling_findings_are_deduped_with_count():

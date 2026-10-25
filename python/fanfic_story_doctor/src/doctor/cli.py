@@ -28,7 +28,7 @@ from doctor.pipeline import (
     run_rules,
     summarize,
 )
-from doctor.render import render
+from doctor.render import flag_positions, render, render_html
 from doctor.validate_output import validate_report
 
 SOURCE_SUFFIXES = {".md", ".txt", ".html", ".htm"}
@@ -98,6 +98,14 @@ def load_canon(path: Path, text_dir: Path | None = None) -> list[dict]:
     return [fact for fact in facts if fact.get("status") in {"confirmed", "disputed"}]
 
 
+def chapter_sources(work: Path) -> list[tuple[str, str]]:
+    return [
+        (path.name, path.read_text(encoding="utf-8"))
+        for path in sorted(work.iterdir())
+        if path.suffix.lower() in SOURCE_SUFFIXES and path.is_file()
+    ]
+
+
 def build_report(
     work: Path,
     layer_b: bool = False,
@@ -107,6 +115,10 @@ def build_report(
     max_passages: int | None = None,
     per_chapter: int | None = None,
     on_call=None,
+    profile_cache: dict | None = None,
+    refresh_profiles: bool = False,
+    on_profile=None,
+    reuse_stale: bool = False,
 ) -> dict:
     intake_data = yaml.safe_load((work / "intake.yaml").read_text(encoding="utf-8"))
     profile = {}
@@ -115,18 +127,14 @@ def build_report(
             yaml.safe_load((work / "profile.yaml").read_text(encoding="utf-8"))
         )
     intake_data["profile"] = profile
+    intake_data["_work_name"] = work.name
     intake, seeded = load_intake(intake_data)
     tags = None
     if (work / "tags.yaml").exists():
         tags = load_tags(
             yaml.safe_load((work / "tags.yaml").read_text(encoding="utf-8"))
         )
-    sources = [
-        (path.name, path.read_text(encoding="utf-8"))
-        for path in sorted(work.iterdir())
-        if path.suffix.lower() in SOURCE_SUFFIXES and path.is_file()
-    ]
-    doc = normalize_sources(sources)
+    doc = normalize_sources(chapter_sources(work))
     extra = []
     facts_path = work / "facts.json"
     if facts_path.exists():
@@ -139,7 +147,7 @@ def build_report(
     mentions = build_mentions(doc, facts)
     items, lens, summary = run_rules(doc, facts, intake, tags, graph, mentions, layer_b)
     if layer_b:
-        b_items, b_lens = run_layer_b(
+        b_items, b_lens, voice_profiles = run_layer_b(
             doc,
             intake,
             graph,
@@ -149,6 +157,10 @@ def build_report(
             max_passages,
             per_chapter or PASSAGES_PER_CHAPTER,
             on_call=on_call,
+            profile_cache=profile_cache,
+            refresh_profiles=refresh_profiles,
+            on_profile=on_profile,
+            reuse_stale=reuse_stale,
         )
         opted = {row["rule_id"] for row in lens if row["reason"] == "opted_out"}
         lens = [
@@ -157,16 +169,21 @@ def build_report(
         ]
         items.extend(item for item in b_items if item["rule_id"] not in opted)
     report = {"summary": summary, "lens": lens, "items": items}
+    if layer_b:
+        report["voice_profiles"] = voice_profiles
     paragraphs = {paragraph.id: paragraph.text for paragraph in doc.paragraphs}
+    hashes = {paragraph.id: paragraph.content_hash for paragraph in doc.paragraphs}
     fact_index = {fact["id"]: fact for fact in facts}
-    report = drop_invalid_items(report, paragraphs, fact_index)
-    errors = validate_report(report, paragraphs, fact_index)
+    report = drop_invalid_items(report, paragraphs, fact_index, hashes)
+    errors = validate_report(report, paragraphs, fact_index, hashes)
     if errors:
         raise SystemExit("report failed validation: " + "; ".join(errors))
     return report
 
 
-def drop_invalid_items(report: dict, paragraphs: dict, fact_index: dict) -> dict:
+def drop_invalid_items(
+    report: dict, paragraphs: dict, fact_index: dict, hashes: dict | None = None
+) -> dict:
     """Drop any item that fails validation instead of losing the whole report.
 
     Dropped items are counted in one unverifiable note so the gap is visible.
@@ -174,7 +191,7 @@ def drop_invalid_items(report: dict, paragraphs: dict, fact_index: dict) -> dict
     kept, reasons = [], []
     for item in report["items"]:
         errors = validate_report(
-            {"summary": "", "lens": [], "items": [item]}, paragraphs, fact_index
+            {"summary": "", "lens": [], "items": [item]}, paragraphs, fact_index, hashes
         )
         if errors:
             reasons.append(f"{item.get('rule_id')}: {errors[0]}")
@@ -235,6 +252,39 @@ def save_cache(home: Path, cache: dict) -> None:
         raise
 
 
+def profiles_path(home: Path) -> Path:
+    return home / "cache" / "profiles.json"
+
+
+def load_profile_cache(home: Path) -> dict:
+    path = profiles_path(home)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_profile_cache(home: Path, cache: dict) -> None:
+    path = profiles_path(home)
+    if _inside_repo(path):
+        raise SystemExit(
+            f"refusing to write the voice-profile cache inside this repo: {path}"
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="profiles.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(cache, sort_keys=True))
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
 def run_work(
     work: Path,
     layer_b: bool = False,
@@ -243,6 +293,10 @@ def run_work(
     cache: dict | None = None,
     max_passages: int | None = None,
     per_chapter: int | None = None,
+    refresh_profiles: bool = False,
+    html_path: Path | None = None,
+    json_path: Path | None = None,
+    reuse_stale: bool = False,
 ) -> str:
     """Render a report. With a real provider the cache persists under DOCTOR_HOME/cache."""
     persist = (
@@ -251,6 +305,9 @@ def run_work(
     root = home if home is not None else doctor_home()
     if persist:
         cache = load_cache(root)
+        profile_cache = load_profile_cache(root)
+    else:
+        profile_cache = None
     try:
         report = build_report(
             work,
@@ -261,10 +318,28 @@ def run_work(
             max_passages=max_passages,
             per_chapter=per_chapter,
             on_call=(lambda c: save_cache(root, c)) if persist else None,
+            profile_cache=profile_cache,
+            refresh_profiles=refresh_profiles,
+            on_profile=(lambda c: save_profile_cache(root, c)) if persist else None,
+            reuse_stale=reuse_stale,
         )
     finally:
         if persist:
             save_cache(root, cache)
+            save_profile_cache(root, profile_cache)
+    for path in (html_path, json_path):
+        if path is not None and _inside_repo(path):
+            raise SystemExit(f"refusing to write story text inside this repo: {path}")
+    if json_path is not None:
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {**report, "positions": flag_positions(report)}
+        json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    if html_path is not None:
+        document = normalize_sources(chapter_sources(work))
+        html_path.parent.mkdir(parents=True, exist_ok=True)
+        html_path.write_text(
+            render_html(report, document.paragraphs), encoding="utf-8"
+        )
     return render(report)
 
 
@@ -291,6 +366,18 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=f"Default cap: this many passages per chapter per rule ({PASSAGES_PER_CHAPTER}).",
     )
+    run.add_argument("--html", default=None, help="Write a self-contained review page outside this repo.")
+    run.add_argument("--json", default=None, help="Write the validated report outside this repo.")
+    run.add_argument(
+        "--refresh-voice-profiles",
+        action="store_true",
+        help="Regenerate cached OOC voice profiles even when the sample is unchanged.",
+    )
+    run.add_argument(
+        "--reuse-stale-voice-profiles",
+        action="store_true",
+        help="Keep a cached voice profile when its sample has changed.",
+    )
     canon = sub.add_parser("canon")
     canon_sub = canon.add_subparsers(dest="canon_cmd", required=True)
     load = canon_sub.add_parser("load")
@@ -312,6 +399,10 @@ def main(argv: list[str] | None = None) -> int:
                 provider=provider,
                 max_passages=args.max_passages,
                 per_chapter=args.per_chapter,
+                refresh_profiles=args.refresh_voice_profiles,
+                html_path=Path(args.html) if args.html else None,
+                json_path=Path(args.json) if args.json else None,
+                reuse_stale=args.reuse_stale_voice_profiles,
             )
         except DuplicateChapter as exc:
             raise SystemExit(str(exc)) from exc

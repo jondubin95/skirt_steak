@@ -164,8 +164,22 @@ def run_rules(
                 "depends_on_hash": depends_hash([surface, *entities]),
             }
         )
-    aliases = [fact["object"] for fact in facts if fact.get("predicate") == "alias"]
-    items.extend(name_spelling(doc.paragraphs, [str(alias) for alias in aliases]))
+    alias_rows = [
+        (str(fact["object"]), str(fact.get("subject") or ""))
+        for fact in facts
+        if fact.get("predicate") == "alias"
+    ]
+    owners: dict[str, set[str]] = {}
+    for surface, entity in alias_rows:
+        owners.setdefault(surface, set()).add(entity or surface.casefold())
+    items.extend(
+        name_spelling(
+            doc.paragraphs,
+            [surface for surface, _entity in alias_rows],
+            dismissed=[str(name) for name in intake.get("spelling_ignore") or []],
+            owners=owners,
+        )
+    )
     ran.add("CANON.NAME_SPELLING")
     skipped: dict[str, str] = {}
     if tags:

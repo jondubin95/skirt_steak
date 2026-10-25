@@ -36,7 +36,7 @@ This repo is intentionally iterative, so structure and workflows will continue t
 - Clarity & Concision Editor gem: [python/Project/Gem_Factory/Jons_Gems/clarity-concision-editor/README.md](python/Project/Gem_Factory/Jons_Gems/clarity-concision-editor/README.md)
 - MSJC Board Secretary minutes writer: [python/msjc_board_secretary/README.md](python/msjc_board_secretary/README.md)
 - Market-analyst decision log: [python/decision_log/README.md](python/decision_log/README.md)
-- Fanfic Story Doctor: [python/fanfic_story_doctor/README.md](python/fanfic_story_doctor/README.md)
+- Fanfic Story Doctor (shelved 2026-10-24; see [status](python/fanfic_story_doctor/PROJECT_STATUS.md)): [python/fanfic_story_doctor/README.md](python/fanfic_story_doctor/README.md)
 
 ## Handoff Convention
 

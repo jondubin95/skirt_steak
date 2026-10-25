@@ -50,15 +50,26 @@ class FakeRunner:
             raise self.raise_exc
         if self.answer is None:
             text = kwargs["input"]
-            passage = text.split("<<<PASSAGE\n", 1)[1].split("\nPASSAGE>>>", 1)[0]
-            words = " ".join(passage.split()[:3])
-            answer = {
-                "kind": "note",
-                "label": "in_voice",
-                "quote": words,
-                "observed": words,
-                "interpretation": "Reads as steady and terse.",
-            }
+            if "VOICE PROFILE" in text:
+                answer = {
+                    "register": "terse",
+                    "cadence": "short",
+                    "syntax": "plain words",
+                    "diction": "camp orders",
+                    "range": "stays clipped",
+                    "dialect_or_l2": "no second-language pattern",
+                }
+            else:
+                passage = text.split("<<<PASSAGE\n", 1)[1].split("\nPASSAGE>>>", 1)[0]
+                words = " ".join(passage.split()[:3]).strip('"')
+                answer = {
+                    "kind": "note",
+                    "label": "in_voice",
+                    "quote": words,
+                    "observed": words,
+                    "interpretation": "Reads as steady and terse.",
+                    "evidence_strength": "sufficient",
+                }
         else:
             answer = self.answer
         return subprocess.CompletedProcess(argv, self.returncode, _wrap(answer), "")
