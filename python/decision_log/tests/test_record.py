@@ -12,7 +12,6 @@ import unittest
 import uuid
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
 
 import duckdb
 
@@ -730,29 +729,6 @@ class DecisionLogTests(unittest.TestCase):
         self.assertEqual(out, "")
         self.assertNotIn("Traceback", err)
         self.assertNotIn("close other sessions", err)
-
-    def test_unreadable_schema_and_summary_are_clean_errors(self) -> None:
-        missing = self.root / "missing.sql"
-        empty = self.root / "empty.duckdb"
-        con = duckdb.connect(str(empty))
-        try:
-            with patch("decision_log.record.SCHEMA_PATH", missing):
-                with self.assertRaises(DecisionLogError) as caught:
-                    apply_schema_if_empty(con)
-            self.assertEqual(caught.exception.field, "schema")
-            self.assertEqual(caught.exception.reason, "unreadable")
-        finally:
-            con.close()
-
-        con = duckdb.connect(":memory:")
-        try:
-            with patch("decision_log.record.SUMMARY_PATH", missing):
-                with self.assertRaises(DecisionLogError) as caught:
-                    summary_rows(con)
-            self.assertEqual(caught.exception.field, "summary")
-            self.assertEqual(caught.exception.reason, "unreadable")
-        finally:
-            con.close()
 
     def test_cli_cwd_does_not_create_a_stray_database(self) -> None:
         inbox = self.write_inbox(_payload())

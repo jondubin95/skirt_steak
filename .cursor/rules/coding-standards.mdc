@@ -3,7 +3,7 @@ description: Global coding standards
 alwaysApply: true
 ---
 
-Machine-checked in CI (root `ruff.toml`, blocking): Fail Fast (`E722`, `S110`, `BLE001`) and every pep8-naming rule (`N`, so a future camelCase function, argument, or local fails CI). Guidance only: YAGNI, DRY, Simple First, Delete Aggressively, and Semantic Naming (ruff does not check name verbosity). Local git hooks are advisory: they need the one-time `core.hooksPath` setup, do not run for Cloud Agents, and `--no-verify` skips them. CI is the enforcement.
+Enforced in CI by root `ruff.toml`: Fail Fast and pep8-naming. The rest is guidance. Details: `docs/workflow-guardrails.md`.
 
 ## YAGNI
 

@@ -230,6 +230,6 @@ Sensitive file accidentally staged
 - Blocks any PR that touches files under `Sensitive/` other than the tracked scaffold `Sensitive/README.md`.
 - Blocks any PR whose body still contains the raw template placeholders ("What changed?", "Why was this needed?").
 - Runs `python -m py_compile` over `python/` as a blocking syntax check.
-- Runs `ruff check` from the repo root (`ruff.toml` selects E722, S110, BLE001, and all of pep8-naming via `N`) as a blocking step. `black --check` and `pylint` stay advisory because existing formatting drift does not fail the build.
+- Runs `ruff check` from the repo root as a blocking step. `ruff.toml` selects Fail Fast (`E722`, `S110`, `BLE001`) and the full pep8-naming set (`N`), so a camelCase function, argument, or local fails CI. `N` does not check name verbosity. `black --check` and `pylint` stay advisory because existing formatting drift does not fail the build.
 
 CI blocks a bad pull request even when hooks were never installed or were skipped with `--no-verify`. It is not a substitute for GitHub branch protection on `main`, which is configured in repo Settings → Branches and is not something this repo's files can enforce on their own.
