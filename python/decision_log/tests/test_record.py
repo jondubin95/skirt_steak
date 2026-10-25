@@ -12,6 +12,7 @@ import unittest
 import uuid
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import duckdb
 
@@ -487,7 +488,10 @@ class DecisionLogTests(unittest.TestCase):
             ["record", "--input", str(inbox), "--repo-root", str(self.root)]
         )
         self.assertEqual(code, 1)
-        self.assertNotIn("Traceback", err)
+        self.assertEqual(
+            err, "database: close other sessions or the file is not a database\n"
+        )
+        self.assertEqual(out, "")
         self.assert_no_secrets(out + err)
 
         mismatch = self.root / "mismatch.duckdb"
@@ -710,6 +714,45 @@ class DecisionLogTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertIn("match: yes", out)
         self.assert_no_secrets(out + err)
+
+    def test_bad_encoding_inbox_is_a_clean_error(self) -> None:
+        inbox = self.write_inbox(_payload())
+        inbox.write_bytes(b"\xff\xfe not utf-8")
+        with self.assertRaises(DecisionLogError) as caught:
+            check(inbox, repo_root=self.root)
+        self.assertEqual(caught.exception.field, "input")
+        self.assertEqual(caught.exception.reason, "must be UTF-8 JSON")
+        code, out, err = self.run_cli(
+            ["check", "--input", str(inbox), "--repo-root", str(self.root)]
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(err, "input: must be UTF-8 JSON\n")
+        self.assertEqual(out, "")
+        self.assertNotIn("Traceback", err)
+        self.assertNotIn("close other sessions", err)
+
+    def test_unreadable_schema_and_summary_are_clean_errors(self) -> None:
+        missing = self.root / "missing.sql"
+        empty = self.root / "empty.duckdb"
+        con = duckdb.connect(str(empty))
+        try:
+            with patch("decision_log.record.SCHEMA_PATH", missing):
+                with self.assertRaises(DecisionLogError) as caught:
+                    apply_schema_if_empty(con)
+            self.assertEqual(caught.exception.field, "schema")
+            self.assertEqual(caught.exception.reason, "unreadable")
+        finally:
+            con.close()
+
+        con = duckdb.connect(":memory:")
+        try:
+            with patch("decision_log.record.SUMMARY_PATH", missing):
+                with self.assertRaises(DecisionLogError) as caught:
+                    summary_rows(con)
+            self.assertEqual(caught.exception.field, "summary")
+            self.assertEqual(caught.exception.reason, "unreadable")
+        finally:
+            con.close()
 
     def test_cli_cwd_does_not_create_a_stray_database(self) -> None:
         inbox = self.write_inbox(_payload())
