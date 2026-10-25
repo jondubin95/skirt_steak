@@ -185,11 +185,24 @@ def _allowed_verdicts(evidence: list[dict[str, Any]]) -> set[str]:
     return allowed
 
 
+def _read_text(path: Path, field: str, *, encoding: str, decode_reason: str) -> str:
+    """Read text. File and encoding failures become DecisionLogError."""
+    try:
+        return path.read_text(encoding=encoding)
+    except UnicodeDecodeError as exc:
+        raise DecisionLogError(field, decode_reason) from exc
+    except OSError as exc:
+        raise DecisionLogError(field, "unreadable") from exc
+
+
 def _load_payload(inbox_path: Path, repo_root: Path) -> dict[str, Any]:
     if not inbox_path.is_file() or not _under_sensitive(inbox_path, repo_root):
         raise DecisionLogError("input", "must be a file under Sensitive")
+    text = _read_text(
+        inbox_path, "input", encoding="utf-8-sig", decode_reason="must be UTF-8 JSON"
+    )
     try:
-        raw = json.loads(inbox_path.read_text(encoding="utf-8-sig"))
+        raw = json.loads(text)
     except json.JSONDecodeError as exc:
         raise DecisionLogError("input", "must be JSON") from exc
     if not isinstance(raw, dict):
@@ -279,15 +292,20 @@ def apply_schema_if_empty(con: duckdb.DuckDBPyConnection) -> None:
     if _main_tables(con):
         _require_version(con)
         return
+    schema_sql = _read_text(
+        SCHEMA_PATH, "schema", encoding="utf-8", decode_reason="must be UTF-8"
+    )
     try:
-        for statement in _statements(SCHEMA_PATH.read_text(encoding="utf-8")):
+        for statement in _statements(schema_sql):
             con.execute(statement)
     except duckdb.Error as exc:
         raise DecisionLogError("database", DB_LOCK_MESSAGE) from exc
 
 
 def summary_rows(con: duckdb.DuckDBPyConnection) -> list[tuple[Any, ...]]:
-    sql = SUMMARY_PATH.read_text(encoding="utf-8")
+    sql = _read_text(
+        SUMMARY_PATH, "summary", encoding="utf-8", decode_reason="must be UTF-8"
+    )
     return con.execute(sql).fetchall()
 
 
@@ -599,7 +617,7 @@ def main(
     except DecisionLogError as exc:
         err.write(f"{exc.field}: {exc.reason}\n")
         return 1
-    except Exception:
+    except duckdb.Error:
         err.write(f"database: {DB_LOCK_MESSAGE}\n")
         return 1
 

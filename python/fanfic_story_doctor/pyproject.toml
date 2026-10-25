@@ -27,3 +27,8 @@ doctor = ["schemas/*.json"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+# Selection lives in the repo-root ruff.toml. This extend keeps `ruff check`
+# inside this package from stopping at this file and using Ruff defaults.
+extend = "../../ruff.toml"

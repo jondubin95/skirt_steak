@@ -14,7 +14,7 @@ from doctor.layerb import (
     G9_ENV,
     LABELS,
     DeterministicMockProvider,
-    ProviderRefused,
+    ProviderRefusedError,
     get_provider,
     validate_response,
 )
@@ -313,9 +313,9 @@ def test_validator_blocks_layer_b_above_info():
 
 
 def test_non_mock_provider_refuses_without_g9_opt_in(tmp_path: Path, capsys):
-    with pytest.raises(ProviderRefused, match="G9"):
+    with pytest.raises(ProviderRefusedError, match="G9"):
         get_provider("openai", env={})
-    with pytest.raises(ProviderRefused, match="not implemented"):
+    with pytest.raises(ProviderRefusedError, match="not implemented"):
         get_provider("openai", env={G9_ENV: "1"})
     assert isinstance(get_provider("mock", env={}), DeterministicMockProvider)
     code = main(["run", str(FIXTURE), "--layer-b", "--provider", "anthropic"])

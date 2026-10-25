@@ -131,7 +131,7 @@ def main() -> None:
             continue
         try:
             handle(message)
-        except Exception:
+        except Exception:  # noqa: BLE001 — JSON-RPC boundary: return internal error and keep reading stdin
             traceback.print_exc(file=sys.stderr)
             if message.get("id") is not None:
                 fail(message.get("id"), -32603, "Internal error")

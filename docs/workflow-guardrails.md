@@ -8,7 +8,7 @@ This runbook adds a safe default workflow for this repository.
 - Do not stage files under `Sensitive/` except the tracked scaffold `Sensitive/README.md`.
 - Do not push directly from `main` or `master`.
 
-These rules are enforced by committed hooks in `.githooks/`.
+CI in `.github/workflows/guardrails.yml` enforces these rules on a pull request. Hooks in `.githooks/` are advisory and local-only: they run after the one-time `core.hooksPath` setup, they do not run for Cursor Cloud Agents, and `--no-verify` skips them.
 
 ## Agent Git Safety Protocol
 
@@ -196,7 +196,7 @@ From `python/Project/Gem_Factory`:
 `--client-secrets not found`
 
 - Fix the path, or place the file at:
-  `C:\Users\jondu\Repos\skirt_steak\Sensitive\credentials.json`
+  `Sensitive/credentials.json`
 
 `SERVICE_DISABLED` for `docs.googleapis.com`
 
@@ -224,12 +224,12 @@ Sensitive file accidentally staged
 
 ## CI Guardrails
 
-`.github/workflows/guardrails.yml` runs on every pull request into `main`/`master` and enforces, server-side, what local hooks only enforce if a contributor set them up:
+`.github/workflows/guardrails.yml` runs on every pull request into `main`/`master`. This workflow is the enforcement. Local hooks repeat only the branch and `Sensitive/` checks, and only on a machine that installed them:
 
 - Branch naming: accepts `feature/[a-z0-9-]{3,40}` (local / human) and `cursor/<name>-<id>` (Cursor Cloud Agents). A PR from any other branch name fails the check.
 - Blocks any PR that touches files under `Sensitive/` other than the tracked scaffold `Sensitive/README.md`.
 - Blocks any PR whose body still contains the raw template placeholders ("What changed?", "Why was this needed?").
 - Runs `python -m py_compile` over `python/` as a blocking syntax check.
-- Runs `black --check` and `pylint` as advisory-only steps (they report warnings but do not fail the build), because the existing codebase has not been reformatted yet.
+- Runs `ruff check` from the repo root as a blocking step. `ruff.toml` selects Fail Fast (`E722`, `S110`, `BLE001`) and the full pep8-naming set (`N`), so a camelCase function, argument, or local fails CI. `N` does not check name verbosity. `black --check` and `pylint` stay advisory because existing formatting drift does not fail the build.
 
-This is enforcement backstop, not a replacement for local hooks. Local hooks still block bad commits/pushes before they leave your machine; CI blocks them from merging even if hooks were skipped or never installed. Neither is a substitute for GitHub branch protection on `main`, which is configured in repo Settings → Branches and is not something this repo's files can enforce on their own.
+CI blocks a bad pull request even when hooks were never installed or were skipped with `--no-verify`. It is not a substitute for GitHub branch protection on `main`, which is configured in repo Settings → Branches and is not something this repo's files can enforce on their own.

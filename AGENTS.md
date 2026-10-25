@@ -74,11 +74,13 @@ Maximize delivery speed while preventing loss of local work, unsafe history rewr
 
 - Store credentials/tokens only under `Sensitive/` (see `Sensitive/README.md` for the expected layout).
 - Never stage files under `Sensitive/` except the tracked scaffold `Sensitive/README.md`.
-- Current hook protection blocks staged paths that match `Sensitive/` other than that README. This is not a complete secret-scanning system.
+- Local hook protection can block staged paths that match `Sensitive/` other than that README. It runs only after the one-time setup below, it does not run for Cursor Cloud Agents, and `--no-verify` skips it. This is not a complete secret-scanning system. CI is what blocks those paths on a pull request.
 
 ## Recommended Command Flow
 
-1. Run hook setup once: `powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\setup-hooks.ps1`
+Local hooks in `.githooks/` are advisory. A clone does not run them until `core.hooksPath` is set to `.githooks`. Cursor Cloud Agents leave the platform wrapper in place, and that wrapper does not call `.githooks`. `git commit --no-verify` and `git push --no-verify` skip the hooks. `.github/workflows/guardrails.yml` is the enforcement.
+
+1. Optional, on a local clone only: `powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\setup-hooks.ps1` or `bash tools/workflow_guardrails/setup-hooks.sh`. Skip this on a Cursor Cloud Agent (`docs/workflow-guardrails.md`).
 2. Create a valid working branch: `git switch -c feature/<short-description>` (Cloud Agents use `cursor/<name>-<id>` instead).
 3. Run preflight before sync and commit: `powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\preflight.ps1` or `bash tools/workflow_guardrails/preflight.sh`
 4. Use diagnostics if something looks off: `powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\diagnostics.ps1` or `bash tools/workflow_guardrails/diagnostics.sh`

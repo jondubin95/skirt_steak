@@ -94,7 +94,7 @@ RUBRICS = {
 LABELS = {rule: set(spec["labels"]) for rule, spec in RUBRICS.items()}
 
 
-class ProviderRefused(RuntimeError):
+class ProviderRefusedError(RuntimeError):
     """A non-mock provider was requested while the G9 gate is closed."""
 
 
@@ -148,7 +148,7 @@ class DeterministicMockProvider:
 
 def _require_g9(name: str, env) -> None:
     if env.get(G9_ENV) != "1":
-        raise ProviderRefused(
+        raise ProviderRefusedError(
             f"provider '{name}' refused: gate G9 is closed. Check Cursor data and "
             f"retention settings on the actual account, then set {G9_ENV}=1."
         )
@@ -160,7 +160,7 @@ class GatedProvider:
     def __init__(self, name: str, env: dict | None = None) -> None:
         env = os.environ if env is None else env
         _require_g9(name, env)
-        raise ProviderRefused(
+        raise ProviderRefusedError(
             f"provider '{name}' is not implemented. Use 'mock' or 'cursor-agent'."
         )
 
@@ -365,7 +365,7 @@ class CursorAgentProvider:
         _require_g9(self.name, env)
         self.command = _find_cli(env)
         if not self.command:
-            raise ProviderRefused(
+            raise ProviderRefusedError(
                 f"provider '{self.name}': CLI not found. Install the Cursor CLI or set {CLI_ENV}."
             )
         self.model = model or env.get(MODEL_ENV) or None

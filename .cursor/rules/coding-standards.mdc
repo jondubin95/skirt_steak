@@ -1,0 +1,30 @@
+---
+description: Global coding standards
+alwaysApply: true
+---
+
+Enforced in CI by root `ruff.toml`: Fail Fast and pep8-naming. The rest is guidance. Details: `docs/workflow-guardrails.md`.
+
+## YAGNI
+
+Don't build it until you need it.
+
+## DRY
+
+Extract patterns after the second duplication, not before.
+
+## Fail Fast
+
+Explicit errors beat silent failures.
+
+## Simple First
+
+Write the obvious solution; optimize only if needed.
+
+## Delete Aggressively
+
+Less code means fewer bugs.
+
+## Semantic Naming
+
+Always name variables, parameters, and API endpoints with verbose, self-documenting names that optimize comprehension for both humans and LLMs, not brevity (e.g. `wait_until_obs_is_saved=true` rather than `wait=true`).

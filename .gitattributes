@@ -1,0 +1,4 @@
+# POSIX shell must stay LF. Windows core.autocrlf=true otherwise checks these out
+# as CRLF and `sh` fails on `set -eu` (`set: Illegal option -`).
+*.sh text eol=lf
+.githooks/* text eol=lf
