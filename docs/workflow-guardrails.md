@@ -196,7 +196,7 @@ From `python/Project/Gem_Factory`:
 `--client-secrets not found`
 
 - Fix the path, or place the file at:
-  `C:\Users\jondu\Repos\skirt_steak\Sensitive\credentials.json`
+  `Sensitive/credentials.json`
 
 `SERVICE_DISABLED` for `docs.googleapis.com`
 
