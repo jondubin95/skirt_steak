@@ -15,7 +15,7 @@ from doctor.layerb import (
     CLI_ENV,
     G9_ENV,
     CursorAgentProvider,
-    ProviderRefused,
+    ProviderRefusedError,
     build_prompt,
     get_provider,
     parse_cli_output,
@@ -76,14 +76,14 @@ class FakeRunner:
 
 
 def test_cursor_agent_refused_without_g9_even_for_public_work():
-    with pytest.raises(ProviderRefused, match="G9"):
+    with pytest.raises(ProviderRefusedError, match="G9"):
         get_provider("cursor-agent", env={CLI_ENV: "/fake/cursor-agent"})
-    with pytest.raises(ProviderRefused, match="G9"):
+    with pytest.raises(ProviderRefusedError, match="G9"):
         CursorAgentProvider(env={G9_ENV: "yes", CLI_ENV: "/x"})
 
 
 def test_cursor_agent_missing_cli_refuses():
-    with pytest.raises(ProviderRefused, match="CLI not found"):
+    with pytest.raises(ProviderRefusedError, match="CLI not found"):
         CursorAgentProvider(env={G9_ENV: "1", "PATH": ""}, runner=FakeRunner())
 
 

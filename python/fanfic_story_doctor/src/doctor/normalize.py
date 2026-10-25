@@ -143,7 +143,7 @@ def _many_chapters(name: str, text: str) -> bool:
     return _is_html(name) and len(set(re.findall(r'id="chapter-(\d+)"', text))) > 1
 
 
-class DuplicateChapter(ValueError):
+class DuplicateChapterError(ValueError):
     """Two source files claim the same chapter number."""
 
 
@@ -161,7 +161,7 @@ def normalize_sources(sources: list[tuple[str, str]]) -> Document:
     Files merge in chapter order. A file's chapter comes from its name; a
     full-work HTML file claims every chapter on its page. A file with no digit
     is numbered after the highest claimed chapter, in input order. Two files
-    claiming one chapter raise DuplicateChapter, so paragraph ids stay unique.
+    claiming one chapter raise DuplicateChapterError, so paragraph ids stay unique.
 
     `.md` and `.txt` are Markdown or plain text, one chapter each. `.html` is
     AO3 HTML: a chapter page, or a full-work download that holds several
@@ -179,7 +179,7 @@ def normalize_sources(sources: list[tuple[str, str]]) -> Document:
         claimed = sorted({p.chapter for p in part.paragraphs} or {chapter})
         for number in claimed:
             if number in owner:
-                raise DuplicateChapter(
+                raise DuplicateChapterError(
                     f"duplicate chapter {number}: {owner[number]}, {name}"
                 )
             owner[number] = name

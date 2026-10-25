@@ -599,7 +599,7 @@ def main(
     except DecisionLogError as exc:
         err.write(f"{exc.field}: {exc.reason}\n")
         return 1
-    except Exception:
+    except duckdb.Error:
         err.write(f"database: {DB_LOCK_MESSAGE}\n")
         return 1
 

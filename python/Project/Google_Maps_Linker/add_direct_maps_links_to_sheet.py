@@ -97,12 +97,13 @@ def load_credentials():
 
 
 def load_cache() -> dict:
+    if not PLACES_CACHE_FILE.exists():
+        return {}
     try:
-        if PLACES_CACHE_FILE.exists():
-            return json.loads(PLACES_CACHE_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        pass
-    return {}
+        return json.loads(PLACES_CACHE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        print("Places cache unreadable; starting empty.", file=sys.stderr)
+        return {}
 
 
 def save_cache(cache: dict) -> None:
@@ -290,11 +291,11 @@ def main(sheet_url: str):
         )
         processed += 1
 
-    # Persist cache even if the sheet update fails (helps resume).
+    # A cache write failure must not skip the sheet update (helps resume).
     try:
         save_cache(cache)
-    except Exception:
-        pass
+    except OSError:
+        print("Places cache was not saved; continuing with the sheet update.", file=sys.stderr)
 
     target_range = f"{a1_quote(sheet_title)}!{start_col}1:{end_col}{len(values)}"
     (

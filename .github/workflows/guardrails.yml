@@ -106,8 +106,7 @@ jobs:
             if git check-ignore -q --no-index "$pkg/$path"; then echo "::error::$pkg/$path should be tracked"; exit 1; fi
           done
 
-      - name: ruff fail-fast and naming (advisory, does not fail the build)
-        continue-on-error: true
+      - name: ruff fail-fast and naming
         run: python -m ruff check --config python/fanfic_story_doctor/pyproject.toml python
 
       - name: black --check (advisory, does not fail the build)

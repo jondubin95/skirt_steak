@@ -14,7 +14,7 @@ from doctor.ids import compare_ids
 from doctor.intake import IntakeError, load_intake, load_tags
 from doctor.later import cache_key, vote
 from doctor.normalize import (
-    DuplicateChapter,
+    DuplicateChapterError,
     content_hash,
     normalize_html,
     normalize_markdown,
@@ -803,7 +803,7 @@ def test_multichapter_html_chapters_are_claimed():
 def test_multichapter_html_next_to_ch01_raises():
     from test_real_fic_fixes import AO3_WORK
 
-    with pytest.raises(DuplicateChapter, match="duplicate chapter 1: work.html, ch01.md"):
+    with pytest.raises(DuplicateChapterError, match="duplicate chapter 1: work.html, ch01.md"):
         normalize_sources([("work.html", AO3_WORK), ("ch01.md", "Mara waited.\n")])
 
 

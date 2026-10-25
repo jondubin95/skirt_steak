@@ -16,11 +16,11 @@ from doctor.factstore import load_facts
 from doctor.intake import load_intake, load_profile, load_tags
 from doctor.layerb import (
     PASSAGES_PER_CHAPTER,
-    ProviderRefused,
+    ProviderRefusedError,
     get_provider,
     run_layer_b,
 )
-from doctor.normalize import DuplicateChapter, normalize_sources
+from doctor.normalize import DuplicateChapterError, normalize_sources
 from doctor.pipeline import (
     applicable_facts,
     build_mentions,
@@ -389,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.layer_b:
             try:
                 provider = get_provider(args.provider)
-            except ProviderRefused as exc:
+            except ProviderRefusedError as exc:
                 sys.stderr.write(f"{exc}\n")
                 return 3
         try:
@@ -404,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
                 json_path=Path(args.json) if args.json else None,
                 reuse_stale=args.reuse_stale_voice_profiles,
             )
-        except DuplicateChapter as exc:
+        except DuplicateChapterError as exc:
             raise SystemExit(str(exc)) from exc
         sys.stdout.write(text)
         stats = getattr(provider, "failures", None)
