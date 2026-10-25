@@ -39,7 +39,9 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- 'Sensitive/' || true)"
+          # icase so sensitive/ and SENSITIVE/ cannot skip CI. The README
+          # exception stays case-sensitive, so sensitive/README.md is still blocked.
+          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- ':(icase)Sensitive/' || true)"
           blocked="$(printf '%s\n' "$changed" | grep -Ev '^$|^Sensitive/README\.md$' || true)"
           if [ -n "$blocked" ]; then
             echo "::error::PR touches files under Sensitive/ other than the tracked scaffold README:"
