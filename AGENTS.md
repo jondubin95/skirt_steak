@@ -78,7 +78,7 @@ Maximize delivery speed while preventing loss of local work, unsafe history rewr
 
 ## Recommended Command Flow
 
-1. Run hook setup once: `powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\setup-hooks.ps1`
+1. Run hook setup once per clone so Git sets `core.hooksPath` to `.githooks`: `powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\setup-hooks.ps1` or `bash tools/workflow_guardrails/setup-hooks.sh`. On a Cursor Cloud Agent, skip this when `core.hooksPath` already points at the platform wrapper (`docs/workflow-guardrails.md`).
 2. Create a valid working branch: `git switch -c feature/<short-description>` (Cloud Agents use `cursor/<name>-<id>` instead).
 3. Run preflight before sync and commit: `powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\preflight.ps1` or `bash tools/workflow_guardrails/preflight.sh`
 4. Use diagnostics if something looks off: `powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\diagnostics.ps1` or `bash tools/workflow_guardrails/diagnostics.sh`
