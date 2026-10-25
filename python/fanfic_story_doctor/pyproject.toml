@@ -27,3 +27,7 @@ doctor = ["schemas/*.json"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff.lint]
+# Warn-only in CI. Fail Fast, plus PEP 8 naming shape. Name verbosity is not checked.
+select = ["E722", "S110", "BLE001", "N"]

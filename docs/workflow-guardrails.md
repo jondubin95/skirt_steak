@@ -230,6 +230,6 @@ Sensitive file accidentally staged
 - Blocks any PR that touches files under `Sensitive/` other than the tracked scaffold `Sensitive/README.md`.
 - Blocks any PR whose body still contains the raw template placeholders ("What changed?", "Why was this needed?").
 - Runs `python -m py_compile` over `python/` as a blocking syntax check.
-- Runs `black --check` and `pylint` as advisory-only steps (they report warnings but do not fail the build), because the existing codebase has not been reformatted yet.
+- Runs `ruff check` (E722, S110, BLE001, and PEP 8 naming) with `continue-on-error`, plus `black --check` and `pylint`, as advisory-only steps. Existing violations and formatting drift do not fail the build.
 
 This is enforcement backstop, not a replacement for local hooks. Local hooks still block bad commits/pushes before they leave your machine; CI blocks them from merging even if hooks were skipped or never installed. Neither is a substitute for GitHub branch protection on `main`, which is configured in repo Settings → Branches and is not something this repo's files can enforce on their own.

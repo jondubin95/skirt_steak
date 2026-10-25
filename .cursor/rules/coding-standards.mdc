@@ -3,6 +3,8 @@ description: Global coding standards
 alwaysApply: true
 ---
 
+Machine-checked, warn-only in CI: Fail Fast (`E722`, `S110`, `BLE001`) and PEP 8 naming shape (`N`). Guidance only: YAGNI, DRY, Simple First, Delete Aggressively, and Semantic Naming (ruff does not check name verbosity).
+
 ## YAGNI
 
 Don't build it until you need it.
