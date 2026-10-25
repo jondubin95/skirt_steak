@@ -1,6 +1,16 @@
-# Fanfic Story Doctor
+﻿# Fanfic Story Doctor
 
 Diagnose continuity and canon divergence. Do not rewrite prose.
+
+## Status
+
+**Shelved on 2026-10-24.** Paused, not abandoned.
+
+Story Doctor is a diagnose-never-rewrite continuity and voice copilot. Layer A runs deterministic rules and Layer B uses LLM judging. Across local trials on two real works and a planted-defect test, it caught planted name misspellings and a gross register swap. The control stayed clean and there were no false positives. It found no confirmed true positives on unedited text, and most voice reads on short lines were too thin to be useful (about 77%).
+
+Key finding: the objective name-spelling check worked. Single-line voice judging is mostly uninformative without surrounding context.
+
+Full wrap-up, results table, and ideas for resuming: [PROJECT_STATUS.md](PROJECT_STATUS.md).
 
 Spec: [handoffs/fanfic-story-doctor-spec-v0.4.4.md](../../handoffs/fanfic-story-doctor-spec-v0.4.4.md). v0.4.3 remains in force where the amendment is silent.
 
