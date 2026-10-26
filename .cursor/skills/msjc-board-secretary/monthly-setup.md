@@ -1,10 +1,7 @@
----
-name: Monthly board minutes doc setup
-description: >-
-  When the user asks to set up the doc for tonight's or this month's board
-  meeting minutes: build a blank fill-in skeleton from the agenda in the chat,
-  using last month's minutes as the format.
----
+# Monthly board minutes doc setup
+
+Use when the user asks to set up the doc for this month's board meeting minutes: a blank fill-in skeleton from the agenda in the chat, using last month's minutes as the format.
+
 # Purpose
 Before each monthly board meeting, turn a copy of last month's minutes into a blank skeleton the user fills in live. Never write meeting content for them.
 

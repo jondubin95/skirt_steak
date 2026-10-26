@@ -8,9 +8,7 @@ These skills are keyword-triggered, not always-on and not slash-only. Cursor's a
 | `clarity-concision-editor` | "tighten", "board tone", "cut 20%", "remove jargon", "clarity concision editor", "Polish" gem |
 | `paranoid-market-analyst` | "bet", "wager", "moneyline", "trade", "option", "position", "thesis" (directional market claims) |
 | `operating-behavior` | implementing, debugging, refactoring, summarizing changes, or pull requests in this repo |
-| `msjc-board-secretary` | "MSJC board minutes", "board meeting notes", "Board Secretary" |
-| `google-doc-revision-history-lookup` | older version of a Google Doc, revision history, version history, something was removed |
-| `monthly-board-minutes-doc-setup` | set up the board minutes doc, monthly minutes setup, meeting minutes skeleton |
+| `msjc-board-secretary` | "MSJC board minutes", "board meeting notes", "Board Secretary", "set up the minutes doc", "meeting mins", "revision history", "version history" |
 | `fanfic-story-doctor` | "fanfic story doctor", "story doctor", "canon divergence" |
 
 If a skill fires on the wrong message, or never fires when it should, tighten or loosen the keyword list in that skill's `description`. You can also still invoke any skill explicitly with `/skill-name` regardless of these keywords.

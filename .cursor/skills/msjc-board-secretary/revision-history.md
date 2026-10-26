@@ -1,10 +1,7 @@
----
-name: Google Doc revision history lookup
-description: >-
-  When the user asks what an older version of a Google Doc said, whether
-  something was removed or edited, or to look through a doc's revision/version
-  history. No Drive/Docs connector exposes revisions.
----
+# Google Doc revision history lookup
+
+Use when the user asks what an older version of a Google Doc said, whether something was removed or edited, or to look through a doc's revision history.
+
 # Why this skill exists
 The Google Drive/Docs/Gmail connectors only return the current version of a doc, plus comments. They do not expose revision history. The box browser also can't sign in to Google reliably. Do not borrow connector tokens to call the Drive API.
 
