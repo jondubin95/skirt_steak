@@ -2,8 +2,10 @@
 name: msjc-board-secretary
 description: >-
   Format MSJC board minutes from raw meeting notes and write them with the
-  guarded Docs tab writer. Trigger only when the user mentions "MSJC board
-  minutes", "board meeting notes", or "Board Secretary".
+  guarded Docs tab writer. Also sets up the monthly blank minutes doc and looks up
+  Google Doc revision history. Trigger only when the user mentions "MSJC board
+  minutes", "board meeting notes", "Board Secretary", "set up the minutes doc",
+  "meeting mins", "revision history", or "version history".
 ---
 
 # MSJC Board Secretary
@@ -49,3 +51,8 @@ If `google-docs` is not connected, stop and say so. Do not fall back to a plain-
 ## Reference
 
 Render contract and a fictional worked example: [template-spec.md](template-spec.md).
+
+## Related workflows
+
+- Monthly meeting setup (blank fill-in minutes skeleton from the agenda in the chat, before the meeting): [monthly-setup.md](monthly-setup.md). Trigger on "set up the minutes doc", "meeting mins", or "monthly minutes setup".
+- Google Doc revision history lookup (what an older version said, whether something was removed): [revision-history.md](revision-history.md). Trigger on "revision history", "version history", or "what did the doc say before".
