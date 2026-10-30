@@ -175,6 +175,32 @@ class BuilderTests(unittest.TestCase):
         ]
         self.assertTrue(italics)
 
+    def test_italic_paragraph_is_italic(self) -> None:
+        paragraphs = document_to_paragraphs(
+            load_minutes_document(
+                {
+                    "schemaVersion": 1,
+                    "items": [
+                        {
+                            "kind": "paragraph",
+                            "text": "Executive session concluded",
+                            "italic": True,
+                        }
+                    ],
+                }
+            )
+        )
+        reqs = requests_for_replace("tab", 2, paragraphs)
+        italics = [
+            r
+            for r in reqs
+            if r.get("updateTextStyle", {}).get("textStyle", {}).get("italic") is True
+        ]
+        self.assertEqual(len(italics), 1)
+        style_range = italics[0]["updateTextStyle"]["range"]
+        self.assertEqual(style_range["startIndex"], 1)
+        self.assertEqual(style_range["endIndex"], 1 + docs_len("Executive session concluded"))
+
 
 class ItemShapeTests(unittest.TestCase):
     def test_minutes_item_defaults(self) -> None:

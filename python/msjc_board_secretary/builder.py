@@ -119,7 +119,9 @@ def document_to_paragraphs(document: MinutesDocument) -> list[Paragraph]:
         elif item.kind == "motion":
             minutes.append(motion_paragraph(item.body or "", item.verdict))
         else:
-            minutes.append(para("normal", item.text or ""))
+            text = item.text or ""
+            spans = [Span(0, docs_len(text), italic=True)] if item.italic else []
+            minutes.append(para("normal", text, spans=spans))
 
     spaced: list[Paragraph] = []
     for item in minutes:
