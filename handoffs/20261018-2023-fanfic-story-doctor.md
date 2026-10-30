@@ -3,7 +3,7 @@ thread: fanfic-story-doctor
 status: done
 created: 2026-10-18T20:23Z
 supersedes: handoffs/archive/fanfic-story-doctor/20261018-1817-fanfic-story-doctor.md
-private_detail: Sensitive/handoffs/20261018-2023-fanfic-story-doctor.md
+private_detail: Sensitive/handoffs/20261018-1817-fanfic-story-doctor.md
 ---
 
 # Fanfic Story Doctor
@@ -43,7 +43,7 @@ Close the remaining Trial 7 review gaps in voice sampling, stale profiles, the H
 - `python/fanfic_story_doctor/src/doctor/intake.py`
 - `python/fanfic_story_doctor/src/doctor/cli.py`
 - `handoffs/fanfic-story-doctor-spec-v0.4.4.md`
-- Private trial detail from the previous note is not in this environment: `Sensitive/handoffs/20261018-1817-fanfic-story-doctor.md`
+- Private trial detail from the previous note. see private detail: Sensitive/handoffs/20261018-1817-fanfic-story-doctor.md
 
 ## Next Best Actions
 
