@@ -3,7 +3,7 @@ thread: harness-hardening
 status: done
 created: 2026-10-06T12:44Z
 supersedes: handoffs/archive/harness-hardening/20260920-0408-harness-hardening.md
-private_detail: Sensitive/handoffs/20261006-1244-harness-hardening.md
+private_detail: null
 ---
 
 # Harness hardening
