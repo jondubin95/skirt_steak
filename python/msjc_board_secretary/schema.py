@@ -23,7 +23,7 @@ SECTION_FIELDS = frozenset({"kind", "title"})
 PRESENTER_FIELDS = frozenset({"kind", "text"})
 BULLET_FIELDS = frozenset({"kind", "text", "level"})
 MOTION_FIELDS = frozenset({"kind", "body", "verdict"})
-PARAGRAPH_FIELDS = frozenset({"kind", "text"})
+PARAGRAPH_FIELDS = frozenset({"kind", "text", "italic"})
 DOCUMENT_FIELDS = frozenset({"schemaVersion", "items"})
 
 
@@ -54,6 +54,7 @@ class MinutesItem:
     body: str | None = None
     verdict: str | None = None
     level: int = 0
+    italic: bool = False
 
 
 @dataclass(frozen=True)
@@ -164,7 +165,14 @@ def _parse_item(raw: Any, index: int) -> MinutesItem:
             verdict=verdict,
         )
     _reject_unknown(obj, PARAGRAPH_FIELDS, label)
-    return MinutesItem(kind=kind, text=_require_str(obj.get("text"), f"{label}.text"))
+    italic = obj.get("italic", False)
+    if not isinstance(italic, bool):
+        raise SchemaError(f"{label}.italic must be a boolean")
+    return MinutesItem(
+        kind=kind,
+        text=_require_str(obj.get("text"), f"{label}.text"),
+        italic=italic,
+    )
 
 
 def load_minutes_document(raw: Any) -> MinutesDocument:

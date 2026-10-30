@@ -84,6 +84,18 @@ def _doc(title: str = "April 2026 Board Meeting Minutes 20260412", document=None
     return {"title": title, "revisionId": "rev-1", "tabs": [notes, test]}
 
 
+def _phrase_doc(phrase: str, *, copies_on_output: int = 1) -> dict:
+    doc = _doc()
+    doc["tabs"][0]["documentTab"]["body"]["content"] = [
+        {"paragraph": {"elements": [{"textRun": {"content": phrase + "\n"}}]}}
+    ]
+    output = (phrase + "\n") * copies_on_output or "\n"
+    doc["tabs"][1]["documentTab"]["body"]["content"] = [
+        {"paragraph": {"elements": [{"textRun": {"content": output}}]}}
+    ]
+    return doc
+
+
 class WriteGuardTests(unittest.TestCase):
     def test_dry_run_does_not_construct_credentials(self) -> None:
         def boom(*_args, **_kwargs):
@@ -130,6 +142,39 @@ class WriteGuardTests(unittest.TestCase):
             self.assertEqual(called["creds"], 0)
         finally:
             write_tab.load_credentials = original
+
+    def test_replace_one_match_is_limited_to_the_output_tab(self) -> None:
+        phrase = "2026 is year to date"
+        fake = FakeDocs(_phrase_doc(phrase))
+        summary = write_tab.perform_replace(
+            fake,
+            document_id="doc",
+            expected_title="April 2026 Board Meeting Minutes 20260412",
+            output_tab="Test",
+            find_text=phrase,
+            replacement="the 2026 balance is year to date",
+        )
+        self.assertEqual(summary["matches"], 1)
+        self.assertEqual(len(fake.updates), 1)
+        request = fake.updates[0]["requests"][0]["replaceAllText"]
+        self.assertEqual(request["tabsCriteria"]["tabIds"], ["tab-test"])
+        self.assertEqual(request["replaceText"], "the 2026 balance is year to date")
+        self.assertEqual(fake.updates[0]["writeControl"]["requiredRevisionId"], "rev-1")
+
+    def test_replace_refuses_unless_the_output_tab_has_one_match(self) -> None:
+        phrase = "2026 is year to date"
+        for copies in (0, 2):
+            fake = FakeDocs(_phrase_doc(phrase, copies_on_output=copies))
+            with self.assertRaises(WriteGuardError):
+                write_tab.perform_replace(
+                    fake,
+                    document_id="doc",
+                    expected_title="April 2026 Board Meeting Minutes 20260412",
+                    output_tab="Test",
+                    find_text=phrase,
+                    replacement="the 2026 balance is year to date",
+                )
+            self.assertEqual(fake.updates, [])
 
     def test_same_tab_and_wrong_title_do_not_mutate(self) -> None:
         document = load_minutes_document(json.loads(SAMPLE.read_text(encoding="utf-8")))

@@ -13,6 +13,8 @@ Sensitive/
   google/
     gdocs_token.json                 # Google Docs / Drive token (gitignored)
     clarity-concision-editor.gdocs-map.json
+  msjc/
+    roster.md                        # board-secretary name notes (gitignored)
   handoffs/                          # private tier of handoff notes (gitignored)
     YYYYMMDD-HHMM-<thread>.md
   decisions/                         # market-analyst log (gitignored)
@@ -47,6 +49,8 @@ Pre-commit, pre-push CI, and `.gitignore` block every other path under `Sensitiv
 `Sensitive/handoffs/` holds the private tier of handoff notes: the full-fidelity version of each checkpoint. The sanitized public counterpart lives in `handoffs/` and is tracked. See `.cursor/skills/handoff-notes/SKILL.md`.
 
 `Sensitive/decisions/` holds the market-analyst decision log: the DuckDB file, the playbook for each review, and the inbox JSON. The schema and the CLI are tracked. See `python/decision_log/README.md`.
+
+`Sensitive/msjc/roster.md` holds congregation name-expansion notes for the board-secretary skill. The skill points at that path. The file is gitignored.
 
 ## Related
 

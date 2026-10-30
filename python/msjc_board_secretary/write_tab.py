@@ -103,7 +103,16 @@ def load_credentials(creds_path: Path, token_path: Path) -> Any:
         creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            from google.auth.exceptions import RefreshError
+
+            try:
+                creds.refresh(Request())
+            except RefreshError as exc:
+                raise SystemExit(
+                    "Google token refresh failed. In your terminal, run "
+                    "python python/msjc_board_secretary/reauth.py and approve "
+                    "the browser prompt, then retry this command."
+                ) from exc
         else:
             if not creds_path.is_file():
                 raise SystemExit(f"Missing OAuth client file: {creds_path}")
@@ -237,6 +246,88 @@ def perform_write(
     }
 
 
+def tab_plain_text(tab: dict[str, Any]) -> str:
+    chunks: list[str] = []
+    content = (tab.get("documentTab") or {}).get("body", {}).get("content") or []
+    for element in content:
+        paragraph = element.get("paragraph") or {}
+        for run in paragraph.get("elements") or []:
+            chunks.append((run.get("textRun") or {}).get("content") or "")
+    return "".join(chunks)
+
+
+def replace_all_request(tab_id: str, find_text: str, replacement: str) -> dict[str, Any]:
+    return {
+        "replaceAllText": {
+            "containsText": {"text": find_text, "matchCase": True},
+            "replaceText": replacement,
+            "tabsCriteria": {"tabIds": [tab_id]},
+        }
+    }
+
+
+def load_replace_pair(path: Path) -> tuple[str, str]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Invalid replace JSON: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise SystemExit("replace JSON must be an object")
+    find_text = raw.get("find")
+    replacement = raw.get("replaceWith")
+    if not isinstance(find_text, str) or not find_text:
+        raise SystemExit("replace JSON find must be a non-empty string")
+    if not isinstance(replacement, str):
+        raise SystemExit("replace JSON replaceWith must be a string")
+    if find_text == replacement:
+        raise SystemExit("replace JSON find and replaceWith are the same")
+    return find_text, replacement
+
+
+def perform_replace(
+    client: Any,
+    *,
+    document_id: str,
+    expected_title: str,
+    output_tab: str,
+    find_text: str,
+    replacement: str,
+) -> dict[str, Any]:
+    """Replace one exact phrase on the output tab. Leave every other tab alone."""
+    if not find_text or find_text == replacement:
+        raise WriteGuardError("replace needs two different strings")
+    doc = client.get_document(document_id)
+    actual_title = str(doc.get("title") or "")
+    if actual_title != expected_title:
+        raise WriteGuardError(
+            f"document title {actual_title!r} does not match expected {expected_title!r}"
+        )
+    target = find_tab(flatten_tabs(doc.get("tabs")), output_tab)
+    matches = tab_plain_text(target).count(find_text)
+    if matches != 1:
+        raise WriteGuardError(
+            f"{output_tab} contains {matches} matches; refusing to replace"
+        )
+    revision = str(doc.get("revisionId") or "")
+    if not revision:
+        raise WriteGuardError("missing document revisionId for writeControl")
+    client.batch_update(
+        document_id,
+        attach_write_control(
+            {"requests": [replace_all_request(tab_id_of(target), find_text, replacement)]},
+            revision,
+        ),
+    )
+    return {
+        "mode": "replace",
+        "documentTitle": expected_title,
+        "outputTab": output_tab,
+        "tabId": tab_id_of(target),
+        "matches": 1,
+        "url": f"https://docs.google.com/document/d/{document_id}/edit",
+    }
+
+
 def _load_document(path: Path) -> MinutesDocument:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
@@ -262,7 +353,12 @@ def _require_write_args(args: argparse.Namespace) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Write minutes into one Docs tab.")
-    parser.add_argument("--input", required=True, help="Semantic minutes JSON path.")
+    parser.add_argument("--input", default="", help="Semantic minutes JSON path.")
+    parser.add_argument(
+        "--replace",
+        default="",
+        help="Private JSON with find and replaceWith. Changes one phrase on the output tab.",
+    )
     parser.add_argument("--write", action="store_true", help="Mutate the output tab.")
     parser.add_argument("--document-id", default="")
     parser.add_argument("--expected-document-title", default="")
@@ -271,6 +367,47 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--creds", default=str(DEFAULT_CREDS))
     parser.add_argument("--token", default=str(DEFAULT_TOKEN))
     args = parser.parse_args(argv)
+
+    if args.replace:
+        if args.input:
+            raise SystemExit("pass either --input or --replace, not both")
+        if not args.write:
+            raise SystemExit("refusing to replace without --write")
+        missing = [
+            flag
+            for flag, value in (
+                ("--document-id", args.document_id),
+                ("--expected-document-title", args.expected_document_title),
+                ("--output-tab", args.output_tab),
+            )
+            if not value
+        ]
+        if missing:
+            raise SystemExit("refusing to replace without " + ", ".join(missing))
+        source = Path(args.replace)
+        if not input_is_private(source):
+            raise SystemExit(
+                "replace JSON must live under Sensitive/ or outside the repo before --write"
+            )
+        find_text, replacement = load_replace_pair(source)
+        creds = load_credentials(Path(args.creds), Path(args.token))
+        client = GoogleDocsClient(build_docs_service(creds))
+        try:
+            summary = perform_replace(
+                client,
+                document_id=args.document_id,
+                expected_title=args.expected_document_title,
+                output_tab=args.output_tab,
+                find_text=find_text,
+                replacement=replacement,
+            )
+        except WriteGuardError as exc:
+            raise SystemExit(str(exc)) from exc
+        print(json.dumps(summary, indent=2))
+        return 0
+
+    if not args.input:
+        raise SystemExit("pass --input or --replace")
 
     document = _load_document(Path(args.input))
     if not args.write:

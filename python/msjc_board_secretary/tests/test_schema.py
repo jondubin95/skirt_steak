@@ -92,6 +92,30 @@ class SchemaTests(unittest.TestCase):
                 {"schemaVersion": 1, "items": [{"kind": "bullet", "text": "Hall", "level": 4}]}
             )
 
+    def test_italic_paragraph(self) -> None:
+        doc = load_minutes_document(
+            {
+                "schemaVersion": 1,
+                "items": [
+                    {
+                        "kind": "paragraph",
+                        "text": "Executive session concluded",
+                        "italic": True,
+                    }
+                ],
+            }
+        )
+        self.assertTrue(doc.items[0].italic)
+
+    def test_italic_must_be_boolean(self) -> None:
+        with self.assertRaises(SchemaError):
+            load_minutes_document(
+                {
+                    "schemaVersion": 1,
+                    "items": [{"kind": "paragraph", "text": "Executive session concluded", "italic": "yes"}],
+                }
+            )
+
     def test_bad_verdict(self) -> None:
         with self.assertRaises(SchemaError):
             load_minutes_document(

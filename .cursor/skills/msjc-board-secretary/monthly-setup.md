@@ -20,5 +20,3 @@ Before each monthly board meeting, turn a copy of last month's minutes into a bl
 
 # Rules
 - Read-only on WhatsApp and Drive except the one target doc. Draft nothing to board members unless asked.
-- In a group chat, post only brief status; put sensitive chat details in the 1:1 only.
-- Doc edits can be delegated to a background worker, but give it the exact structure above.

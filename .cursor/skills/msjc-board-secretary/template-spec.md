@@ -25,7 +25,7 @@ The agent supplies title text only. The writer generates glyphs, spacing, and st
 | Presenter | `text` | Italic normal paragraph, for example `Presented by Alex Rivera.` |
 | Bullet | `text`, `level` | Default disc list. Level is leading tabs, not typed spaces. Body stays Arial 11. |
 | Motion | `body`, optional `verdict` | Plain paragraph, 12pt below, no border. The whole line is underlined. `Motion` and `Motion Passes.` or `Motion Fails.` are bold. |
-| Paragraph | `text` | Normal paragraph. `None.` is not a list item. |
+| Paragraph | `text`, optional `italic` | Normal paragraph. `italic: true` italicizes the whole line. `None.` is not a list item. |
 
 Do not type `### I.` or a blockquote. Those forms are not the minutes.
 
