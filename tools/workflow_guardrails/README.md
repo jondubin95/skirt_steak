@@ -12,9 +12,7 @@ Scripts in this folder are non-destructive checks and setup helpers. Each one sh
 - `diagnostics.ps1` / `diagnostics.sh`
   - Shows branch status, staged files, hooks path, and sensitive-file staging status.
 - `health-check.ps1` / `health-check.sh`
-  - Read-only. Runs the CI lint and test commands plus preflight and diagnostics.
-  - Prints pass, fail, or did not run for each command. Does not install packages, sync, or change git config.
-  - Takes no arguments. `setup-hooks` and `preflight --dry-run-sync` are not part of it.
+  - Read-only wrappers around `health_check.py`. CI lint and test commands, then preflight. Pass, fail, or did not run. No install or sync.
 
 ## Usage (Windows)
 
