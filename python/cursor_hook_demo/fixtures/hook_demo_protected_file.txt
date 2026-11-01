@@ -1,0 +1,7 @@
+This file is a dummy fixture for the Cursor preToolUse demonstration hook.
+
+The hook denies agent edits that name this path. The file holds no secrets.
+Editing it by hand is fine. The hook is a demonstration, not a security control.
+
+Protected repo-relative path:
+python/cursor_hook_demo/fixtures/hook_demo_protected_file.txt
