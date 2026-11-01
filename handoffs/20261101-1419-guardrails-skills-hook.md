@@ -14,7 +14,7 @@ Give four project skills one shared shape, add a fail-open demonstration hook th
 
 ## Current State
 
-- Branch `feature/guardrails-skills-hook`, opened against `main`. Not merged.
+- Branch `feature/guardrails-skills-hook`. Pull request: https://github.com/jondubin95/skirt_steak/pull/21. It is open and not merged.
 - `clarity-concision-editor`, `paranoid-market-analyst`, `msjc-board-secretary`, and `fanfic-story-doctor` use purpose, inputs, steps, limits, and report. Trigger text and the old rules are still there.
 - `.cursor/hooks.json` runs `python3 .cursor/hooks/protect_demo_fixture.py` on `preToolUse` for `Write|Delete|StrReplace`. `failClosed` is false. The only denied path is `python/cursor_hook_demo/fixtures/hook_demo_protected_file.txt`.
 - `docs/decision-notes.md` has three entries, from commits `3fcf7d0`, `ff6a004`, `cd84a23`, `4d36d3e`, and `290611e`.
