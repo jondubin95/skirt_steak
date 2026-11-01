@@ -17,6 +17,7 @@ One coding-rules source, approvals beyond git, a pickup re-check, and a done che
 - Pull request 22 on `feature/guardrails-cleanup`. Do not merge.
 - Pull request 21 was closed unmerged. The work that stayed is on this branch.
 - The health check and the demo hook were removed.
+- Pull request summaries state the result in the open and put command output under `<details>` toggles. The syntax is in `docs/workflow-guardrails.md`.
 
 ## Next Best Actions
 

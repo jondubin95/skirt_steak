@@ -143,6 +143,18 @@ bash tools/workflow_guardrails/diagnostics.sh
 - Fill in each section with concrete repo-specific context.
 - Update validation and guardrail checkboxes to match the actual work performed.
 - If using automation or API-based PR creation, pass a complete body explicitly rather than relying on template autofill alone.
+- State the result in the open. Put command output, path lists, counts, and log excerpts under a toggle.
+
+GitHub renders HTML `<details>`. Leave a blank line after `<summary>` so the markdown inside the toggle renders. Use one toggle per check. The summary text is the label while it is closed. Keep secrets out of the body, including inside a toggle. A missing toggle does not fail Guardrails.
+
+```html
+<details>
+<summary>Preflight</summary>
+
+- `tools/workflow_guardrails/preflight.ps1` exited 0.
+
+</details>
+```
 
 ## Scenario Validation (Policy Dry-Run)
 

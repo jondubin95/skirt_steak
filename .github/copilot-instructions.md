@@ -47,6 +47,7 @@ It is scoped to this repo. Do not assume it overrides other tool-specific instru
 - Replace all placeholder prompts with concrete repo-specific content before review.
 - Mark validation and guardrail checkboxes to reflect what actually happened.
 - If creating a PR through CLI, API, or automation, supply an explicit body instead of relying on the default template alone.
+- State the result in the open. Put command output, path lists, counts, and log excerpts under a `<details>` toggle. The syntax is in `docs/workflow-guardrails.md` under Pull Request Body Standard.
 
 ### Automation First
 
