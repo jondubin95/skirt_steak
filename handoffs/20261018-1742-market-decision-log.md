@@ -3,7 +3,7 @@ thread: market-decision-log
 status: done
 created: 2026-10-18T17:42Z
 supersedes: handoffs/archive/market-decision-log/20261006-1244-market-decision-log.md
-private_detail: Sensitive/handoffs/20261018-1742-market-decision-log.md
+private_detail: null
 ---
 
 # Market decision log

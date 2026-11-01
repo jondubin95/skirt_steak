@@ -46,7 +46,7 @@ Pre-commit, pre-push CI, and `.gitignore` block every other path under `Sensitiv
 
 ## Handoff notes
 
-`Sensitive/handoffs/` holds the private tier of handoff notes: the full-fidelity version of each checkpoint. The sanitized public counterpart lives in `handoffs/` and is tracked. See `.cursor/skills/handoff-notes/SKILL.md`.
+`Sensitive/handoffs/` holds an optional private supplement, and only when a checkpoint must withhold detail from the public head in `handoffs/`. See `.cursor/skills/handoff-notes/SKILL.md`.
 
 `Sensitive/decisions/` holds the market-analyst decision log: the DuckDB file, the playbook for each review, and the inbox JSON. The schema and the CLI are tracked. See `python/decision_log/README.md`.
 

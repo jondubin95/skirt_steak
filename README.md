@@ -41,11 +41,11 @@ This repo is intentionally iterative, so structure and workflows will continue t
 ## Handoff Convention
 
 - Say "checkpoint" to write a handoff; say "pickup" to resume from one.
-- Notes are two-tier: full detail in `Sensitive/handoffs/` (never committed), sanitized thread heads in `handoffs/` (tracked).
+- A private handoff supplement is optional, and only for detail that must stay out of git. See `.cursor/skills/handoff-notes/SKILL.md`.
 - Name handoffs `YYYYMMDD-HHMM-<thread>.md` and keep one thread per line of work.
 - Include objective, current state, decisions, constraints, next actions, and a short resume prompt.
 - Treat handoffs as continuity artifacts, not full transcripts.
-- This repo is public. A pushed branch is published, so keep sensitive detail in the private tier.
+- This repo is public. A pushed branch is published.
 
 ## What Each File Does
 

@@ -10,10 +10,10 @@ This repository is public, so notes are split:
 
 | Tier | Path | Tracked | Contents |
 | --- | --- | --- | --- |
-| Private | `Sensitive/handoffs/` | Never | Full-fidelity note |
-| Public | `handoffs/` (here) | Yes | Sanitized thread head |
+| Public | `handoffs/` (here) | Yes | Canonical thread head |
+| Private | `Sensitive/handoffs/` | Never | Optional supplement |
 
-Public heads carry objective, current state, decisions, next actions, and a resume prompt. Anything sensitive is replaced by a pointer to the private counterpart, which never leaves the local machine.
+A private supplement is optional and holds only what must stay out of git. See `.cursor/skills/handoff-notes/SKILL.md`.
 
 A pushed branch on a public repo is immediately visible. Treat a push as publication.
 
