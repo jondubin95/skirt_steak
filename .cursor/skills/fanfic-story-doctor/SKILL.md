@@ -8,15 +8,21 @@ description: >-
 
 # Fanfic Story Doctor
 
+## Purpose
+
 The tool diagnoses. It does not rewrite. Suggested fixes are directions.
 
-## Privacy
+## Inputs
 
-Real drafts and book text stay in `$DOCTOR_HOME` (default `%USERPROFILE%\doctor-home` on Windows, `~/doctor-home` elsewhere), outside the repo. Do not paste chapters, book text, or quote-bearing canon dumps into chat. Do not read those files out of `DOCTOR_HOME`.
+- A work name to pass to `python -m doctor run`, with chapters as `.md`, `.txt`, or AO3 `.html` (chapter or full work).
+- `$DOCTOR_HOME` (default `%USERPROFILE%\doctor-home` on Windows, `~/doctor-home` elsewhere), outside the repo. Run from `python/fanfic_story_doctor` with `PYTHONPATH=src`, or install the package.
+- For a total AU with no canon timeline, set `au.au_kind: alternate_setting`.
+- Intake `names` holds nicknames, `pronouns` are `he`, `she`, or `they`, and `voice_profiles` can override profile fields in paraphrase, without quotation marks or rewrite phrasing. `spelling_ignore` suppresses real near-names without making them aliases.
+- Optional Layer B flags already defined below: `--layer-b`, `--per-chapter`, `--max-passages`, `--html`, `--json`, `--refresh-voice-profiles`, `--reuse-stale-voice-profiles`, and `DOCTOR_G9_OPT_IN=1` for that run only.
 
-Synthetic fixtures in the repo use an invented cast. No series text belongs in git.
+## Steps
 
-## What is built
+### What is built
 
 Layer A runs local Python. It makes no model call. `--layer-b` adds `OOC.VOICE` and `CANON.RAILS` notes: info, never a blocker, agreement is not correctness. Providers: `mock` (default) and `cursor-agent` (Cursor CLI, print mode, ask mode, empty temp workspace, cached in `DOCTOR_HOME/cache`). Any non-mock provider is refused by gate G9 unless `DOCTOR_G9_OPT_IN=1` is set for that run, public work or not. Never set it for a private draft without the author's say-so. Default cap is 2 passages per chapter per rule (`--per-chapter`); `--max-passages` overrides. OOC.VOICE targets are passages where the character speaks or carries the narration, spread across chapters, each with 2-4 earlier-chapter reference passages; a character without enough reference text is skipped with a coverage note.
 
@@ -35,9 +41,25 @@ A rule that is not built is reported as **skipped**. Skipped is not "nothing fou
 
 `OOC.VOICE` judges attributed dialogue against one cached voice profile per character, sampled across the work. It does not judge narration. The profile includes `dialect_or_l2`. Intake `names` holds nicknames, `pronouns` are `he`, `she`, or `they`, and `voice_profiles` can override profile fields in paraphrase, without quotation marks or rewrite phrasing. `spelling_ignore` suppresses real near-names without making them aliases. A prefix truncation inside dialogue is a nickname question. `--html` and `--json` write review files outside the repository; the JSON file includes flag positions. A changed sample regenerates the profile. `--refresh-voice-profiles` regenerates it anyway. `--reuse-stale-voice-profiles` keeps the cached one. A paid provider still needs `DOCTOR_G9_OPT_IN=1` on that command only.
 
-## Hard rules
+## Limits
+
+### Privacy
+
+Real drafts and book text stay in `$DOCTOR_HOME` (default `%USERPROFILE%\doctor-home` on Windows, `~/doctor-home` elsewhere), outside the repo. Do not paste chapters, book text, or quote-bearing canon dumps into chat. Do not read those files out of `DOCTOR_HOME`.
+
+Synthetic fixtures in the repo use an invented cast. No series text belongs in git.
+
+### Hard rules
 
 - Never produce replacement prose.
 - UNKNOWN is not a break and not an all-clear.
 - Do not enforce proposed facts.
 - Do not open a real book file during implementation or review.
+
+## Report
+
+- A rule that is not built is reported as **skipped**. Skipped is not "nothing found."
+- A character without enough reference text is skipped with a coverage note.
+- `--html` and `--json` write review files outside the repository; the JSON file includes flag positions.
+- Suggested fixes are directions. Do not produce replacement prose.
+- UNKNOWN is not a break and not an all-clear.
