@@ -1,19 +1,10 @@
 #!/usr/bin/env python3
-"""Demonstration preToolUse hook. This is not a security control.
+"""Demonstration preToolUse hook. Not a security control.
 
-Cursor runs this from the repository root before Write, Delete, and StrReplace.
-It denies the call only when the tool input names the demo fixture. Every other
-call is allowed.
-
-Malformed input is allowed. An internal failure exits 1 and prints nothing to
-stdout. hooks.json sets failClosed to false, so Cursor then allows the edit.
-A crash must not freeze unrelated work. The fixture is not a secret.
-
-The hooks reference (https://cursor.com/docs/hooks) does not publish the keys
-inside tool_input for Write or Delete. This script reads path, then file_path.
-path is the parameter name on Cursor's Write, StrReplace, and Delete tools.
-file_path is the field name on beforeReadFile and afterFileEdit. If neither
-key is a non-empty string, the edit is allowed.
+Denies Write, Delete, and StrReplace only for the demo fixture.
+Any other input is allowed. A forced error or a crash exits 1 with no JSON
+so Cursor can fail open (failClosed is false in hooks.json).
+See docs/cursor-hook-demo.md.
 """
 
 from __future__ import annotations

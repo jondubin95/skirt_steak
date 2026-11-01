@@ -14,11 +14,7 @@ The tool diagnoses. It does not rewrite. Suggested fixes are directions.
 
 ## Inputs
 
-- A work name to pass to `python -m doctor run`, with chapters as `.md`, `.txt`, or AO3 `.html` (chapter or full work).
-- `$DOCTOR_HOME` (default `%USERPROFILE%\doctor-home` on Windows, `~/doctor-home` elsewhere), outside the repo. Run from `python/fanfic_story_doctor` with `PYTHONPATH=src`, or install the package.
-- For a total AU with no canon timeline, set `au.au_kind: alternate_setting`.
-- Intake `names` holds nicknames, `pronouns` are `he`, `she`, or `they`, and `voice_profiles` can override profile fields in paraphrase, without quotation marks or rewrite phrasing. `spelling_ignore` suppresses real near-names without making them aliases.
-- Optional Layer B flags already defined below: `--layer-b`, `--per-chapter`, `--max-passages`, `--html`, `--json`, `--refresh-voice-profiles`, `--reuse-stale-voice-profiles`, and `DOCTOR_G9_OPT_IN=1` for that run only.
+A work name, `$DOCTOR_HOME`, and the chapter files named in Steps.
 
 ## Steps
 
@@ -58,8 +54,4 @@ Synthetic fixtures in the repo use an invented cast. No series text belongs in g
 
 ## Report
 
-- A rule that is not built is reported as **skipped**. Skipped is not "nothing found."
-- A character without enough reference text is skipped with a coverage note.
-- `--html` and `--json` write review files outside the repository; the JSON file includes flag positions.
-- Suggested fixes are directions. Do not produce replacement prose.
-- UNKNOWN is not a break and not an all-clear.
+Report a missing rule as **skipped**, and say when a character was skipped for lack of reference text. Suggested fixes are directions.

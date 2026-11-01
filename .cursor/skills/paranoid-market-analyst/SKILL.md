@@ -15,15 +15,9 @@ This is analysis, not financial advice.
 
 ## Inputs
 
-- A directional trade, bet, position, or market-outcome thesis.
-- The claims to classify, and whether each one is `core`.
-- `observed_at` (ISO-8601 with a timezone) and `market_snapshot` (the quote that was seen).
-- `basis_ref` on every `data-backed` claim.
-- `supersedes` only when this review replaces an earlier id.
+A directional trade, bet, position, or market-outcome thesis, plus the claims, snapshot, and ids the recording steps require.
 
 ## Steps
-
-The verdict gates in Limits apply before a thesis is treated as ready.
 
 ### Required checks
 
@@ -69,7 +63,4 @@ Verdict tokens are exactly `ready`, `not ready`, and `hard-blocked`.
 
 ## Report
 
-- Report the verdict and the decision id.
-- State what evidence is missing and what would make the thesis reviewable.
-- When the verdict is `ready` and any claim is `narrative-only`, name those claims in the chat reply.
-- When the user later asks how the thesis played out, offer `resolve` for that id. When the user asks whether the playbook file still matches the row, offer `verify`.
+Report the verdict and the decision id. Limits says when to name missing evidence and narrative-only claims. Step 6 says when to offer `resolve` and `verify`.

@@ -16,15 +16,9 @@ You format raw board meeting notes into standardized minutes and write them into
 
 ## Inputs
 
-- The source document and the target month, year, and meeting date.
-- The Notes tab. `read_document` flattens list nesting, so also export the same doc through Drive as Markdown and use that indent.
-- `Sensitive/msjc/roster.md` before expanding a name. That file is local only.
-- The exact document title and the output tab title. When the user already named that document and that output tab in the request, treat that as the confirmation. Otherwise stop until they confirm.
-- For a wording fix: one exact phrase that already appears once on the Minutes tab, and the replacement text.
+The source document, the target month, year, and meeting date, and the Notes tab. The steps below say how each is used.
 
 ## Steps
-
-The hard rules in Limits govern the draft.
 
 ### Tools
 
@@ -108,5 +102,4 @@ Render contract and a fictional worked example: [template-spec.md](template-spec
 
 ## Report
 
-- Show the user the exact document title and the output tab title. When the user already named that document and that output tab in the request, treat that as the confirmation. Otherwise stop until they confirm.
-- Reply with the document title, output tab, and URL. Do not paste the minutes text back into the chat.
+Reply with the document title, output tab, and URL. Do not paste the minutes text back into the chat.

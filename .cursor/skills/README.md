@@ -18,12 +18,4 @@ If a skill fires on the wrong message, or never fires when it should, tighten or
 
 ## Skill shape
 
-A skill file has five parts:
-
-- **Purpose** — the job it exists to do.
-- **Inputs** — what it needs before it starts.
-- **Steps** — the procedure, in order.
-- **Limits** — what it must not do.
-- **Report** — what to say when it finishes.
-
-`clarity-concision-editor`, `paranoid-market-analyst`, `msjc-board-secretary`, and `fanfic-story-doctor` use those headings. `operating-behavior` and `handoff-notes` are not converted yet. Leave them for a follow-up so this change does not collide with other edits to those files.
+Purpose, inputs, steps, limits, and report. `clarity-concision-editor`, `paranoid-market-analyst`, `msjc-board-secretary`, and `fanfic-story-doctor` use those headings. `operating-behavior` and `handoff-notes` do not, yet.
