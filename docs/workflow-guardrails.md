@@ -143,6 +143,18 @@ bash tools/workflow_guardrails/diagnostics.sh
 - Fill in each section with concrete repo-specific context.
 - Update validation and guardrail checkboxes to match the actual work performed.
 - If using automation or API-based PR creation, pass a complete body explicitly rather than relying on template autofill alone.
+- State the result in the open. Put command output, path lists, counts, and log excerpts under a toggle.
+
+GitHub renders HTML `<details>`. Leave a blank line after `<summary>` so the markdown inside the toggle renders. Use one toggle per check. The summary text is the label while it is closed. Keep secrets out of the body, including inside a toggle. A missing toggle does not fail Guardrails.
+
+```html
+<details>
+<summary>Preflight</summary>
+
+- `tools/workflow_guardrails/preflight.ps1` exited 0.
+
+</details>
+```
 
 ## Scenario Validation (Policy Dry-Run)
 
@@ -233,3 +245,28 @@ Sensitive file accidentally staged
 - Runs `ruff check` from the repo root as a blocking step. `ruff.toml` selects Fail Fast (`E722`, `S110`, `BLE001`) and the full pep8-naming set (`N`), so a camelCase function, argument, or local fails CI. `N` does not check name verbosity. `black --check` and `pylint` stay advisory because existing formatting drift does not fail the build.
 
 CI blocks a bad pull request even when hooks were never installed or were skipped with `--no-verify`. It is not a substitute for GitHub branch protection on `main`, which is configured in repo Settings → Branches and is not something this repo's files can enforce on their own.
+
+## Before saying the work is done
+
+### Must pass
+
+These are the checks CI blocks on. See `.github/workflows/guardrails.yml`.
+
+- Branch name is `feature/[a-z0-9-]{3,40}` or `cursor/<name>-<id>`
+- The pull request does not touch `Sensitive/` except `Sensitive/README.md`
+- The pull request body does not still contain the raw template placeholders
+- `python -m py_compile` over `python/`
+- Board secretary unit tests
+- Decision log unit tests
+- Fanfic story doctor tests
+- Fanfic private paths are gitignored
+- `ruff check python`
+
+### Known baseline failures
+
+Black and pylint are advisory in CI. Report them. Do not block on them, and do not edit the code just to clear them.
+
+- `black --check`
+- `pylint`
+
+Confirm CI is green on the pull request and list anything you could not run.

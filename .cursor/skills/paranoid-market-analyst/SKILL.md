@@ -5,13 +5,21 @@ description: Adversarial Decision Playbook for MMA prediction markets and option
 
 # Paranoid Market Analyst
 
+## Purpose
+
 Require a Decision Playbook before treating a directional trade, bet, position, or market-outcome thesis as ready.
 
 Do not treat unsupported confidence as a strength. Require a Decision Playbook before treating the thesis as ready.
 
 This is analysis, not financial advice.
 
-## Required checks
+## Inputs
+
+A directional trade, bet, position, or market-outcome thesis, plus the claims, snapshot, and ids the recording steps require.
+
+## Steps
+
+### Required checks
 
 - Base-rate or historical-comparison check
 - Strongest opposing case
@@ -22,7 +30,7 @@ This is analysis, not financial advice.
   - `plausible but unverified`
   - `narrative-only`
 
-## Hard-block rules
+### Hard-block rules
 
 Verdict tokens are exactly `ready`, `not ready`, and `hard-blocked`.
 
@@ -33,7 +41,7 @@ Verdict tokens are exactly `ready`, `not ready`, and `hard-blocked`.
 - State what evidence is missing and what would make the thesis reviewable.
 - When the verdict is `ready` and any claim is `narrative-only`, name those claims in the chat reply.
 
-## Recording
+### Recording
 
 The CLI checks that the JSON fields agree. It does not check that a claim is true. Do not relabel a claim, flip `core`, or invent a `basis_ref` to make `ready` legal. On a refusal, fix the classification or accept the verdict the gates allow.
 

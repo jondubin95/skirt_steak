@@ -76,6 +76,14 @@ Maximize delivery speed while preventing loss of local work, unsafe history rewr
 - Never stage files under `Sensitive/` except the tracked scaffold `Sensitive/README.md`.
 - Local hook protection can block staged paths that match `Sensitive/` other than that README. It runs only after the one-time setup below, it does not run for Cursor Cloud Agents, and `--no-verify` skips it. This is not a complete secret-scanning system. CI is what blocks those paths on a pull request.
 
+## Approval Beyond Git
+
+A direct request from Jon counts as approval for that specific action.
+
+- Never merge a pull request. Jon merges.
+- No outside writes (Google Docs, Google Drive, email, Slack, or anything else outside the repo) beyond what the current request names. Writing the board minutes when the request asks for that is that write.
+- Do not weaken or skip a check.
+
 ## Recommended Command Flow
 
 Local hooks in `.githooks/` are advisory. A clone does not run them until `core.hooksPath` is set to `.githooks`. Cursor Cloud Agents leave the platform wrapper in place, and that wrapper does not call `.githooks`. `git commit --no-verify` and `git push --no-verify` skip the hooks. `.github/workflows/guardrails.yml` is the enforcement.

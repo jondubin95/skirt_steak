@@ -3,6 +3,8 @@ description: Global coding standards
 alwaysApply: true
 ---
 
+Coding rules: `.github/copilot-instructions.md`.
+
 Enforced in CI by root `ruff.toml`: Fail Fast and pep8-naming. The rest is guidance. Details: `docs/workflow-guardrails.md`.
 
 ## YAGNI

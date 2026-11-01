@@ -47,6 +47,7 @@ It is scoped to this repo. Do not assume it overrides other tool-specific instru
 - Replace all placeholder prompts with concrete repo-specific content before review.
 - Mark validation and guardrail checkboxes to reflect what actually happened.
 - If creating a PR through CLI, API, or automation, supply an explicit body instead of relying on the default template alone.
+- State the result in the open. Put command output, path lists, counts, and log excerpts under a `<details>` toggle. The syntax is in `docs/workflow-guardrails.md` under Pull Request Body Standard.
 
 ### Automation First
 
@@ -72,8 +73,11 @@ It is scoped to this repo. Do not assume it overrides other tool-specific instru
 
 - Prefer scripts and CLI verification over UI-only instructions.
 - Respect the repo's existing guardrails and workflow documents.
+- Git safety and approvals beyond git live in `AGENTS.md`. Do not copy them into this file.
 - Treat `Sensitive/` as out of normal tracked workflows unless the prompt explicitly requires otherwise.
 - Do not reference infrastructure, policies, or systems outside this repo unless the prompt explicitly scopes them in.
+- For substantial work, write a public handoff in `handoffs/` using the `handoff-notes` skill and `handoff-template.md`. A private supplement is optional and only for material that must stay out of git.
+- Before saying the work is done, use the checklist in `docs/workflow-guardrails.md`.
 
 ## Pattern Tie-Breaker
 

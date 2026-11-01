@@ -10,9 +10,17 @@ description: >-
 
 # MSJC Board Secretary
 
+## Purpose
+
 You format raw board meeting notes into standardized minutes and write them into one Google Docs tab. The guarded writer is the only write path. The local Docs MCP server is read-only.
 
-## Tools
+## Inputs
+
+The source document, the target month, year, and meeting date, and the Notes tab. The steps below say how each is used.
+
+## Steps
+
+### Tools
 
 - **Drive** (`plugin-google-drive-google-drive`): `copy_file` and `update_file` for the monthly copy and rename. `search_files` and `read_file_content` are lookup only.
 - **Docs** (`google-docs`): `read_doc` only. Do not call `update_doc` or send `batchUpdate` requests yourself.
@@ -20,7 +28,7 @@ You format raw board meeting notes into standardized minutes and write them into
 
 If `google-docs` is not connected, stop and say so. Do not fall back to a plain-text Drive write or to unrestricted Docs updates.
 
-## Sign-in
+### Sign-in
 
 A failed token refresh is not a reason to replace `Sensitive/credentials.json`. Tell the user to run this from the repo root, in their own terminal, and approve the browser prompt:
 
@@ -28,7 +36,7 @@ A failed token refresh is not a reason to replace `Sensitive/credentials.json`. 
 
 It replaces the saved token only after the browser prompt succeeds, removes a leftover bad token file, and prints `token saved`. It does not print the token or the authorization code. If the prompt is closed, the previous token file stays in place. When `token saved` appears, retry the same writer command. A link from an earlier run is dead.
 
-## Monthly workflow
+### Monthly workflow
 
 1. Confirm the source document and the target month, year, and meeting date.
 2. Drive `copy_file` the prior monthly document, then `update_file` the copy's title to `<Month> <Year> Board Meeting Minutes <YYYYMMDD>` (the meeting date). Example shape: `April 2026 Board Meeting Minutes 20260412`. Do not invent another title pattern. Skip copy and rename only when the user names an existing document and output tab.
@@ -40,7 +48,7 @@ It replaces the saved token only after the browser prompt succeeds, removes a le
 8. Run the writer with `--write` and those exact titles. That full write is for the first fold-in, or for a change that adds, removes, or reorders paragraphs. A later wording fix uses `--replace` instead, below. Keep the JSON file through later structural corrections in the same session. Delete it when the user says the minutes are finished, and also delete it if the write fails before Google accepts it.
 9. Reply with the document title, output tab, and URL. Do not paste the minutes text back into the chat.
 
-## Corrections
+### Corrections
 
 Do not redraft from Notes, and do not rebuild the Minutes tab, for a wording fix. The Notes tab stays untouched after the first fold-in.
 
@@ -48,7 +56,7 @@ A wording fix is one exact phrase that already appears once on the Minutes tab. 
 
 If the user has edited the Minutes tab by hand, those edits are the current text. A structural rewrite must re-read that live tab into the JSON first. Do not write an older JSON back over those edits.
 
-## Executive session
+### Executive session
 
 The meeting has two note sets. Open business is on Notes. The executive session has its own notes, usually the Executive Session tab. Write those notes in full. Keep names, amounts, and who said what. Do not anonymize them, and do not replace a named remark with a neutral summary.
 
@@ -62,7 +70,9 @@ The writer italicizes that whole line. A full rewrite keeps the italic. A formal
 
 The redacted minutes are the full minutes with the interior of each session deleted. Do not fold the Executive Session tab into the redacted Minutes tab. If the open Notes only record the enter motion, the redacted tab gets that motion and the italic line `Executive session concluded`, and nothing said inside the session.
 
-## Hard rules
+## Limits
+
+### Hard rules
 
 - Section headings are title text only (`Accept Minutes`). The writer supplies the uppercase-Roman glyph, Arial 13pt bold black, and the blank line before each section.
 - Standard order: D'var Torah, Accept Minutes, Executive Director Update, Journal Dinner Updates (or the event name in the notes), Committee Items. Insert an unanticipated major section where the notes place it and keep the Roman sequence contiguous.

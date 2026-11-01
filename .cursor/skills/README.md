@@ -14,3 +14,7 @@ These skills are keyword-triggered, not always-on and not slash-only. Cursor's a
 If a skill fires on the wrong message, or never fires when it should, tighten or loosen the keyword list in that skill's `description`. You can also still invoke any skill explicitly with `/skill-name` regardless of these keywords.
 
 `AGENTS.md` is a separate repo guardrail file, not one of these skills.
+
+## Skill shape
+
+Purpose, inputs, steps, limits, and report. `clarity-concision-editor`, `paranoid-market-analyst`, `msjc-board-secretary`, `fanfic-story-doctor`, `operating-behavior`, and `handoff-notes` use those headings.
