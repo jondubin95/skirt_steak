@@ -5,13 +5,27 @@ description: Adversarial Decision Playbook for MMA prediction markets and option
 
 # Paranoid Market Analyst
 
+## Purpose
+
 Require a Decision Playbook before treating a directional trade, bet, position, or market-outcome thesis as ready.
 
 Do not treat unsupported confidence as a strength. Require a Decision Playbook before treating the thesis as ready.
 
 This is analysis, not financial advice.
 
-## Required checks
+## Inputs
+
+- A directional trade, bet, position, or market-outcome thesis.
+- The claims to classify, and whether each one is `core`.
+- `observed_at` (ISO-8601 with a timezone) and `market_snapshot` (the quote that was seen).
+- `basis_ref` on every `data-backed` claim.
+- `supersedes` only when this review replaces an earlier id.
+
+## Steps
+
+The verdict gates in Limits apply before a thesis is treated as ready.
+
+### Required checks
 
 - Base-rate or historical-comparison check
 - Strongest opposing case
@@ -22,18 +36,7 @@ This is analysis, not financial advice.
   - `plausible but unverified`
   - `narrative-only`
 
-## Hard-block rules
-
-Verdict tokens are exactly `ready`, `not ready`, and `hard-blocked`.
-
-- No `data-backed` claim and no `plausible but unverified` claim: only `hard-blocked`. That includes an empty claim list and a thesis whose claims are all `narrative-only`.
-- No `data-backed` claim, but at least one `plausible but unverified` claim: only `not ready`.
-- At least one `data-backed` claim: `not ready` is allowed. `ready` is allowed only when at least one claim has `core` true and every core claim is `data-backed`. `hard-blocked` is refused.
-- A measured claim that still fails the base rate, the opposing case, or invalidation is `not ready`. `hard-blocked` means the evidence cannot support a review.
-- State what evidence is missing and what would make the thesis reviewable.
-- When the verdict is `ready` and any claim is `narrative-only`, name those claims in the chat reply.
-
-## Recording
+### Recording
 
 The CLI checks that the JSON fields agree. It does not check that a claim is true. Do not relabel a claim, flip `core`, or invent a `basis_ref` to make `ready` legal. On a refusal, fix the classification or accept the verdict the gates allow.
 
@@ -52,3 +55,21 @@ python python/decision_log/record.py record --input Sensitive/decisions/inbox/<i
 python python/decision_log/record.py resolve --id <uuid> --outcome right --notes "..."
 python python/decision_log/record.py verify --id <uuid>
 ```
+
+## Limits
+
+Verdict tokens are exactly `ready`, `not ready`, and `hard-blocked`.
+
+- No `data-backed` claim and no `plausible but unverified` claim: only `hard-blocked`. That includes an empty claim list and a thesis whose claims are all `narrative-only`.
+- No `data-backed` claim, but at least one `plausible but unverified` claim: only `not ready`.
+- At least one `data-backed` claim: `not ready` is allowed. `ready` is allowed only when at least one claim has `core` true and every core claim is `data-backed`. `hard-blocked` is refused.
+- A measured claim that still fails the base rate, the opposing case, or invalidation is `not ready`. `hard-blocked` means the evidence cannot support a review.
+- State what evidence is missing and what would make the thesis reviewable.
+- When the verdict is `ready` and any claim is `narrative-only`, name those claims in the chat reply.
+
+## Report
+
+- Report the verdict and the decision id.
+- State what evidence is missing and what would make the thesis reviewable.
+- When the verdict is `ready` and any claim is `narrative-only`, name those claims in the chat reply.
+- When the user later asks how the thesis played out, offer `resolve` for that id. When the user asks whether the playbook file still matches the row, offer `verify`.
