@@ -16,7 +16,8 @@ One coding-rules source, a read-only health check, approvals beyond git, a picku
 
 - Pull request 22 on `feature/guardrails-cleanup`. Do not merge.
 - Health-check logic is `tools/workflow_guardrails/health_check.py`. The shell scripts only call it. Handoff notes are not an input.
-- Latest run: `pass=6 fail=3 did_not_run=0`, `overall: not success`. Passes: syntax (43 files), board secretary (28), decision log (25), fanfic (145), fanfic gitignore, ruff. Fails: black (25 existing files), pylint (5.73/10, exit 30), preflight (credential files absent; not created).
+- Latest run: `pass=7 fail=3 did_not_run=0`, `overall: not success`. Passes: syntax (44 files), demo hook tests (3), board secretary (28), decision log (25), fanfic (145), fanfic gitignore, ruff. Fails: black (25 existing files), pylint (5.73/10, exit 30), preflight (credential files absent; not created).
+- Pull request 21's commits are on this branch. `operating-behavior` and `handoff-notes` use the same five headings. Do not close pull request 21 from here.
 
 ## Next Best Actions
 

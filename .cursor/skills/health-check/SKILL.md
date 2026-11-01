@@ -13,4 +13,4 @@ From the repo root, `bash tools/workflow_guardrails/health-check.sh`. On Windows
 
 Each check is `PASS`, `FAIL`, or `DID_NOT_RUN`, with the command. `DID_NOT_RUN` is not a pass. `overall: success` appears only when every check is `PASS`. Quote the output. Do not invent a pass for a check that did not run.
 
-The checks are the lint job in `.github/workflows/guardrails.yml` (syntax, the three test suites, the fanfic gitignore step, ruff, black, pylint) and `preflight`. Pylint is run without `--exit-zero`. Handoff notes are not an input.
+The checks are the lint job in `.github/workflows/guardrails.yml` (syntax, the demo hook tests, the three test suites, the fanfic gitignore step, ruff, black, pylint) and `preflight`. Pylint is run without `--exit-zero`. Handoff notes are not an input.

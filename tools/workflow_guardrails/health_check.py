@@ -226,6 +226,10 @@ def collect_checks() -> list[CheckResult]:
     return [
         check_syntax(),
         run_command(
+            "cursor demo hook unit tests",
+            [PYTHON, "-m", "unittest", "discover", "-s", "python/cursor_hook_demo/tests", "-p", "test_*.py"],
+        ),
+        run_command(
             "board secretary unit tests",
             [PYTHON, "-m", "unittest", "discover", "-s", "python/msjc_board_secretary/tests", "-p", "test_*.py"],
         ),
