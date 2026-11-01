@@ -10,6 +10,7 @@ These skills are keyword-triggered, not always-on and not slash-only. Cursor's a
 | `operating-behavior` | implementing, debugging, refactoring, summarizing changes, or pull requests in this repo |
 | `msjc-board-secretary` | "MSJC board minutes", "board meeting notes", "Board Secretary", "set up the minutes doc", "meeting mins", "revision history", "version history" |
 | `fanfic-story-doctor` | "fanfic story doctor", "story doctor", "canon divergence" |
+| `health-check` | "health check", "repo health", or a request to run the repo checks without changing anything |
 
 If a skill fires on the wrong message, or never fires when it should, tighten or loosen the keyword list in that skill's `description`. You can also still invoke any skill explicitly with `/skill-name` regardless of these keywords.
 

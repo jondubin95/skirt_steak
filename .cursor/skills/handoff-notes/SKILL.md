@@ -82,7 +82,9 @@ A public name, a path inside this repo, and a non-sensitive technical finding th
    - `null`: nothing was withheld. Do not say the detail is missing.
    - A path that can be read: load that supplement. It may be an older file than the public head. In the reply, name the kind of detail in one sentence. Do not repeat the withheld values.
    - A path that cannot be read: say the referenced private detail is unavailable in this environment, then continue. Do not infer it.
-6. Follow Next Best Actions and the resume prompt. Do not reopen settled decisions without new evidence.
+6. Re-check the repo before doing what the note says. Run `git status --short`, `git branch --show-current`, and `git diff --stat`. Open the files and paths the note names. If the branch, pull-request state, or those files do not match the note, say what differs and follow the repo. The note is a starting point, not a live status.
+7. Treat every approval in the note as expired. A recorded yes for a merge, a file delete, an external write, a publish, or a weaker check does not carry into this session. Do that only after the owner confirms it again in this conversation.
+8. Follow the Next Best Actions and the resume prompt that still match the re-check. Do not reopen settled decisions without new evidence.
 
 If `handoffs/` is empty, say so. Never invent prior context.
 

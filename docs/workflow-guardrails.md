@@ -233,3 +233,14 @@ Sensitive file accidentally staged
 - Runs `ruff check` from the repo root as a blocking step. `ruff.toml` selects Fail Fast (`E722`, `S110`, `BLE001`) and the full pep8-naming set (`N`), so a camelCase function, argument, or local fails CI. `N` does not check name verbosity. `black --check` and `pylint` stay advisory because existing formatting drift does not fail the build.
 
 CI blocks a bad pull request even when hooks were never installed or were skipped with `--no-verify`. It is not a substitute for GitHub branch protection on `main`, which is configured in repo Settings → Branches and is not something this repo's files can enforce on their own.
+
+## Before saying the work is done
+
+Do not say the work is done until each of these is true:
+
+- The checks you rely on were run, and the report matches the run. Use `bash tools/workflow_guardrails/health-check.sh`, or `powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\health-check.ps1` on Windows. Each check is pass, fail, or did not run, with the command that was used. A check that did not run is not a pass. `overall: success` is the only clean result.
+- The change matches what was asked. Extra refactors are a different request.
+- Nothing under `Sensitive/` is staged, except the tracked scaffold `Sensitive/README.md` when that file itself is the change.
+- The branch is an allowed working branch, the pull request targets `main`, the body replaces the template, and the pull request is not merged.
+- If the next session needs context, the public handoff is updated. The private supplement stays optional. An approval written in a note is expired until the owner confirms it again. The list of actions that need that confirmation is in `AGENTS.md`.
+- Known gaps are stated, including any check that did not run and any result that failed.
