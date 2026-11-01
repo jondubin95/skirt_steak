@@ -70,15 +70,6 @@ The writer italicizes that whole line. A full rewrite keeps the italic. A formal
 
 The redacted minutes are the full minutes with the interior of each session deleted. Do not fold the Executive Session tab into the redacted Minutes tab. If the open Notes only record the enter motion, the redacted tab gets that motion and the italic line `Executive session concluded`, and nothing said inside the session.
 
-### Reference
-
-Render contract and a fictional worked example: [template-spec.md](template-spec.md).
-
-### Related workflows
-
-- Monthly meeting setup (blank fill-in minutes skeleton from the agenda in the chat, before the meeting): [monthly-setup.md](monthly-setup.md). Trigger on "set up the minutes doc", "meeting mins", or "monthly minutes setup".
-- Google Doc revision history lookup (what an older version said, whether something was removed): [revision-history.md](revision-history.md). Trigger on "revision history", "version history", or "what did the doc say before".
-
 ## Limits
 
 ### Hard rules
@@ -100,6 +91,11 @@ Render contract and a fictional worked example: [template-spec.md](template-spec
 - Before expanding a name, read `Sensitive/msjc/roster.md`. That file is local only.
 - When the notes include a pasted proposal and say to record the purpose items, write each purpose. Do not reprint the full current and proposed quotations. Replace a placeholder mover such as `XXX` with the mover named in the notes. If a purpose sentence is cut off in the notes, leave it cut off.
 
-## Report
+## Reference
 
-Reply with the document title, output tab, and URL. Do not paste the minutes text back into the chat.
+Render contract and a fictional worked example: [template-spec.md](template-spec.md).
+
+## Related workflows
+
+- Monthly meeting setup (blank fill-in minutes skeleton from the agenda in the chat, before the meeting): [monthly-setup.md](monthly-setup.md). Trigger on "set up the minutes doc", "meeting mins", or "monthly minutes setup".
+- Google Doc revision history lookup (what an older version said, whether something was removed): [revision-history.md](revision-history.md). Trigger on "revision history", "version history", or "what did the doc say before".

@@ -17,12 +17,7 @@ A task in this repo: implementing, debugging, refactoring, summarizing a change,
 
 1. Read `.github/copilot-instructions.md` and follow it.
 2. Git safety, including approvals beyond git, stays in `AGENTS.md`.
-3. If this skill and the canonical file disagree, follow the canonical file and shrink this skill back to a pointer.
 
 ## Limits
 
 Do not copy the coding rules into this skill. The canonical file wins.
-
-## Report
-
-Say what the canonical file asks for. This skill adds no second report format.

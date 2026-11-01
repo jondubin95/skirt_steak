@@ -11,8 +11,6 @@ Scripts in this folder are non-destructive checks and setup helpers. Each one sh
   - Supports optional `-DryRunSync` (PowerShell) / `--dry-run-sync` (Bash).
 - `diagnostics.ps1` / `diagnostics.sh`
   - Shows branch status, staged files, hooks path, and sensitive-file staging status.
-- `health-check.ps1` / `health-check.sh`
-  - Read-only wrappers around `health_check.py`. CI lint and test commands, then preflight. Pass, fail, or did not run. No install or sync.
 
 ## Usage (Windows)
 
@@ -23,7 +21,6 @@ powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\setup-hooks
 powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\preflight.ps1
 powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\preflight.ps1 -DryRunSync
 powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\diagnostics.ps1
-powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\health-check.ps1
 ```
 
 ## Usage (Linux / macOS / Cloud Agents)
@@ -35,7 +32,6 @@ bash tools/workflow_guardrails/setup-hooks.sh
 bash tools/workflow_guardrails/preflight.sh
 bash tools/workflow_guardrails/preflight.sh --dry-run-sync
 bash tools/workflow_guardrails/diagnostics.sh
-bash tools/workflow_guardrails/health-check.sh
 ```
 
 ## Caution: `setup-hooks.sh` on Cloud Agent VMs

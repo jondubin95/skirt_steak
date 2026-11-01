@@ -30,6 +30,17 @@ A directional trade, bet, position, or market-outcome thesis, plus the claims, s
   - `plausible but unverified`
   - `narrative-only`
 
+### Hard-block rules
+
+Verdict tokens are exactly `ready`, `not ready`, and `hard-blocked`.
+
+- No `data-backed` claim and no `plausible but unverified` claim: only `hard-blocked`. That includes an empty claim list and a thesis whose claims are all `narrative-only`.
+- No `data-backed` claim, but at least one `plausible but unverified` claim: only `not ready`.
+- At least one `data-backed` claim: `not ready` is allowed. `ready` is allowed only when at least one claim has `core` true and every core claim is `data-backed`. `hard-blocked` is refused.
+- A measured claim that still fails the base rate, the opposing case, or invalidation is `not ready`. `hard-blocked` means the evidence cannot support a review.
+- State what evidence is missing and what would make the thesis reviewable.
+- When the verdict is `ready` and any claim is `narrative-only`, name those claims in the chat reply.
+
 ### Recording
 
 The CLI checks that the JSON fields agree. It does not check that a claim is true. Do not relabel a claim, flip `core`, or invent a `basis_ref` to make `ready` legal. On a refusal, fix the classification or accept the verdict the gates allow.
@@ -49,18 +60,3 @@ python python/decision_log/record.py record --input Sensitive/decisions/inbox/<i
 python python/decision_log/record.py resolve --id <uuid> --outcome right --notes "..."
 python python/decision_log/record.py verify --id <uuid>
 ```
-
-## Limits
-
-Verdict tokens are exactly `ready`, `not ready`, and `hard-blocked`.
-
-- No `data-backed` claim and no `plausible but unverified` claim: only `hard-blocked`. That includes an empty claim list and a thesis whose claims are all `narrative-only`.
-- No `data-backed` claim, but at least one `plausible but unverified` claim: only `not ready`.
-- At least one `data-backed` claim: `not ready` is allowed. `ready` is allowed only when at least one claim has `core` true and every core claim is `data-backed`. `hard-blocked` is refused.
-- A measured claim that still fails the base rate, the opposing case, or invalidation is `not ready`. `hard-blocked` means the evidence cannot support a review.
-- State what evidence is missing and what would make the thesis reviewable.
-- When the verdict is `ready` and any claim is `narrative-only`, name those claims in the chat reply.
-
-## Report
-
-Report the verdict and the decision id. Limits says when to name missing evidence and narrative-only claims. Step 6 says when to offer `resolve` and `verify`.

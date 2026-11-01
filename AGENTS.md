@@ -78,19 +78,11 @@ Maximize delivery speed while preventing loss of local work, unsafe history rewr
 
 ## Approval Beyond Git
 
-Written rules are not a substitute for real permission settings. Branch protection, token scopes, and what this environment can actually do still apply.
+A direct request from Jon counts as approval for that specific action.
 
-These actions need the owner's explicit OK in the current conversation. A handoff, an older chat, or an assumed yes does not count:
-
-- Deleting files, including removing tracked files
-- Writing to Google Docs, Google Sheets, or any service outside this machine
-- Sending data off this machine, or publishing it
-- Changing or weakening a safety check, a CI rule, or a hook
-- Merging a pull request. Never merge. The owner reviews and merges.
-
-Pushing an allowed working branch stays under the git rules above. It is not permission to merge, post, or write to an outside service.
-
-Never weaken a check just to get unblocked.
+- Never merge a pull request. Jon merges.
+- No outside writes (Google Docs, Google Drive, email, Slack, or anything else outside the repo) beyond what the current request names. Writing the board minutes when the request asks for that is that write.
+- Do not weaken or skip a check.
 
 ## Recommended Command Flow
 

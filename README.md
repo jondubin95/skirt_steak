@@ -32,7 +32,6 @@ This repo is intentionally iterative, so structure and workflows will continue t
 - Secrets layout (gitignored contents): [Sensitive/README.md](Sensitive/README.md)
 - Workflow runbook: [docs/workflow-guardrails.md](docs/workflow-guardrails.md)
 - Decision notes (what failed, what changed, evidence): [docs/decision-notes.md](docs/decision-notes.md)
-- Demonstration Cursor hook (not security): [docs/cursor-hook-demo.md](docs/cursor-hook-demo.md)
 - Guardrail scripts reference: [tools/workflow_guardrails/README.md](tools/workflow_guardrails/README.md)
 - Google Maps Linker guide: [python/Project/Google_Maps_Linker/README.md](python/Project/Google_Maps_Linker/README.md)
 - Clarity & Concision Editor gem: [python/Project/Gem_Factory/Jons_Gems/clarity-concision-editor/README.md](python/Project/Gem_Factory/Jons_Gems/clarity-concision-editor/README.md)

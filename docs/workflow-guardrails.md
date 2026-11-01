@@ -236,11 +236,25 @@ CI blocks a bad pull request even when hooks were never installed or were skippe
 
 ## Before saying the work is done
 
-Do not say the work is done until each of these is true:
+### Must pass
 
-- The checks you rely on were run, and the report matches the run. Use `bash tools/workflow_guardrails/health-check.sh`, or `powershell -ExecutionPolicy Bypass -File .\tools\workflow_guardrails\health-check.ps1` on Windows. Each check is pass, fail, or did not run, with the command that was used. A check that did not run is not a pass. `overall: success` is the only clean result.
-- The change matches what was asked. Extra refactors are a different request.
-- Nothing under `Sensitive/` is staged, except the tracked scaffold `Sensitive/README.md` when that file itself is the change.
-- The branch is an allowed working branch, the pull request targets `main`, the body replaces the template, and the pull request is not merged.
-- If the next session needs context, the public handoff is updated. The private supplement stays optional. An approval written in a note is expired until the owner confirms it again. The list of actions that need that confirmation is in `AGENTS.md`.
-- Known gaps are stated, including any check that did not run and any result that failed.
+These are the checks CI blocks on. See `.github/workflows/guardrails.yml`.
+
+- Branch name is `feature/[a-z0-9-]{3,40}` or `cursor/<name>-<id>`
+- The pull request does not touch `Sensitive/` except `Sensitive/README.md`
+- The pull request body does not still contain the raw template placeholders
+- `python -m py_compile` over `python/`
+- Board secretary unit tests
+- Decision log unit tests
+- Fanfic story doctor tests
+- Fanfic private paths are gitignored
+- `ruff check python`
+
+### Known baseline failures
+
+Black and pylint are advisory in CI. Report them. Do not block on them, and do not edit the code just to clear them.
+
+- `black --check`
+- `pylint`
+
+Confirm CI is green on the pull request and list anything you could not run.

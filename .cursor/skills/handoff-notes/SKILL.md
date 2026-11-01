@@ -104,7 +104,3 @@ If `handoffs/` is empty, say so. Never invent prior context.
 - Public notes are visible as soon as the branch is pushed, not just when a PR merges. Treat a push as publication.
 - Do not dump chat transcripts into either tier.
 - Mark a thread `status: done` when the work ships, so pickup stops selecting it.
-
-## Report
-
-On checkpoint, step 7 is the report: the public path, and the supplement path and kind of detail only when one was written. On pickup, state which file was chosen and summarize it before acting. Do not repeat withheld values.

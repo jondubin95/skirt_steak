@@ -37,13 +37,13 @@ A rule that is not built is reported as **skipped**. Skipped is not "nothing fou
 
 `OOC.VOICE` judges attributed dialogue against one cached voice profile per character, sampled across the work. It does not judge narration. The profile includes `dialect_or_l2`. Intake `names` holds nicknames, `pronouns` are `he`, `she`, or `they`, and `voice_profiles` can override profile fields in paraphrase, without quotation marks or rewrite phrasing. `spelling_ignore` suppresses real near-names without making them aliases. A prefix truncation inside dialogue is a nickname question. `--html` and `--json` write review files outside the repository; the JSON file includes flag positions. A changed sample regenerates the profile. `--refresh-voice-profiles` regenerates it anyway. `--reuse-stale-voice-profiles` keeps the cached one. A paid provider still needs `DOCTOR_G9_OPT_IN=1` on that command only.
 
-## Limits
-
-### Privacy
+## Privacy
 
 Real drafts and book text stay in `$DOCTOR_HOME` (default `%USERPROFILE%\doctor-home` on Windows, `~/doctor-home` elsewhere), outside the repo. Do not paste chapters, book text, or quote-bearing canon dumps into chat. Do not read those files out of `DOCTOR_HOME`.
 
 Synthetic fixtures in the repo use an invented cast. No series text belongs in git.
+
+## Limits
 
 ### Hard rules
 
@@ -51,7 +51,3 @@ Synthetic fixtures in the repo use an invented cast. No series text belongs in g
 - UNKNOWN is not a break and not an all-clear.
 - Do not enforce proposed facts.
 - Do not open a real book file during implementation or review.
-
-## Report
-
-Report a missing rule as **skipped**, and say when a character was skipped for lack of reference text. Suggested fixes are directions.
