@@ -5,11 +5,19 @@ description: Two-tier handoff notes for skirt_steak. Trigger when the user says 
 
 # Handoff Notes
 
+## Purpose
+
 Handoffs are continuity artifacts, not transcripts. Keep them short. They are a routing table for the next model.
 
 The public head is the canonical note. The private file is an optional supplement for material that must not be in git. It is not a second copy of the public head.
 
-## Two tiers
+## Inputs
+
+The word "checkpoint" or "pickup", or a named file. Otherwise pickup reads `handoffs/INDEX.md`. Checkpoint uses `handoff-template.md`.
+
+## Steps
+
+### Two tiers
 
 This repository is **public**.
 
@@ -26,7 +34,7 @@ A Cloud Agent sees only the public tier. `null` means nothing was withheld. A pa
 
 Existing private files stay as historical artifacts. Do not rewrite them into supplements, and do not publish their contents because a new checkpoint would not have created them.
 
-## Naming and threads
+### Naming and threads
 
 A thread is one line of work, continued across sessions. Each checkpoint writes a **new immutable public file**; the thread is the chain.
 
@@ -49,7 +57,7 @@ private_detail: null  # or Sensitive/handoffs/YYYYMMDD-HHMM-<thread-slug>.md
 
 `handoffs/INDEX.md` maps each thread to its current head. Superseded public notes move to `handoffs/archive/<thread-slug>/` so the top level holds only live heads.
 
-## On "checkpoint"
+### On "checkpoint"
 
 Do not ask for confirmation first. Draft the public head before deciding whether a private supplement exists.
 
@@ -61,7 +69,7 @@ Do not ask for confirmation first. Draft the public head before deciding whether
 6. Update `handoffs/INDEX.md`.
 7. Report the public path. If a supplement was written, report its path and the kind of detail withheld. If not, say nothing was withheld. Do not repeat the withheld values.
 
-## What stays out of the public head
+### What stays out of the public head
 
 - Credentials, tokens, or other authentication material
 - Financial account detail, unpublished position information, or a live market thesis with entry and exit levels while the position is open
@@ -72,7 +80,7 @@ Do not ask for confirmation first. Draft the public head before deciding whether
 
 A public name, a path inside this repo, and a non-sensitive technical finding the next session needs all stay in the public head.
 
-## On "pickup"
+### On "pickup"
 
 1. If the user named a file, use that file.
 2. Otherwise read `handoffs/INDEX.md` and select the newest note with `status: active`, ordering by the filename timestamp rather than file mtime.
@@ -88,9 +96,15 @@ A public name, a path inside this repo, and a non-sensitive technical finding th
 
 If `handoffs/` is empty, say so. Never invent prior context.
 
-## Guardrails
+## Limits
+
+### Guardrails
 
 - Never commit anything under `Sensitive/`.
 - Public notes are visible as soon as the branch is pushed, not just when a PR merges. Treat a push as publication.
 - Do not dump chat transcripts into either tier.
 - Mark a thread `status: done` when the work ships, so pickup stops selecting it.
+
+## Report
+
+On checkpoint, step 7 is the report: the public path, and the supplement path and kind of detail only when one was written. On pickup, state which file was chosen and summarize it before acting. Do not repeat withheld values.

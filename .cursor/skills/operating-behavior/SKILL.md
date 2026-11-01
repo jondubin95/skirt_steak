@@ -5,8 +5,24 @@ description: skirt_steak coding operating rules from Copilot instructions. Trigg
 
 # Operating Behavior
 
+## Purpose
+
 Read `.github/copilot-instructions.md` and follow it. That file is the source of truth for coding behavior. This skill does not restate those rules.
 
-Git safety, including approvals beyond git, stays in `AGENTS.md`.
+## Inputs
 
-If this skill and the canonical file disagree, follow the canonical file and shrink this skill back to a pointer.
+A task in this repo: implementing, debugging, refactoring, summarizing a change, or opening or updating a pull request.
+
+## Steps
+
+1. Read `.github/copilot-instructions.md` and follow it.
+2. Git safety, including approvals beyond git, stays in `AGENTS.md`.
+3. If this skill and the canonical file disagree, follow the canonical file and shrink this skill back to a pointer.
+
+## Limits
+
+Do not copy the coding rules into this skill. The canonical file wins.
+
+## Report
+
+Say what the canonical file asks for. This skill adds no second report format.

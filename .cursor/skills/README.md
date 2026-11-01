@@ -18,4 +18,4 @@ If a skill fires on the wrong message, or never fires when it should, tighten or
 
 ## Skill shape
 
-Purpose, inputs, steps, limits, and report. `clarity-concision-editor`, `paranoid-market-analyst`, `msjc-board-secretary`, and `fanfic-story-doctor` use those headings. `operating-behavior` and `handoff-notes` do not, yet.
+Purpose, inputs, steps, limits, and report. `clarity-concision-editor`, `paranoid-market-analyst`, `msjc-board-secretary`, `fanfic-story-doctor`, `operating-behavior`, and `handoff-notes` use those headings.
