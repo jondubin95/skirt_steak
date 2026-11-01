@@ -79,7 +79,7 @@ jobs:
       - name: Syntax check (blocking)
         run: |
           set -euo pipefail
-          find python .cursor/hooks -name '*.py' -print0 | xargs -0 -n1 python -m py_compile
+          find python -name '*.py' -print0 | xargs -0 -n1 python -m py_compile
 
       - name: Cursor demo hook unit tests (blocking)
         run: python -m unittest discover -s python/cursor_hook_demo/tests -p "test_*.py"
@@ -112,7 +112,7 @@ jobs:
           done
 
       - name: ruff fail-fast and naming
-        run: python -m ruff check python .cursor/hooks
+        run: python -m ruff check python
 
       - name: black --check (advisory, does not fail the build)
         run: |

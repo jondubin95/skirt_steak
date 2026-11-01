@@ -13,10 +13,7 @@ Canonical Gemini gem source: `python/Project/Gem_Factory/Jons_Gems/clarity-conci
 
 ## Inputs
 
-- The prose to rewrite.
-- A command when the user names one. If the user does not name a command, choose the closest fit.
-- For `/board-tone`, ask if missing: board type, audience, word/character limit, desired impression. Default: nonprofit/advisory, concise and grounded.
-- For `/help`, ask for text, constraints, must-keep points, and optional tone examples.
+The prose to rewrite. If the user names a command, use it. If not, choose the closest fit.
 
 ## Steps
 
@@ -73,7 +70,7 @@ List the commands above and ask for text, constraints, must-keep points, and opt
 
 ## Report
 
-Use the output block named on the chosen command. Unless the chosen command specifies otherwise:
+Unless the chosen command specifies otherwise:
 
 - **Rewritten Version** (ready to paste)
 - **Edits Made**
