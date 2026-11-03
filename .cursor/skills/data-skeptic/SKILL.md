@@ -65,8 +65,8 @@ A metric gets the same checks on its inputs, plus one recomputation on the sampl
 
 Tag every claim in the report.
 
-- `measured`: the claim names the query or computation, the dataset, and the count or shape returned.
-- `unverified`: the claim comes from reading code, a comment, or an assumption. Write it as unverified. Do not turn it into a finding of safety.
+- `measured`: the claim names the Q-number, the dataset, and the count or shape returned.
+- `unverified`: the claim comes from reading code, a comment, or an assumption, or it has no query. Write it as unverified. Do not turn it into a finding of safety.
 
 A check that was not run is `unverified`, with the reason. Do not invent a result to fill a section.
 
@@ -80,8 +80,8 @@ Three tiers. A check can produce more than one finding. Use the tier the evidenc
 
 Each finding has:
 
-- the claim, tagged `measured` or `unverified`
-- the evidence: dataset, query name from the references (or the computation), and the counts or shape
+- the claim, tagged `measured` or `unverified`, citing the Q-number when it is measured
+- the evidence: dataset, Q-number, and the counts or shape
 - the affected rows or metric, as counts, rates, or a metric delta
 - a suggested fix, or a test that fails if the bug returns
 
@@ -89,23 +89,34 @@ Counts, rates, min and max of dates and numeric measures, and distinct counts ar
 
 ### Proof of testing
 
-When the user wants a PR note, or asks whether the change is safe to ship, append a short block they can paste. Counts and shapes only. No row samples, credentials, or connection strings. Omit a line rather than filling it from the code.
+When the user wants a PR note, or asks whether the change is safe to ship, append it under the description that is already there. Leave the author's text as written. If a proof block is already in the description, update that block. Do not add a second one.
 
-Append the block under the description that is already there, or under a `## Proof of testing` heading. Leave the author's text as written. If a proof block is already in the description, update that block. Do not add a second one.
+The review narrative cites the Q-number for every finding in the red, yellow, and green tiers. A claim with no query stays in the `unverified` list and is not stated as fact.
+
+The note has two parts. Part 1 is the counts block. Counts and shapes only. No row samples, credentials, connection strings, or literals that are identifiers, names, or secrets. Name the dataset without a connection string. Each count cites its Q-number. Omit a line rather than filling it from the code. A check that did not run is `Not run:`, with the reason.
+
+Part 2 is the toggle, after the counts. Leave a blank line after the summary so the fences render. Each query or code block that was run is the next number (Q1, Q2, ...), in its own fence. Copy it verbatim from the run. Do not rewrite it and do not reconstruct it afterwards. If a query changed between runs, include the final text and note what changed. Redact a literal that is an identifier, a name, or a secret. The dataset name in the note is the same one named in the counts.
+
+~~~md
+## Proof of testing
+Dataset: <name, no connection string>
+Schema: <grain keys and counts> (Q1)
+Joins: <left / right / after> (Q2)
+Not run: <check and reason>
+
+<details>
+<summary>Queries run</summary>
+
+Q1
+
+```sql
+<verbatim statement>
+```
+
+</details>
+~~~
 
 A filled example is in [references/pr-summary-example.md](references/pr-summary-example.md).
-
-```md
-## Proof of testing
-Dataset: <file or database.schema, no connection string>
-Schema: <tables and grain keys confirmed>
-Joins: <left rows / right rows / after rows / duplicate keys per side>
-Nulls: <column null counts that changed a result>
-Filters: <rows before, rows after, unexpected drops>
-Stages: <count per stage>
-Dates: <min, max, boundary mismatch count, zone used>
-Not run: <check and reason>
-```
 
 ## Limits
 
@@ -120,6 +131,6 @@ Not run: <check and reason>
 
 Lead with the dataset and whether any production data was used.
 
-Then the three tiers, in this order: data-integrity bug, silent failure, confirmed safe. One finding per result. Write "none" when that tier is empty and the checks ran. Skipped checks go under a final `unverified` list, not under confirmed safe.
+Then the three tiers, in this order: data-integrity bug, silent failure, confirmed safe. One finding per result, each citing its Q-number. Write "none" when that tier is empty and the checks ran. Skipped checks go under a final `unverified` list, not under confirmed safe.
 
-End with the proof-of-testing block when the user asked for a PR note or asked whether it is safe to ship.
+End with the two-part proof note when the user asked for a PR note or asked whether it is safe to ship.
