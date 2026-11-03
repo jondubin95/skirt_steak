@@ -28,6 +28,7 @@ This repo is intentionally iterative, so structure and workflows will continue t
 - GitHub Copilot repo instructions: [.github/copilot-instructions.md](.github/copilot-instructions.md)
 - Cross-model continuity template: [handoff-template.md](handoff-template.md)
 - Cursor project skills (keyword-triggered): [.cursor/skills/](.cursor/skills/)
+- Data skeptic review for SQL and Python data work: [.cursor/skills/data-skeptic/SKILL.md](.cursor/skills/data-skeptic/SKILL.md)
 - Handoff notes, public tier: [handoffs/README.md](handoffs/README.md)
 - Secrets layout (gitignored contents): [Sensitive/README.md](Sensitive/README.md)
 - Workflow runbook: [docs/workflow-guardrails.md](docs/workflow-guardrails.md)
