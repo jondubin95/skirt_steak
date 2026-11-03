@@ -89,7 +89,11 @@ Counts, rates, min and max of dates and numeric measures, and distinct counts ar
 
 ### Proof of testing
 
-When the user wants a PR note, or asks whether the change is safe to ship, append a short block they can paste. Same privacy rule. Omit a line rather than filling it from the code.
+When the user wants a PR note, or asks whether the change is safe to ship, append a short block they can paste. Counts and shapes only. No row samples, credentials, or connection strings. Omit a line rather than filling it from the code.
+
+Append the block under the description that is already there, or under a `## Proof of testing` heading. Leave the author's text as written. If a proof block is already in the description, update that block. Do not add a second one.
+
+A filled example is in [references/pr-summary-example.md](references/pr-summary-example.md).
 
 ```md
 ## Proof of testing
