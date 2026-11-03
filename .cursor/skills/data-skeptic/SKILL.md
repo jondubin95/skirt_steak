@@ -5,8 +5,9 @@ description: >-
   Trigger only when the user asks for a data review of a pipeline, SQL
   transformation, dbt-style model, metric definition, or Python data script, or
   when the message contains "data skeptic", "data review", "sanity check the
-  data", "sanity check this data", "is this safe to ship", "silent failure",
-  "join fan-out", or "what could go wrong with this query". Do not apply to
+  data", "sanity check this data", "join fan-out", or "what could go wrong with
+  this query". The phrases "is this safe to ship" and "silent failure" trigger
+  this skill only together with a data-review ask. Do not apply to
   market-outcome claims, and do not apply to coding that is not a data check.
 ---
 
@@ -26,17 +27,14 @@ The pipeline, SQL transformation, dbt-style model, metric definition, or Python 
 
 If the artifact is not data work, say this skill does not apply and stop.
 
-Name the dataset before the first query: file path, database, and schema. A connection string is not a name. Do not print credentials.
+Name the dataset before the first query: file path, database, and schema.
 
 ### Safety
 
 Run exploratory queries only against a test, sample, or dry-run dataset, or in a read-only or dry-run mode.
 
 - DuckDB: `duckdb.connect(path, read_only=True)`. An unnamed scratch check uses `duckdb.connect()` (in memory) loaded from a sample file or fixture.
-- A warehouse check uses a read-only role or a dry-run mode that does not materialize. Compiled SQL is fine. A job that writes tables is not a check.
-- Python: transform a sample frame or fixture in memory. Do not write results back to a shared table.
-
-Do not mutate data. Do not run SQL that writes (`INSERT`, `UPDATE`, `DELETE`, `MERGE`, `CREATE`, `DROP`, `ALTER`, or `COPY` to a destination). Do not write a frame back to a shared table. A pandas `merge` that stays in memory is a check, not a write.
+- A warehouse check uses a read-only role or a dry-run mode that does not materialize. Compiled SQL is fine.
 
 Do not run against production unless the user explicitly says so in this conversation. A comment in the code is not permission. If production is the only data and the user has not said so, leave the checks unrun and label every claim `unverified`.
 
@@ -50,14 +48,14 @@ Grain is `COUNT(*)` against `COUNT(DISTINCT <key>)` on the keys the model claims
 
 ### Checks
 
-Run every check below, or mark it not run with the reason. Query shapes are in [references/check-queries.md](references/check-queries.md). Replace `orders`, `customers`, and `events` with names confirmed in schema recon. The templates return counts and ranges. Do not extend them to list key values or row samples in the report.
+Run every check below, or mark it not run with the reason. Query shapes are in [references/check-queries.md](references/check-queries.md). Substitute confirmed table names, column names, and predicate placeholders such as `<excluded_status>`, `<window_start>`, and `<window_end>`. Headings there are template ids. Q-numbers are assigned per run and are the only citation key in a report.
 
 1. Join fan-out, on every `JOIN` and every pandas `merge`. Row counts before and after. Key uniqueness on each side: row count, non-null keys, distinct keys, and how many keys occur more than once. A joined row count above the preserved side is fan-out. An inner join that drops rows is a loss, measured separately from fan-out.
-2. NULL prevalence and NULL propagation. Null count per column the logic reads. Then show what those nulls do in the join, the filter, and the aggregate. In SQL, `col <> 'x'` and `NOT IN` reject nulls. `SUM` and `AVG` skip nulls. An inner join drops null keys. SQL `GROUP BY` keeps one group for null keys. Pandas `merge` defaults to an inner join, and `groupby` drops null keys unless `dropna=False`.
-3. Filter effectiveness and range checks. Min, max, and distinct count of each filtered column, before and after the predicate. Count rows the predicate removes. Split those rows into "the predicate should drop these" and "the predicate dropped something else." A filter that drops zero rows, or that drops nulls the code does not mention, is a finding.
+2. NULL prevalence and NULL propagation through the join, the filter, and the aggregate are `null_prevalence`, `null_filter`, `null_aggregate`, `null_join`, and `pandas_frame` in the reference.
+3. Filter effectiveness and range checks. Min, max, and distinct count of each filtered column, before and after the predicate. Count rows the predicate removes. Split those rows into rows the predicate should drop and rows it should not. A filter that drops zero rows, or that drops nulls the code does not mention, is a finding.
 4. Row-count reconciliation between stages. One count per stage: source, filter, join, dedupe, aggregate. The deltas must account for the final count. A stage with no count is `unverified`.
-5. Duplicate-key checks, on the source grain and the output grain. Report how many keys have count greater than one, and the extra row count. Do not report the key values.
-6. Date and timezone boundaries. Min and max of each timestamp. Compare a half-open window `[start, end)` with the inclusive predicate the code uses, and count rows on the boundary instant. If one side is a date and the other is a timestamp, count rows the cast moves across the boundary. Record the session time zone. If the column has a time zone, count the same civil day in that zone and in UTC, including a DST transition day when the sample contains one.
+5. Duplicate-key checks, on the source grain and the output grain. Report how many keys have count greater than one, and the extra row count.
+6. Date and timezone boundaries are `session_time_zone`, `date_bounds`, `set_session_time_zone`, `date_boundary_mismatch`, and `date_civil_day` in the reference.
 
 A metric gets the same checks on its inputs, plus one recomputation on the sample compared with the reported figure. If the figure cannot be recomputed, label it `unverified`.
 
@@ -72,7 +70,7 @@ A check that was not run is `unverified`, with the reason. Do not invent a resul
 
 ### Findings
 
-Three tiers. A check can produce more than one finding. Use the tier the evidence supports.
+Three tiers. A check can produce more than one finding. Use the tier the evidence supports. One bullet per finding.
 
 - **data-integrity bug** (red): the measured result contradicts the claimed grain, metric, or population. A duplicate grain, a join that multiplies a sum, or a window that includes the next period.
 - **silent failure** (yellow): the statement succeeds and the numbers move for a reason the code does not mention. Nulls dropped by `<>`, nulls skipped by `SUM`, a filter that matches nothing, or a timezone cast that shifts a day.
@@ -85,52 +83,30 @@ Each finding has:
 - the affected rows or metric, as counts, rates, or a metric delta
 - a suggested fix, or a test that fails if the bug returns
 
-Counts, rates, min and max of dates and numeric measures, and distinct counts are enough. Omit a min or max that is itself an identifier, a name, an email, free text, or a secret.
-
 ### Proof of testing
 
 When the user wants a PR note, or asks whether the change is safe to ship, append it under the description that is already there. Leave the author's text as written. If a proof block is already in the description, update that block. Do not add a second one.
 
 The review narrative cites the Q-number for every finding in the red, yellow, and green tiers. A claim with no query stays in the `unverified` list and is not stated as fact.
 
-The note has two parts. Part 1 is the counts block. Counts and shapes only. No row samples, credentials, connection strings, or literals that are identifiers, names, or secrets. Name the dataset without a connection string. Each count cites its Q-number. Omit a line rather than filling it from the code. A check that did not run is `Not run:`, with the reason.
+The note has two parts. Part 1 is the counts block. Each count cites its Q-number. Omit a line rather than filling it from the code. A check that did not run is `Not run:`, with the reason.
 
-Part 2 is the toggle, after the counts. Leave a blank line after the summary so the fences render. Each query or code block that was run is the next number (Q1, Q2, ...), in its own fence. Copy it verbatim from the run. Do not rewrite it and do not reconstruct it afterwards. If a query changed between runs, include the final text and note what changed. Redact a literal that is an identifier, a name, or a secret. The dataset name in the note is the same one named in the counts.
+Part 2 is the toggle, after the counts. Leave a blank line after the summary so the fences render. Each query or code block that was run is the next number (Q1, Q2, ...), in its own fence. Copy it verbatim from the run. Do not rewrite it and do not reconstruct it afterwards. If a query changed between runs, include the final text and note what changed.
 
-~~~md
-## Proof of testing
-Dataset: <name, no connection string>
-Schema: <grain keys and counts> (Q1)
-Joins: <left / right / after> (Q2)
-Not run: <check and reason>
-
-<details>
-<summary>Queries run</summary>
-
-Q1
-
-```sql
-<verbatim statement>
-```
-
-</details>
-~~~
-
-A filled example is in [references/pr-summary-example.md](references/pr-summary-example.md).
+The filled example is [references/pr-summary-example.md](references/pr-summary-example.md).
 
 ## Limits
 
 - A code reading does not close a check.
-- Do not mutate data, and do not query production unless the user explicitly allows it in this conversation.
-- Do not print credentials, connection strings, or row samples.
+- Do not mutate source data. The only allowed write is a scratch table or a copy on a test target the user approved in this conversation.
+- Counts and shapes only. No credentials, connection strings, row samples, or literals that are identifiers, names, or secrets.
 - An empty sample is a measurement of zero rows. Leave the claim `unverified`. It is not proof.
-- Do not copy example table names into a query until schema recon shows them.
-- `dbt run`, `CREATE TABLE AS`, and a notebook cell that writes a table are out of scope unless the user explicitly asked for a write to a non-production target.
+- Do not copy a template name or a predicate placeholder into a query until schema recon shows the real names.
 
 ## Report
 
 Lead with the dataset and whether any production data was used.
 
-Then the three tiers, in this order: data-integrity bug, silent failure, confirmed safe. One finding per result, each citing its Q-number. Write "none" when that tier is empty and the checks ran. Skipped checks go under a final `unverified` list, not under confirmed safe.
+Then the three tiers, in this order: data-integrity bug, silent failure, confirmed safe. One bullet per finding, each citing its Q-number. Write "none" when that tier is empty and the checks ran. Skipped checks go under a final `unverified` list, not under confirmed safe.
 
 End with the two-part proof note when the user asked for a PR note or asked whether it is safe to ship.

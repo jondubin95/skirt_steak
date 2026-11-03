@@ -1,10 +1,8 @@
 # Check query templates
 
-Shapes for the checks in `../SKILL.md`. Confirm names in schema recon, then substitute them for `orders`, `customers`, and `events`. These statements are selects. Run them on a test, sample, or dry-run dataset, or in a read-only session.
+Shapes for the checks in `../SKILL.md`. Headings are template ids. Substitute confirmed table names, column names, and the predicate placeholders before running a shape.
 
-DuckDB is the reference dialect. `FILTER` and `information_schema` are used as DuckDB implements them.
-
-Cite a result by the heading name (`join_row_counts`). Report the counts, not key values or row samples.
+DuckDB is the reference dialect. One statement per fence. `FILTER` and `information_schema` are used as DuckDB implements them.
 
 ## schema_tables
 
@@ -31,7 +29,7 @@ ORDER BY table_name, ordinal_position;
 
 ## grain
 
-`row_count` and `distinct_order_id` differ when `order_id` is not a key. Nulls are not counted by `COUNT(DISTINCT ...)`.
+`row_count` and `distinct_order_id` differ when `order_id` is not a key. `COUNT(DISTINCT ...)` ignores nulls.
 
 ```sql
 SELECT
@@ -41,9 +39,9 @@ SELECT
 FROM orders;
 ```
 
-## join_key_uniqueness
+## join_key_counts
 
-Run once per side of each join. `keys_with_duplicates` above zero means that side can multiply rows.
+Run once per side of each join. `row_count` above `distinct_keys` means that side can multiply rows.
 
 ```sql
 SELECT
@@ -51,7 +49,13 @@ SELECT
   COUNT(customer_id) AS non_null_keys,
   COUNT(DISTINCT customer_id) AS distinct_keys
 FROM orders;
+```
 
+## join_key_duplicates
+
+`keys_with_duplicates` above zero means that side can multiply rows. Run once per side.
+
+```sql
 SELECT COUNT(*) AS keys_with_duplicates
 FROM (
   SELECT customer_id
@@ -62,11 +66,9 @@ FROM (
 ) AS duplicate_keys;
 ```
 
-Repeat both statements for `customers`.
-
 ## join_row_counts
 
-Compare `joined_rows` with `left_rows`. A larger joined count is fan-out. A smaller inner-join count is loss. Read `join_key_uniqueness` before attributing the delta.
+Compare `inner_joined_rows` and `left_joined_rows` with `left_rows`. A larger joined count is fan-out. A smaller inner-join count is loss. Read `join_key_counts` before attributing the delta.
 
 ```sql
 SELECT
@@ -100,13 +102,13 @@ FROM orders;
 
 ## null_filter
 
-`status <> 'canceled'` drops null `status`. `IS DISTINCT FROM` keeps those rows. The difference is the silent drop.
+`status <> '<excluded_status>'` drops null `status`. `IS DISTINCT FROM` keeps those rows. The difference is the silent drop.
 
 ```sql
 SELECT
   COUNT(*) FILTER (WHERE status IS NULL) AS null_status,
-  COUNT(*) FILTER (WHERE status <> 'canceled') AS kept_by_not_equal,
-  COUNT(*) FILTER (WHERE status IS DISTINCT FROM 'canceled') AS kept_by_is_distinct_from
+  COUNT(*) FILTER (WHERE status <> '<excluded_status>') AS kept_by_not_equal,
+  COUNT(*) FILTER (WHERE status IS DISTINCT FROM '<excluded_status>') AS kept_by_is_distinct_from
 FROM orders;
 ```
 
@@ -146,32 +148,45 @@ LEFT JOIN customers_one AS c ON o.customer_id = c.customer_id;
 
 ## filter_range
 
-`COUNT(DISTINCT status)` ignores nulls. The null count is in `null_prevalence`.
+`kept` is the same predicate as the `kept` bucket in `filter_drop_split`. Min, max, and distinct count are reported before and after that predicate. `COUNT(DISTINCT status)` ignores nulls. Null counts are in `null_prevalence`.
 
 ```sql
+WITH tagged AS (
+  SELECT
+    *,
+    (
+      order_date IS NOT NULL
+      AND order_date >= DATE '<window_start>'
+      AND order_date < DATE '<window_end>'
+      AND status IS NOT NULL
+      AND status <> '<excluded_status>'
+    ) AS kept
+  FROM orders
+)
 SELECT
   COUNT(*) AS rows_before,
-  COUNT(*) FILTER (
-    WHERE order_date >= DATE '2024-01-01'
-      AND order_date < DATE '2025-01-01'
-  ) AS rows_in_half_open_window,
-  MIN(order_date) AS min_order_date,
-  MAX(order_date) AS max_order_date,
-  COUNT(DISTINCT status) AS distinct_status
-FROM orders;
+  COUNT(*) FILTER (WHERE kept) AS rows_after,
+  MIN(order_date) AS min_order_date_before,
+  MAX(order_date) AS max_order_date_before,
+  MIN(order_date) FILTER (WHERE kept) AS min_order_date_after,
+  MAX(order_date) FILTER (WHERE kept) AS max_order_date_after,
+  COUNT(DISTINCT status) AS distinct_status_before,
+  COUNT(DISTINCT status) FILTER (WHERE kept) AS distinct_status_after
+FROM tagged;
 ```
 
 ## filter_drop_split
 
-Classify every row with the same precedence as the predicate. `kept` is the population the filter retains. Any other bucket is a drop. A null bucket the code does not mention is a silent failure. This split includes the status predicate. `rows_in_half_open_window` does not, so the two counts differ by the in-window rows the status predicate removes.
+Same predicate as `filter_range`, in the same order. `kept` is the population the predicate retains. Any other bucket is a drop. A null bucket the predicate does not mention is a silent failure.
 
 ```sql
 SELECT
   CASE
     WHEN order_date IS NULL THEN 'null_date'
-    WHEN order_date < DATE '2024-01-01' OR order_date >= DATE '2025-01-01' THEN 'outside_window'
+    WHEN order_date < DATE '<window_start>'
+      OR order_date >= DATE '<window_end>' THEN 'outside_window'
     WHEN status IS NULL THEN 'null_status'
-    WHEN status = 'canceled' THEN 'canceled'
+    WHEN status = '<excluded_status>' THEN 'excluded'
     ELSE 'kept'
   END AS bucket,
   COUNT(*) AS row_count
@@ -182,24 +197,31 @@ ORDER BY 1;
 
 ## stage_counts
 
-One row per stage. A jump at `joined` is fan-out. A drop at `filtered` must match `filter_drop_split`. SQL `GROUP BY` keeps a group for null keys; count that group on its own.
+One row per stage, in pipeline order: source, filter, join, dedupe, aggregate. The filter uses the `kept` predicate from `filter_drop_split`. Dedupe is one row per grain key after the join. The aggregate reads the joined output, not the filtered rows. `aggregated_null_group` is how many aggregate groups have a null key. It is not a count of null-key rows.
 
 ```sql
 WITH filtered AS (
   SELECT *
   FROM orders
-  WHERE order_date >= DATE '2024-01-01'
-    AND order_date < DATE '2025-01-01'
-    AND status <> 'canceled'
+  WHERE order_date IS NOT NULL
+    AND order_date >= DATE '<window_start>'
+    AND order_date < DATE '<window_end>'
+    AND status IS NOT NULL
+    AND status <> '<excluded_status>'
 ),
 joined AS (
   SELECT f.order_id, f.customer_id
   FROM filtered AS f
   LEFT JOIN customers AS c ON f.customer_id = c.customer_id
 ),
+deduped AS (
+  SELECT order_id
+  FROM joined
+  GROUP BY order_id
+),
 aggregated AS (
   SELECT customer_id
-  FROM filtered
+  FROM joined
   GROUP BY customer_id
 )
 SELECT 'source' AS stage, COUNT(*) AS row_count FROM orders
@@ -208,16 +230,18 @@ SELECT 'filtered', COUNT(*) FROM filtered
 UNION ALL
 SELECT 'joined', COUNT(*) FROM joined
 UNION ALL
+SELECT 'deduped', COUNT(*) FROM deduped
+UNION ALL
 SELECT 'aggregated', COUNT(*) FROM aggregated
 UNION ALL
-SELECT 'aggregated_null_key', COUNT(*)
-FROM filtered
+SELECT 'aggregated_null_group', COUNT(*)
+FROM aggregated
 WHERE customer_id IS NULL;
 ```
 
 ## duplicate_keys
 
-Counts only. `extra_rows` is how many rows a `SELECT DISTINCT` on the grain would remove.
+`extra_rows` is how many rows a `SELECT DISTINCT` on the grain would remove. Run again on the output grain.
 
 ```sql
 SELECT
@@ -231,15 +255,17 @@ FROM (
 ) AS duplicate_keys;
 ```
 
-Run again on the output grain.
+## session_time_zone
 
-## date_bounds
-
-Record the session time zone next to this result. `CAST(event_at AS DATE)` uses that zone. Min and max are cast to `VARCHAR` so a Python fetch does not need a timezone package.
+`CAST(event_at AS DATE)` uses this zone. Min and max in `date_bounds` are cast to `VARCHAR` so a Python fetch does not need a timezone package.
 
 ```sql
 SELECT CURRENT_SETTING('TimeZone') AS session_time_zone;
+```
 
+## date_bounds
+
+```sql
 SELECT
   CAST(MIN(event_at) AS VARCHAR) AS min_event_at,
   CAST(MAX(event_at) AS VARCHAR) AS max_event_at,
@@ -248,23 +274,29 @@ SELECT
 FROM events;
 ```
 
-## date_boundary_mismatch
+## set_session_time_zone
 
-`half_open_utc` is `[2024-01-01, 2024-02-01)`. `inclusive_utc_date` includes the whole end date when the cast is in UTC. `exact_end_instant` is the row an inclusive end timestamp would add. The `SET` applies for the rest of the session. Record the zone, and set it again before a later cast that should use a different zone.
+This changes later date casts for the rest of the session. Set the zone again before a later cast that should use a different one.
 
 ```sql
-SET TimeZone = 'UTC';
+SET TimeZone = '<session_zone>';
+```
 
+## date_boundary_mismatch
+
+`half_open` is `[<range_start>, <range_end>)`. `inclusive_date` is `<inclusive_start>` through `<inclusive_end>` in the session zone. `exact_end_instant` is the row an inclusive end timestamp would add.
+
+```sql
 SELECT
   COUNT(*) FILTER (
-    WHERE event_at >= TIMESTAMPTZ '2024-01-01 00:00:00+00'
-      AND event_at < TIMESTAMPTZ '2024-02-01 00:00:00+00'
-  ) AS half_open_utc,
+    WHERE event_at >= TIMESTAMPTZ '<range_start>'
+      AND event_at < TIMESTAMPTZ '<range_end>'
+  ) AS half_open,
   COUNT(*) FILTER (
-    WHERE CAST(event_at AS DATE) BETWEEN DATE '2024-01-01' AND DATE '2024-01-31'
-  ) AS inclusive_utc_date,
+    WHERE CAST(event_at AS DATE) BETWEEN DATE '<inclusive_start>' AND DATE '<inclusive_end>'
+  ) AS inclusive_date,
   COUNT(*) FILTER (
-    WHERE event_at = TIMESTAMPTZ '2024-02-01 00:00:00+00'
+    WHERE event_at = TIMESTAMPTZ '<boundary_instant>'
   ) AS exact_end_instant
 FROM events;
 ```
@@ -276,17 +308,17 @@ Same instant, two civil days. A difference is a timezone shift. Use a day the sa
 ```sql
 SELECT
   COUNT(*) FILTER (
-    WHERE (event_at AT TIME ZONE 'UTC')::DATE = DATE '2024-03-10'
-  ) AS civil_day_utc,
+    WHERE (event_at AT TIME ZONE '<zone_a>')::DATE = DATE '<civil_day>'
+  ) AS civil_day_zone_a,
   COUNT(*) FILTER (
-    WHERE (event_at AT TIME ZONE 'America/New_York')::DATE = DATE '2024-03-10'
-  ) AS civil_day_new_york
+    WHERE (event_at AT TIME ZONE '<zone_b>')::DATE = DATE '<civil_day>'
+  ) AS civil_day_zone_b
 FROM events;
 ```
 
 ## pandas_frame
 
-In-memory check against the same read-only connection. `validate='m:1'` raises when `customers.customer_id` is not unique; record the exception. `duplicated` sums to the extra rows, not the groups. `groupby(..., dropna=False)` keeps null keys.
+In-memory check against the same read-only connection. `validate='m:1'` raises when the right-hand key is not unique; record the exception. `duplicated` sums to the extra rows, not the groups. `groupby(..., dropna=False)` keeps null keys. The default `merge` is an inner join, and the default `groupby` drops null keys.
 
 ```python
 import duckdb
