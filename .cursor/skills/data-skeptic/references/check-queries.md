@@ -109,7 +109,8 @@ SELECT
   COUNT(*) FILTER (WHERE status IS NULL) AS null_status,
   COUNT(*) FILTER (WHERE status <> '<excluded_status>') AS kept_by_not_equal,
   COUNT(*) FILTER (WHERE status IS DISTINCT FROM '<excluded_status>') AS kept_by_is_distinct_from
-FROM orders;
+FROM orders
+WHERE (CASE WHEN '<excluded_status>' LIKE '%<%' THEN error('unfilled placeholder') ELSE 1 END) = 1;
 ```
 
 ## null_aggregate
@@ -177,7 +178,7 @@ FROM tagged;
 
 ## filter_drop_split
 
-Same predicate as `filter_range`, in the same order. `kept` is the population the predicate retains. Any other bucket is a drop. A null bucket the predicate does not mention is a silent failure.
+Same predicate as `filter_range`, in the same order. `kept` is the population the predicate retains. Any other bucket is a drop. A null bucket the predicate does not mention is a silent failure. A row dropped for two reasons is counted once, in the first matching bucket, and the CASE order can be reordered for the cause being checked. Counts still reconcile to the source row count.
 
 ```sql
 SELECT

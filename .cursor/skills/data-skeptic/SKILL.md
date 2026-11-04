@@ -66,7 +66,7 @@ Tag every claim in the report.
 - `measured`: the claim names the Q-number, the dataset, and the count or shape returned.
 - `unverified`: the claim comes from reading code, a comment, or an assumption, or it has no query. Write it as unverified. Do not turn it into a finding of safety.
 
-A check that was not run is `unverified`, with the reason. Do not invent a result to fill a section.
+A check that was not run is `unverified`, with the reason. Do not invent a result to fill a section. Before tagging any placeholder-based check `measured`, confirm every placeholder, including `<excluded_status>`, window bounds, and date or zone placeholders, was replaced with a real value from the code under review; an unfilled placeholder makes the result `unverified`.
 
 ### Findings
 

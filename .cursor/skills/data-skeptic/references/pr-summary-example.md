@@ -2,7 +2,7 @@
 
 Append the note under the description that is already there. Leave the author's text as written. Counts cite a Q-number. The toggle's fences are the statements that were run.
 
-Rebuild the sample with [fixture.sql](fixture.sql).
+Rebuild the sample with [fixture.sql](fixture.sql). Predicate in this run: excluded status `canceled`, half-open window 2024-01-01 to 2025-01-01, zones `UTC` and `America/New_York`.
 
 Q5 and Q7 are the final statements from this run. Q5 counts before and after the kept predicate. Q7 adds a dedupe stage and aggregates the join.
 
@@ -43,7 +43,7 @@ Dataset: in-memory sample (orders, customers, events)
 Schema: orders.order_id has 8 rows and 7 distinct values (Q1); 1 duplicate group, 1 extra row (Q2); customers has 4 rows (Q3); events.event_at has 7 rows and 1 null (Q9)
 Joins: orders to customers on customer_id, left 8 / right 4 / inner 9 / left join 11 (Q3)
 Nulls: status nulls 1; `status <> 'canceled'` kept 6; `IS DISTINCT FROM` kept 7 (Q4)
-Filters: 8 rows before the kept predicate, 5 after (Q5); min/max order_date 2024-01-15 to 2025-01-01 before, 2024-01-15 to 2024-12-31 after (Q5); distinct status 2 before, 1 after (Q5); split is excluded 1, kept 5, null date 1, outside window 1 (Q6)
+Filters: 8 rows before the kept predicate, 5 after (Q5); min/max order_date 2024-01-15 to 2025-01-01 before, 2024-01-15 to 2024-12-31 after (Q5); distinct status 2 before, 1 after (Q5); split is excluded 1, kept 5, null date 1, outside window 1 (Q6). The one null-status row is in `outside_window` because the date test comes first.
 Stages: source 8, filtered 5, joined 8, deduped 4, aggregated 3, null-key groups 1 (Q7)
 Dates: event_at min 2024-01-15 12:00:00+00, max 2024-03-10 12:00:00+00, session zone Etc/UTC (Q8, Q9); civil day 2024-03-10 is 2 rows in UTC and 1 in America/New_York (Q10)
 Not run: schema. `schema_tables` and `schema_columns` were not queried.
