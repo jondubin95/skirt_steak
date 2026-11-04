@@ -9,7 +9,8 @@ INSERT INTO orders VALUES
   (4, NULL, 'paid', NULL, DATE '2024-12-31'),
   (5, 12, NULL, 8, DATE '2025-01-01'),
   (6, 99, 'paid', 9, DATE '2024-02-01'),
-  (7, 12, 'paid', 4, NULL);
+  (7, 12, 'paid', 4, NULL),
+  (8, 11, NULL, 3, DATE '2024-07-01');
 INSERT INTO customers VALUES (10, 'a'), (10, 'b'), (11, 'c'), (12, 'd');
 INSERT INTO events VALUES
   (1, TIMESTAMPTZ '2024-01-15 12:00:00+00'),

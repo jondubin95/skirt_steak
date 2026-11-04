@@ -159,8 +159,7 @@ WITH tagged AS (
       order_date IS NOT NULL
       AND order_date >= DATE '<window_start>'
       AND order_date < DATE '<window_end>'
-      AND status IS NOT NULL
-      AND status <> '<excluded_status>'
+      AND status IS DISTINCT FROM '<excluded_status>'
     ) AS kept
   FROM orders
 )
@@ -186,8 +185,7 @@ SELECT
     WHEN order_date IS NULL THEN 'null_date'
     WHEN order_date < DATE '<window_start>'
       OR order_date >= DATE '<window_end>' THEN 'outside_window'
-    WHEN status IS NULL THEN 'null_status'
-    WHEN status = '<excluded_status>' THEN 'excluded'
+    WHEN status IS NOT DISTINCT FROM '<excluded_status>' THEN 'excluded'
     ELSE 'kept'
   END AS bucket,
   COUNT(*) AS row_count
@@ -198,7 +196,7 @@ ORDER BY 1;
 
 ## stage_counts
 
-One row per stage, in pipeline order: source, filter, join, dedupe, aggregate. The filter uses the `kept` predicate from `filter_drop_split`. Dedupe is one row per grain key after the join. The aggregate reads the joined output, not the filtered rows. `aggregated_null_group` is how many aggregate groups have a null key. It is not a count of null-key rows.
+One row per stage, in pipeline order: source, filter, join, dedupe, aggregate. `sum_order_total` is the measure at that stage, so a join fan-out shows up in the sum. The filter uses the `kept` predicate from `filter_drop_split`. Dedupe is one row per grain key after the join. The aggregate reads the joined output, not the filtered rows. `aggregated_null_group` is how many aggregate groups have a null key. It is not a count of null-key rows.
 
 ```sql
 WITH filtered AS (
@@ -207,35 +205,34 @@ WITH filtered AS (
   WHERE order_date IS NOT NULL
     AND order_date >= DATE '<window_start>'
     AND order_date < DATE '<window_end>'
-    AND status IS NOT NULL
-    AND status <> '<excluded_status>'
+    AND status IS DISTINCT FROM '<excluded_status>'
 ),
 joined AS (
-  SELECT f.order_id, f.customer_id
+  SELECT f.order_id, f.customer_id, f.order_total
   FROM filtered AS f
   LEFT JOIN customers AS c ON f.customer_id = c.customer_id
 ),
 deduped AS (
-  SELECT order_id
+  SELECT order_id, MAX(order_total) AS order_total
   FROM joined
   GROUP BY order_id
 ),
 aggregated AS (
-  SELECT customer_id
+  SELECT customer_id, SUM(order_total) AS order_total
   FROM joined
   GROUP BY customer_id
 )
-SELECT 'source' AS stage, COUNT(*) AS row_count FROM orders
+SELECT 'source' AS stage, COUNT(*) AS row_count, SUM(order_total) AS sum_order_total FROM orders
 UNION ALL
-SELECT 'filtered', COUNT(*) FROM filtered
+SELECT 'filtered', COUNT(*), SUM(order_total) FROM filtered
 UNION ALL
-SELECT 'joined', COUNT(*) FROM joined
+SELECT 'joined', COUNT(*), SUM(order_total) FROM joined
 UNION ALL
-SELECT 'deduped', COUNT(*) FROM deduped
+SELECT 'deduped', COUNT(*), SUM(order_total) FROM deduped
 UNION ALL
-SELECT 'aggregated', COUNT(*) FROM aggregated
+SELECT 'aggregated', COUNT(*), SUM(order_total) FROM aggregated
 UNION ALL
-SELECT 'aggregated_null_group', COUNT(*)
+SELECT 'aggregated_null_group', COUNT(*), SUM(order_total)
 FROM aggregated
 WHERE customer_id IS NULL;
 ```
@@ -339,4 +336,25 @@ rows_after = len(merged)
 null_order_total = int(orders["order_total"].isna().sum())
 extra_duplicate_rows = int(orders.duplicated(subset=["order_id"]).sum())
 status_counts = orders.groupby("status", dropna=False).size()
+```
+
+## control_total_tieout
+
+The anchor is a control total, a prior-period output, or a separate source table. It is not a CTE upstream of the model. Count tolerance defaults to zero. Variance is absolute and percent.
+
+```sql
+WITH anchor AS (
+  SELECT <grain_key> AS grain_key, <measure> AS measure FROM <anchor_table>
+),
+output AS (
+  SELECT <grain_key> AS grain_key, <measure> AS measure FROM <output_table>
+)
+SELECT
+  (SELECT COUNT(*) FROM output) - (SELECT COUNT(*) FROM anchor) AS count_variance,
+  ROUND(100.0 * ((SELECT COUNT(*) FROM output) - (SELECT COUNT(*) FROM anchor)) / NULLIF((SELECT COUNT(*) FROM anchor), 0), 2) AS count_variance_pct,
+  (SELECT SUM(measure) FROM output) - (SELECT SUM(measure) FROM anchor) AS measure_variance,
+  (SELECT COUNT(DISTINCT grain_key) FROM output) - (SELECT COUNT(DISTINCT grain_key) FROM anchor) AS distinct_key_variance,
+  (SELECT COUNT(*) FROM output AS o ANTI JOIN anchor AS a ON o.grain_key IS NOT DISTINCT FROM a.grain_key) AS keys_in_output_only,
+  (SELECT COUNT(*) FROM anchor AS a ANTI JOIN output AS o ON a.grain_key IS NOT DISTINCT FROM o.grain_key) AS keys_in_anchor_only,
+  (SELECT COUNT(*) FROM output AS o JOIN anchor AS a ON o.grain_key IS NOT DISTINCT FROM a.grain_key AND o.measure IS DISTINCT FROM a.measure) AS keys_in_both_value_differs;
 ```

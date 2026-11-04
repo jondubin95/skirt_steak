@@ -56,6 +56,11 @@ Run every check below, or mark it not run with the reason. Query shapes are in [
 4. Row-count reconciliation between stages. One count per stage: source, filter, join, dedupe, aggregate. The deltas must account for the final count. A stage with no count is `unverified`.
 5. Duplicate-key checks, on the source grain and the output grain. Report how many keys have count greater than one, and the extra row count.
 6. Date and timezone boundaries are `session_time_zone`, `date_bounds`, `set_session_time_zone`, `date_boundary_mismatch`, and `date_civil_day` in the reference.
+7. Control-total tie-out. Stage counts show internal agreement, not correctness.
+Tie the output to a named anchor: a control total, a prior-period output, or a separate source table, not an upstream CTE.
+Compare row count, the key-measure sum, and distinct keys. Report absolute and percent variance. Count tolerance defaults to zero.
+On a variance, report key counts only: output only, anchor only, and both with a different measure.
+No anchor: tag the check `unverified`. Shape: `control_total_tieout`.
 
 A metric gets the same checks on its inputs, plus one recomputation on the sample compared with the reported figure. If the figure cannot be recomputed, label it `unverified`.
 
@@ -107,6 +112,6 @@ The filled example is [references/pr-summary-example.md](references/pr-summary-e
 
 Lead with the dataset and whether any production data was used.
 
-Then the three tiers, in this order: data-integrity bug, silent failure, confirmed safe. One bullet per finding, each citing its Q-number. Write "none" when that tier is empty and the checks ran. Skipped checks go under a final `unverified` list, not under confirmed safe.
+Then the three tiers, in this order: data-integrity bug, silent failure, confirmed safe. One bullet per finding, each citing its Q-number. A green finding must state that the sample contained the edge case the check targets. Write "none" when that tier is empty and the checks ran. Skipped checks go under a final `unverified` list, not under confirmed safe.
 
 End with the two-part proof note when the user asked for a PR note or asked whether it is safe to ship.
