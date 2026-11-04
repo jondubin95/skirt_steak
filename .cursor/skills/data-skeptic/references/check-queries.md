@@ -1,8 +1,6 @@
 # Check query templates
 
-Shapes for the checks in `../SKILL.md`. Headings are template ids. Substitute confirmed table names, column names, and the predicate placeholders before running a shape.
-
-DuckDB is the reference dialect. One statement per fence. `FILTER` and `information_schema` are used as DuckDB implements them.
+Shapes for the checks in `../SKILL.md`. One statement per fence. DuckDB dialect: `FILTER` and `information_schema`.
 
 ## schema_tables
 
@@ -29,7 +27,7 @@ ORDER BY table_name, ordinal_position;
 
 ## grain
 
-`row_count` and `distinct_order_id` differ when `order_id` is not a key. `COUNT(DISTINCT ...)` ignores nulls.
+`row_count` and `distinct_order_id` differ when `order_id` is not a key. `COUNT(DISTINCT ...)` ignores nulls, so a column named `id` is not unique until these counts say so.
 
 ```sql
 SELECT
@@ -41,34 +39,29 @@ FROM orders;
 
 ## join_key_counts
 
-Run once per side of each join. `row_count` above `distinct_keys` means that side can multiply rows.
+Run once per side. `keys_with_duplicates` is how many keys occur more than once. `row_count` above `distinct_keys` means that side can multiply rows.
 
 ```sql
 SELECT
   COUNT(*) AS row_count,
   COUNT(customer_id) AS non_null_keys,
-  COUNT(DISTINCT customer_id) AS distinct_keys
+  COUNT(DISTINCT customer_id) AS distinct_keys,
+  (
+    SELECT COUNT(*)
+    FROM (
+      SELECT customer_id
+      FROM orders
+      WHERE customer_id IS NOT NULL
+      GROUP BY customer_id
+      HAVING COUNT(*) > 1
+    ) AS duplicate_keys
+  ) AS keys_with_duplicates
 FROM orders;
-```
-
-## join_key_duplicates
-
-`keys_with_duplicates` above zero means that side can multiply rows. Run once per side.
-
-```sql
-SELECT COUNT(*) AS keys_with_duplicates
-FROM (
-  SELECT customer_id
-  FROM orders
-  WHERE customer_id IS NOT NULL
-  GROUP BY customer_id
-  HAVING COUNT(*) > 1
-) AS duplicate_keys;
 ```
 
 ## join_row_counts
 
-Compare `inner_joined_rows` and `left_joined_rows` with `left_rows`. A larger joined count is fan-out. A smaller inner-join count is loss. Read `join_key_counts` before attributing the delta.
+A joined count above the preserved side is fan-out. A smaller inner join is loss. Report them separately, and read `join_key_counts` before attributing the delta.
 
 ```sql
 SELECT
@@ -102,7 +95,7 @@ FROM orders;
 
 ## null_filter
 
-`status <> '<excluded_status>'` drops null `status`. `IS DISTINCT FROM` keeps those rows. The difference is the silent drop.
+`status <> '<excluded_status>'` drops null `status`. `IS DISTINCT FROM` keeps those rows. The difference is the silent drop. The `CASE` errors when `<excluded_status>` is still a placeholder.
 
 ```sql
 SELECT
@@ -115,7 +108,7 @@ WHERE (CASE WHEN '<excluded_status>' LIKE '%<%' THEN error('unfilled placeholder
 
 ## null_aggregate
 
-`SUM` skips nulls. `non_null_order_total` below `row_count` means the sum is over a smaller population than the table.
+`SUM` skips nulls. `non_null_order_total` below `row_count` means the sum covers a smaller population.
 
 ```sql
 SELECT
@@ -127,7 +120,7 @@ FROM orders;
 
 ## null_join
 
-Collapse the right side to one row per key so fan-out is not counted as a match. `null_keys` are dropped by an inner join. `non_null_unmatched` are dropped because the key is absent on the right.
+The right side is one row per key so fan-out is not counted as a match. `null_keys` are dropped by an inner join. `non_null_unmatched` are absent on the right.
 
 ```sql
 WITH customers_one AS (
@@ -149,7 +142,7 @@ LEFT JOIN customers_one AS c ON o.customer_id = c.customer_id;
 
 ## filter_range
 
-`kept` is the same predicate as the `kept` bucket in `filter_drop_split`. Min, max, and distinct count are reported before and after that predicate. `COUNT(DISTINCT status)` ignores nulls. Null counts are in `null_prevalence`.
+`kept` is the same predicate as `filter_drop_split`. `COUNT(DISTINCT status)` ignores nulls.
 
 ```sql
 WITH tagged AS (
@@ -177,7 +170,7 @@ FROM tagged;
 
 ## filter_drop_split
 
-Same predicate as `filter_range`, in the same order. `kept` is the population the predicate retains. Any other bucket is a drop. A null bucket the predicate does not mention is a silent failure. A row dropped for two reasons is counted once, in the first matching bucket, and the CASE order can be reordered for the cause being checked. Counts still reconcile to the source row count.
+Same `kept` predicate as `filter_range`. A null bucket the predicate does not mention is a silent failure. A row dropped for two reasons counts once, in the first matching `CASE` branch. Reorder that `CASE` for the cause being checked. The counts still sum to the source row count.
 
 ```sql
 SELECT
@@ -196,7 +189,7 @@ ORDER BY 1;
 
 ## stage_counts
 
-One row per stage, in pipeline order: source, filter, join, dedupe, aggregate. `sum_order_total` is the measure at that stage, so a join fan-out shows up in the sum. The filter uses the `kept` predicate from `filter_drop_split`. Dedupe is one row per grain key after the join. The aggregate reads the joined output, not the filtered rows. `aggregated_null_group` is how many aggregate groups have a null key. It is not a count of null-key rows.
+One row per stage, in pipeline order, using the `kept` predicate. Dedupe is one row per grain key. The aggregate reads `joined`, so fan-out shows in `sum_order_total`. `aggregated_null_group` counts groups with a null key, not null-key rows.
 
 ```sql
 WITH filtered AS (
@@ -239,7 +232,7 @@ WHERE customer_id IS NULL;
 
 ## duplicate_keys
 
-`extra_rows` is how many rows a `SELECT DISTINCT` on the grain would remove. Run again on the output grain.
+`extra_rows` is how many rows a `SELECT DISTINCT` on the grain would remove.
 
 ```sql
 SELECT
@@ -255,13 +248,15 @@ FROM (
 
 ## session_time_zone
 
-`CAST(event_at AS DATE)` uses this zone. Min and max in `date_bounds` are cast to `VARCHAR` so a Python fetch does not need a timezone package.
+`CAST(event_at AS DATE)` uses this zone.
 
 ```sql
 SELECT CURRENT_SETTING('TimeZone') AS session_time_zone;
 ```
 
 ## date_bounds
+
+Min and max are `VARCHAR` so a Python fetch does not need a timezone package.
 
 ```sql
 SELECT
@@ -274,7 +269,7 @@ FROM events;
 
 ## set_session_time_zone
 
-This changes later date casts for the rest of the session. Set the zone again before a later cast that should use a different one.
+Sets the zone for later date casts in this session. Set it again before a cast that should use a different zone.
 
 ```sql
 SET TimeZone = '<session_zone>';
@@ -301,7 +296,7 @@ FROM events;
 
 ## date_civil_day
 
-Same instant, two civil days. A difference is a timezone shift. Use a day the sample actually contains. Include a DST transition day when one is present.
+Same instant, two civil days. A difference is a timezone shift. Use a day the sample contains, and a DST day when one is present.
 
 ```sql
 SELECT
@@ -316,7 +311,7 @@ FROM events;
 
 ## pandas_frame
 
-In-memory check against the same read-only connection. `validate='m:1'` raises when the right-hand key is not unique; record the exception. `duplicated` sums to the extra rows, not the groups. `groupby(..., dropna=False)` keeps null keys. The default `merge` is an inner join, and the default `groupby` drops null keys.
+Same read-only connection. `validate='m:1'` raises when the right-hand key is not unique; record the exception. `duplicated` sums to the extra rows, not the groups. The default `merge` is an inner join, and the default `groupby` drops null keys.
 
 ```python
 import duckdb
@@ -340,7 +335,7 @@ status_counts = orders.groupby("status", dropna=False).size()
 
 ## control_total_tieout
 
-The anchor is a control total, a prior-period output, or a separate source table. It is not a CTE upstream of the model. Count tolerance defaults to zero. Variance is absolute and percent.
+Count tolerance defaults to zero.
 
 ```sql
 WITH anchor AS (
