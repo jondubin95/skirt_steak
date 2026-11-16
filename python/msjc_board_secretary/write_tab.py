@@ -109,9 +109,9 @@ def load_credentials(creds_path: Path, token_path: Path) -> Any:
                 creds.refresh(Request())
             except RefreshError as exc:
                 raise SystemExit(
-                    "Google token refresh failed. In your terminal, run "
-                    "python python/msjc_board_secretary/reauth.py and approve "
-                    "the browser prompt, then retry this command."
+                    "Google token refresh failed. Run "
+                    "python python/msjc_board_secretary/reauth.py from the repo "
+                    "root, wait for the browser approval, then retry this command."
                 ) from exc
         else:
             if not creds_path.is_file():

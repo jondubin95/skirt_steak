@@ -30,7 +30,7 @@ Every `batchUpdate` sends `writeControl.requiredRevisionId` from the preceding r
 
 Defaults: client JSON `Sensitive/credentials.json`, token `Sensitive/google/gdocs_token.json`. Override the token with `--token`. The CLI does not build a client file from environment variables.
 
-When a write says the Google token refresh failed, run `python python/msjc_board_secretary/reauth.py` from the repo root and approve the browser prompt. That replaces the token after sign-in succeeds and leaves the previous file in place if the prompt is closed. Do not replace `credentials.json` unless the message says the client itself is invalid.
+When a write says the Google token refresh failed, run `python python/msjc_board_secretary/reauth.py` from the repo root and wait for the browser approval. That replaces the token after sign-in succeeds and leaves the previous file in place if the prompt is closed. Do not replace `credentials.json` unless the message says the client itself is invalid. Do not hand the command off.
 
 A one-phrase change uses `--replace` instead of rebuilding the tab. The file is private JSON with `find` and `replaceWith`. Pass `--write`, `--document-id`, `--expected-document-title`, and `--output-tab`. The phrase must occur once on that tab.
 

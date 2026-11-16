@@ -22,29 +22,29 @@ The source document, the target month, year, and meeting date, and the Notes tab
 
 ### Tools
 
-- **Drive** (`plugin-google-drive-google-drive`): `copy_file` and `update_file` for the monthly copy and rename. `search_files` and `read_file_content` are lookup only.
-- **Docs** (`google-docs`): `read_doc` only. Do not call `update_doc` or send `batchUpdate` requests yourself.
-- **Writer**: `python python/msjc_board_secretary/write_tab.py`. Dry-run is the default. A write needs `--write`, `--expected-document-title`, `--input-tab`, `--output-tab`, and `--document-id`.
+- **Drive** (`plugin-google-drive-google-drive`): `copy_file` and `update_file` for the monthly copy and rename. `search_files` and `read_file_content` are lookup only. Do not write minutes text through Drive.
+- **Docs read**: use the local `google-docs` server's `read_doc` when that server is connected. If Cursor left the project server disabled, read through the connected Google Docs plugin `read_document` (`plugin-google-docs-google-docs`). Do not call `update_doc`, `batchUpdate`, or any other Docs write.
+- **Writer**: `python python/msjc_board_secretary/write_tab.py`. Dry-run is the default. A write needs `--write`, `--expected-document-title`, `--input-tab`, `--output-tab`, and `--document-id`. That script is the only minutes write.
 
-If `google-docs` is not connected, stop and say so. Do not fall back to a plain-text Drive write or to unrestricted Docs updates.
+If neither the local server nor the plugin read is available, stop and say so. Do not fall back to a plain-text Drive write or to unrestricted Docs updates. A disabled local server is not a stop when the plugin read is connected.
 
 ### Sign-in
 
-A failed token refresh is not a reason to replace `Sensitive/credentials.json`. Tell the user to run this from the repo root, in their own terminal, and approve the browser prompt:
+A failed token refresh is not a reason to replace `Sensitive/credentials.json`. From the repo root, run this and wait for the browser approval:
 
 `python python/msjc_board_secretary/reauth.py`
 
-It replaces the saved token only after the browser prompt succeeds, removes a leftover bad token file, and prints `token saved`. It does not print the token or the authorization code. If the prompt is closed, the previous token file stays in place. When `token saved` appears, retry the same writer command. A link from an earlier run is dead.
+Do not hand the user the command. The script replaces the saved token only after the browser prompt succeeds, removes a leftover bad token file, and prints `token saved`. It does not print the token or the authorization code. If the prompt is closed, the previous token file stays in place. When `token saved` appears, retry the same writer command. A link from an earlier run is dead.
 
 ### Monthly workflow
 
 1. Confirm the source document and the target month, year, and meeting date.
 2. Drive `copy_file` the prior monthly document, then `update_file` the copy's title to `<Month> <Year> Board Meeting Minutes <YYYYMMDD>` (the meeting date). Example shape: `April 2026 Board Meeting Minutes 20260412`. Do not invent another title pattern. Skip copy and rename only when the user names an existing document and output tab.
-3. `read_doc` the new document. Identify tab ids by title. Production input is **Notes**. Production output is the main minutes tab. A smoke test uses **Notes** as input and **Test** as output.
-4. Read the Notes tab. `read_document` flattens list nesting, so also export the same doc through Drive as Markdown and use that indent. Expand a first name or nickname from the attendance block. When Notes have no attendance block, use the attendance already on the Minutes tab. Keep a filled Accept Minutes motion that already has real names and no blanks. Drop motions that are still `___` placeholders. Leave anyone who is not on that block as written, except the names in `Sensitive/msjc/roster.md`. Do not swap one person's name onto another.
+3. Read the new document with `read_doc`, or with the plugin `read_document` when the local server is disabled. Identify tab ids by title. Production input is **Notes**. Production output is the main minutes tab. A smoke test uses **Notes** as input and **Test** as output.
+4. Read the Notes tab. `read_document` flattens list nesting, so also export the same doc through Drive as Markdown and use that indent. Expand a first name or nickname from the attendance block. When Notes have no attendance block, copy the attendance already on the Minutes tab as-is. When the notes do not name a presenter, keep a presenter line already on the Minutes tab. Keep a filled motion that already has real names and no blanks. Drop motions that are still `___` placeholders. Drop a prefilled section the notes never discuss. Leave anyone who is not on the attendance block as written, except the names in `Sensitive/msjc/roster.md`. Do not swap one person's name onto another. Before the first write, compare person names and ritual phrases with the previous month's minutes and use that spelling when it is the same person or the same phrase.
 5. Draft semantic JSON (`schemaVersion` 1) using only `masthead`, `attendance`, `section`, `presenter`, `bullet`, `motion`, and `paragraph`. Follow [template-spec.md](template-spec.md). Do not include character offsets or style spans. Prefer categorized attendance `groups`.
 6. Write that JSON only under `Sensitive/` or a system temporary directory. Never write it to a tracked path, and do not put the minutes text in the shell command line.
-7. Show the user the exact document title and the output tab title. When the user already named that document and that output tab in the request, treat that as the confirmation. Otherwise stop until they confirm.
+7. Say which tab you will replace, by document title and tab title, and then write. Example: replace the Minutes tab of `April 2026 Board Meeting Minutes 20260412`. When the user already named that document and that output tab in the request, that sentence is the confirmation. Do not ask a bare confirmation.
 8. Run the writer with `--write` and those exact titles. That full write is for the first fold-in, or for a change that adds, removes, or reorders paragraphs. A later wording fix uses `--replace` instead, below. Keep the JSON file through later structural corrections in the same session. Delete it when the user says the minutes are finished, and also delete it if the write fails before Google accepts it.
 9. Reply with the document title, output tab, and URL. Do not paste the minutes text back into the chat.
 
@@ -78,8 +78,8 @@ The redacted minutes are the full minutes with the interior of each session dele
 - Standard order: D'var Torah, Accept Minutes, Executive Director Update, Journal Dinner Updates (or the event name in the notes), Committee Items. Insert an unanticipated major section where the notes place it and keep the Roman sequence contiguous.
 - The last three sections are always Old Business, New Business, and Adjournment. Under an empty one, the body is `None.`
 - Under Committee Items, standard sub-headings are Events Committee, Education Committee, Gabbai Committee, and Growth Committee. A topic that does not fit gets its own sub-heading in the notes' words.
-- Presenter line, when the notes name one: `Presented by Alex Rivera.` Immediately under the section. Omit it when the notes do not name a presenter.
-- A motion is one item: body plus optional `passes` or `fails`. Do not invent a mover, seconder, or verdict. Example body: `Alex Rivera moves to accept the March minutes. Jordan Hale seconds.`
+- Presenter line: `Presented by Alex Rivera.` Immediately under the section. When the notes name a presenter, use that. When the notes are silent, keep a presenter line already on the Minutes tab. Omit the line only when neither source names a presenter.
+- A motion is one item: body plus optional `passes` or `fails`. Do not invent a seconder. Use the verdict the notes record. A seconded motion with no recorded result has no verdict. A named motion the notes leave unfinished, with no seconder and no vote, is still recorded, with `fails`. Leave a cut-off sentence cut off. Example body: `Alex Rivera moves to accept the March minutes. Jordan Hale seconds.`
 - Level 0 bullets are topic labels (`Hall rental`). Level 1 is one outcome sentence. Keep the name of anyone the notes credit. Merge only consecutive turns by the same person, or turns that state the same outcome, and still name them.
 - A speaker-less line that only continues the previous bullet is one level deeper. The next named speaker returns to the parent level.
 - Do not put bold category labels inside bullet sentences. Fold the idea into the sentence.
