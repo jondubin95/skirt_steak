@@ -33,6 +33,7 @@ from msjc_board_secretary.schema import (  # noqa: E402
     WriteGuardError,
     absent_speaker_conflicts,
     load_minutes_document,
+    minutes_shape_errors,
     validate_write_guards,
 )
 
@@ -411,13 +412,16 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("pass --input or --replace")
 
     document = _load_document(Path(args.input))
+    reasons: list[str] = []
     conflicts = absent_speaker_conflicts(document)
-    if args.write and conflicts:
+    if conflicts:
         names = ", ".join(conflicts)
-        raise SystemExit(
-            "refusing to write: marked not in attendance and credited with a "
-            f"speaking part: {names}"
+        reasons.append(
+            "marked not in attendance and credited with a speaking part: " + names
         )
+    reasons.extend(minutes_shape_errors(document))
+    if reasons:
+        raise SystemExit("refusing the minutes: " + "; ".join(reasons))
     if not args.write:
         print(json.dumps(dry_run_summary(document), indent=2))
         return 0

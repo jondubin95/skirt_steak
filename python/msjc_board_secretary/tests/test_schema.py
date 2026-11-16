@@ -14,6 +14,7 @@ from msjc_board_secretary.schema import (  # noqa: E402
     WriteGuardError,
     absent_speaker_conflicts,
     load_minutes_document,
+    minutes_shape_errors,
     validate_write_guards,
 )
 
@@ -36,6 +37,12 @@ class SchemaTests(unittest.TestCase):
                 "section",
                 "bullet",
                 "bullet",
+                "paragraph",
+                "section",
+                "paragraph",
+                "section",
+                "paragraph",
+                "section",
                 "paragraph",
             ],
         )
@@ -179,6 +186,78 @@ class SchemaTests(unittest.TestCase):
             )
         )
         self.assertEqual(absent_speaker_conflicts(doc), ())
+
+    def _full_minutes(self, *middle: dict) -> dict:
+        return {
+            "schemaVersion": 1,
+            "items": [
+                {
+                    "kind": "attendance",
+                    "label": "In attendance:",
+                    "names": ["Alex Rivera"],
+                },
+                *middle,
+                {"kind": "section", "title": "Old Business"},
+                {"kind": "paragraph", "text": "None."},
+                {"kind": "section", "title": "New Business"},
+                {"kind": "paragraph", "text": "None."},
+                {"kind": "section", "title": "Adjournment"},
+                {
+                    "kind": "motion",
+                    "body": "Alex Rivera moves to adjourn. Jordan Hale seconds.",
+                    "verdict": "passes",
+                },
+            ],
+        }
+
+    def test_sample_shape_is_writable(self) -> None:
+        doc = load_minutes_document(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        self.assertEqual(minutes_shape_errors(doc), ())
+
+    def test_shape_accepts_a_filled_closing_section_and_a_titled_presenter(self) -> None:
+        doc = load_minutes_document(
+            self._full_minutes({"kind": "presenter", "text": "Presented by Dr. Schwartz."})
+        )
+        self.assertEqual(minutes_shape_errors(doc), ())
+
+    def test_shape_refuses_placeholders_label_presenter_and_heading(self) -> None:
+        doc = load_minutes_document(
+            self._full_minutes(
+                {"kind": "motion", "body": "___ moves to accept. XXX seconds."},
+                {"kind": "attendance", "label": "In attendance (In Person):", "names": ["Alex Rivera"]},
+                {"kind": "presenter", "text": "Presented by Alex Rivera"},
+                {"kind": "section", "title": "### II. Accept Minutes"},
+            )
+        )
+        errors = minutes_shape_errors(doc)
+        self.assertIn("placeholder ___ in items[1] body", errors)
+        self.assertIn("placeholder XXX in items[1] body", errors)
+        self.assertTrue(any("attendance label" in error for error in errors))
+        self.assertTrue(any("presenter must be" in error for error in errors))
+        self.assertTrue(any("markdown" in error for error in errors))
+        self.assertTrue(any("Roman numeral" in error for error in errors))
+
+    def test_shape_refuses_missing_or_mixed_closing_sections(self) -> None:
+        missing = load_minutes_document(
+            {"schemaVersion": 1, "items": [{"kind": "paragraph", "text": "Hello."}]}
+        )
+        self.assertTrue(any("closing sections" in error for error in minutes_shape_errors(missing)))
+        mixed = load_minutes_document(
+            {
+                "schemaVersion": 1,
+                "items": [
+                    {"kind": "section", "title": "Old Business"},
+                    {"kind": "paragraph", "text": "None."},
+                    {"kind": "bullet", "level": 1, "text": "The boiler was discussed."},
+                    {"kind": "section", "title": "New Business"},
+                    {"kind": "section", "title": "Adjournment"},
+                    {"kind": "paragraph", "text": "None."},
+                ],
+            }
+        )
+        errors = minutes_shape_errors(mixed)
+        self.assertIn("Old Business has None. alongside other text", errors)
+        self.assertIn("New Business is empty; the body must be the paragraph None.", errors)
 
     def test_write_guards(self) -> None:
         with self.assertRaises(WriteGuardError):

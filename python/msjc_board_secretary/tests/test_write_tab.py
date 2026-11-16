@@ -155,6 +155,29 @@ class WriteGuardTests(unittest.TestCase):
         finally:
             write_tab.load_credentials = original
 
+    def test_shape_refuses_before_credentials(self) -> None:
+        raw = json.loads(SAMPLE.read_text(encoding="utf-8"))
+        presenter = next(item for item in raw["items"] if item["kind"] == "presenter")
+        presenter["text"] = "Presented by Alex Rivera"
+        called = {"creds": 0}
+
+        def boom(*_args, **_kwargs):
+            called["creds"] += 1
+            raise AssertionError("credentials constructed")
+
+        original = write_tab.load_credentials
+        write_tab.load_credentials = boom
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "minutes.json"
+                path.write_text(json.dumps(raw), encoding="utf-8")
+                with self.assertRaises(SystemExit) as caught:
+                    write_tab.main(["--input", str(path)])
+            self.assertIn("presenter must be", str(caught.exception))
+            self.assertEqual(called["creds"], 0)
+        finally:
+            write_tab.load_credentials = original
+
     def test_repo_json_refuses_write_before_credentials(self) -> None:
         called = {"creds": 0}
 

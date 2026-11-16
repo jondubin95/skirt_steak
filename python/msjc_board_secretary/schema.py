@@ -252,3 +252,90 @@ def absent_speaker_conflicts(document: MinutesDocument) -> tuple[str, ...]:
         if any(_speaking_credit(name, text) for text in texts):
             conflicts.append(name)
     return tuple(conflicts)
+
+
+_PRESENTER_LINE = re.compile(r"^Presented by \S.*\.$")
+_ROMAN_TOKEN = re.compile(r"\b[IVXLCDM]+\b")
+_ROMAN_VALUE = re.compile(r"^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$")
+_PLACEHOLDER_XXX = re.compile(r"\bXXX\b")
+_CLOSING_SECTIONS = ("Old Business", "New Business", "Adjournment")
+_ATTENDANCE_LABEL = "In attendance:"
+_EMPTY_SECTION = "None."
+
+
+def _item_strings(item: MinutesItem) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for label, value in (
+        ("date", item.date),
+        ("organization", item.organization),
+        ("title", item.title),
+        ("label", item.label),
+        ("text", item.text),
+        ("body", item.body),
+    ):
+        if value:
+            found.append((label, value))
+    for group in item.groups:
+        found.append(("category", group.category))
+        found.extend(("name", name) for name in group.names)
+    found.extend(("name", name) for name in item.names)
+    return found
+
+
+def _section_bodies(items: tuple[MinutesItem, ...]) -> list[tuple[MinutesItem, tuple[MinutesItem, ...]]]:
+    indexes = [i for i, item in enumerate(items) if item.kind == "section"]
+    bodies: list[tuple[MinutesItem, tuple[MinutesItem, ...]]] = []
+    for position, index in enumerate(indexes):
+        end = indexes[position + 1] if position + 1 < len(indexes) else len(items)
+        bodies.append((items[index], items[index + 1 : end]))
+    return bodies
+
+
+def _closing_section_errors(document: MinutesDocument) -> list[str]:
+    bodies = _section_bodies(document.items)
+    titles = tuple((section.title or "") for section, _body in bodies)
+    if len(titles) < len(_CLOSING_SECTIONS) or titles[-3:] != _CLOSING_SECTIONS:
+        expected = ", ".join(_CLOSING_SECTIONS)
+        return [f"closing sections must be {expected}"]
+    errors: list[str] = []
+    for section, body in bodies[-3:]:
+        title = section.title or ""
+        content = [item for item in body if item.kind != "section"]
+        only_empty = (
+            len(content) == 1
+            and content[0].kind == "paragraph"
+            and content[0].text == _EMPTY_SECTION
+        )
+        if only_empty:
+            continue
+        has_empty_line = any(
+            item.kind == "paragraph" and item.text == _EMPTY_SECTION for item in content
+        )
+        if not content:
+            errors.append(f"{title} is empty; the body must be the paragraph None.")
+        elif has_empty_line:
+            errors.append(f"{title} has None. alongside other text")
+    return errors
+
+
+def minutes_shape_errors(document: MinutesDocument) -> tuple[str, ...]:
+    """Shape rules the JSON can violate without reading the meeting notes."""
+    errors: list[str] = []
+    for index, item in enumerate(document.items):
+        where = f"items[{index}]"
+        for label, value in _item_strings(item):
+            if "___" in value:
+                errors.append(f"placeholder ___ in {where} {label}")
+            if _PLACEHOLDER_XXX.search(value):
+                errors.append(f"placeholder XXX in {where} {label}")
+        if item.kind == "attendance" and item.label != _ATTENDANCE_LABEL:
+            errors.append(f"{where} attendance label must be {_ATTENDANCE_LABEL!r}")
+        if item.kind == "presenter" and not _PRESENTER_LINE.fullmatch(item.text or ""):
+            errors.append(f"{where} presenter must be 'Presented by <name>.'")
+        if item.kind == "section" and item.title:
+            if "#" in item.title:
+                errors.append(f"{where} section title contains markdown: {item.title!r}")
+            if any(_ROMAN_VALUE.fullmatch(token) for token in _ROMAN_TOKEN.findall(item.title)):
+                errors.append(f"{where} section title contains a Roman numeral: {item.title!r}")
+    errors.extend(_closing_section_errors(document))
+    return tuple(errors)

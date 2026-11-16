@@ -31,7 +31,7 @@ class BuilderTests(unittest.TestCase):
         paragraphs = document_to_paragraphs(_sample_doc())
         kinds = [p.kind for p in paragraphs]
         self.assertIn("h3", kinds)
-        self.assertEqual(kinds.count("blank"), 2)
+        self.assertEqual(kinds.count("blank"), 5)
         officers = next(p for p in paragraphs if p.text.startswith("Officers:"))
         bold = next(span for span in officers.spans if span.bold)
         self.assertEqual(bold.size, 12)
