@@ -40,7 +40,7 @@ Stdout is a short summary (title, tab, request counts, URL). It does not print t
 
 ## Local read-only MCP
 
-Do not commit an `mcp.json` that starts this server. For a local Cursor workspace, point `google-docs` at the absolute path of `docs_mcp.py` and reload Cursor. The server uses the same Sensitive credential paths.
+Do not commit an `mcp.json` that starts this server. From the repo root, run `python python/msjc_board_secretary/setup_local_mcp.py`. That writes `.cursor/mcp.json` with the absolute path of `docs_mcp.py` and leaves the file untracked. Enable the server in Cursor if it shows up disabled. The server uses the same Sensitive credential paths.
 
 Skills under `.cursor/skills/` are discovered when this repo is the Cursor workspace root.
 
