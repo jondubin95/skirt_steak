@@ -6,6 +6,7 @@ standard library alone.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -209,3 +210,45 @@ def validate_write_guards(
         )
     if not revision_id:
         raise WriteGuardError("missing document revisionId for writeControl")
+
+
+_SPEAKING_CREDIT = r"(?:said|asked|moves|seconds)\b"
+_ABSENT_CATEGORY = "not in attendance"
+
+
+def _absent_names(document: MinutesDocument) -> tuple[str, ...]:
+    names: list[str] = []
+    for item in document.items:
+        if item.kind != "attendance":
+            continue
+        for group in item.groups:
+            category = group.category.strip().rstrip(":").casefold()
+            if category == _ABSENT_CATEGORY:
+                names.extend(group.names)
+    return tuple(names)
+
+
+def _speaking_credit(name: str, text: str) -> bool:
+    pattern = re.compile(
+        rf"(?i)(?:presented by {re.escape(name)}\b|{re.escape(name)}\s+{_SPEAKING_CREDIT})"
+    )
+    return pattern.search(text) is not None
+
+
+def absent_speaker_conflicts(document: MinutesDocument) -> tuple[str, ...]:
+    """Names marked not in attendance who are credited with a speaking part.
+
+    A mention that does not use said, asked, moves, seconds, or Presented by
+    is discussion, and it is allowed.
+    """
+    texts: list[str] = []
+    for item in document.items:
+        if item.kind in {"presenter", "bullet", "paragraph"} and item.text:
+            texts.append(item.text)
+        elif item.kind == "motion" and item.body:
+            texts.append(item.body)
+    conflicts: list[str] = []
+    for name in _absent_names(document):
+        if any(_speaking_credit(name, text) for text in texts):
+            conflicts.append(name)
+    return tuple(conflicts)

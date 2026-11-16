@@ -26,6 +26,8 @@ A write also needs all of:
 - `--input-tab` and `--output-tab` (different tab ids)
 - input JSON under `Sensitive/` or outside the repo
 
+Before that write, the script refuses if a name in a "Not in attendance" group is credited with a speaking part: `said`, `asked`, `moves`, `seconds`, or `Presented by`. Mentioning that person is allowed. The check does not guess what the meeting will discuss.
+
 Every `batchUpdate` sends `writeControl.requiredRevisionId` from the preceding read. If pass 1 succeeds and a later pass fails, re-run the same command. Pass 1 replaces the output tab, so the retry rebuilds it.
 
 Defaults: client JSON `Sensitive/credentials.json`, token `Sensitive/google/gdocs_token.json`. Override the token with `--token`. The CLI does not build a client file from environment variables.
