@@ -237,6 +237,57 @@ class SchemaTests(unittest.TestCase):
         self.assertTrue(any("markdown" in error for error in errors))
         self.assertTrue(any("Roman numeral" in error for error in errors))
 
+    def test_november_2026_section_titles_pass(self) -> None:
+        titles = (
+            "D'var Torah",
+            "Accept Minutes",
+            "Executive Director Update",
+            "Committee Items",
+            "Grievance Update",
+            "2027 Membership Pricing",
+            "Revenue Opportunities",
+            "Old Business",
+            "New Business",
+            "Adjournment",
+        )
+        items: list[dict] = [
+            {
+                "kind": "attendance",
+                "label": "In attendance:",
+                "names": ["Alex Rivera"],
+            }
+        ]
+        for title in titles:
+            items.append({"kind": "section", "title": title})
+            body = "None." if title in {"Old Business", "New Business", "Adjournment"} else "Recorded."
+            items.append({"kind": "paragraph", "text": body})
+        doc = load_minutes_document({"schemaVersion": 1, "items": items})
+        self.assertEqual([item.title for item in doc.items if item.kind == "section"], list(titles))
+        self.assertEqual(minutes_shape_errors(doc), ())
+        self.assertEqual(absent_speaker_conflicts(doc), ())
+
+    def test_roman_heading_needs_a_marker_and_a_year_is_a_title(self) -> None:
+        for title in ("II. Accept Minutes", "II) Accept Minutes", "### II. Accept Minutes"):
+            doc = load_minutes_document(self._full_minutes({"kind": "section", "title": title}))
+            errors = minutes_shape_errors(doc)
+            self.assertTrue(any("Roman numeral" in error for error in errors), title)
+        year = load_minutes_document(
+            self._full_minutes({"kind": "section", "title": "2027 Membership Pricing"})
+        )
+        self.assertEqual(minutes_shape_errors(year), ())
+        apostrophe = load_minutes_document(
+            self._full_minutes({"kind": "section", "title": "D'var Torah"})
+        )
+        self.assertEqual(minutes_shape_errors(apostrophe), ())
+
+    def test_hash_inside_a_title_is_not_a_markdown_heading(self) -> None:
+        doc = load_minutes_document(self._full_minutes({"kind": "section", "title": "Item #4"}))
+        self.assertEqual(minutes_shape_errors(doc), ())
+        marked = load_minutes_document(self._full_minutes({"kind": "section", "title": "### Budget"}))
+        errors = minutes_shape_errors(marked)
+        self.assertTrue(any("markdown" in error for error in errors))
+        self.assertFalse(any("Roman numeral" in error for error in errors))
+
     def test_shape_refuses_missing_or_mixed_closing_sections(self) -> None:
         missing = load_minutes_document(
             {"schemaVersion": 1, "items": [{"kind": "paragraph", "text": "Hello."}]}

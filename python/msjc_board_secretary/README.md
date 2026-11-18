@@ -26,7 +26,7 @@ A write also needs all of:
 - `--input-tab` and `--output-tab` (different tab ids)
 - input JSON under `Sensitive/` or outside the repo
 
-Before a dry-run or a write, the script refuses if a name in a "Not in attendance" group is credited with a speaking part: `said`, `asked`, `moves`, `seconds`, or `Presented by`. Mentioning that person is allowed. It also refuses a `___` or `XXX` placeholder, an attendance label other than `In attendance:`, a presenter line that is not `Presented by <name>.`, a section title that contains markdown or a Roman numeral, and a document whose last sections are not Old Business, New Business, and Adjournment. An empty one of those three must be the paragraph `None.` The check does not guess what the meeting will discuss.
+Before a dry-run or a write, the script refuses if a name in a "Not in attendance" group is credited with a speaking part: `said`, `asked`, `moves`, `seconds`, or `Presented by`. Mentioning that person is allowed. It also refuses a `___` or `XXX` placeholder, an attendance label other than `In attendance:`, a presenter line that is not `Presented by <name>.`, a section title that starts with a markdown `#` or a Roman numeral token followed by `.` or `)` (a year in the title, such as `2027 Membership Pricing`, is allowed), and a document whose last sections are not Old Business, New Business, and Adjournment. An empty one of those three must be the paragraph `None.` The check does not guess what the meeting will discuss.
 
 Every `batchUpdate` sends `writeControl.requiredRevisionId` from the preceding read. If pass 1 succeeds and a later pass fails, re-run the same command. Pass 1 replaces the output tab, so the retry rebuilds it.
 

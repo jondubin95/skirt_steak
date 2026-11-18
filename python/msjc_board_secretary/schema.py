@@ -255,7 +255,13 @@ def absent_speaker_conflicts(document: MinutesDocument) -> tuple[str, ...]:
 
 
 _PRESENTER_LINE = re.compile(r"^Presented by \S.*\.$")
-_ROMAN_TOKEN = re.compile(r"\b[IVXLCDM]+\b")
+# A markdown heading is a leading "#", not a hash later in the title ("Item #4").
+_MARKDOWN_HEADING = re.compile(r"^\s{0,3}#")
+# A typed Roman heading is a numeral token followed by "." or ")", as in
+# "II. Accept Minutes". The token is not split on apostrophes, so "D'var Torah"
+# is a title. A year such as "2027 Membership Pricing" is title text, not a
+# heading number.
+_ROMAN_HEADING_TOKEN = re.compile(r"(?:^|\s)([IVXLCDM]+)(?=[.)])")
 _ROMAN_VALUE = re.compile(r"^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$")
 _PLACEHOLDER_XXX = re.compile(r"\bXXX\b")
 _CLOSING_SECTIONS = ("Old Business", "New Business", "Adjournment")
@@ -289,6 +295,14 @@ def _section_bodies(items: tuple[MinutesItem, ...]) -> list[tuple[MinutesItem, t
         end = indexes[position + 1] if position + 1 < len(indexes) else len(items)
         bodies.append((items[index], items[index + 1 : end]))
     return bodies
+
+
+def _roman_heading_token(title: str) -> str | None:
+    for match in _ROMAN_HEADING_TOKEN.finditer(title):
+        token = match.group(1)
+        if _ROMAN_VALUE.fullmatch(token):
+            return token
+    return None
 
 
 def _closing_section_errors(document: MinutesDocument) -> list[str]:
@@ -333,9 +347,9 @@ def minutes_shape_errors(document: MinutesDocument) -> tuple[str, ...]:
         if item.kind == "presenter" and not _PRESENTER_LINE.fullmatch(item.text or ""):
             errors.append(f"{where} presenter must be 'Presented by <name>.'")
         if item.kind == "section" and item.title:
-            if "#" in item.title:
+            if _MARKDOWN_HEADING.search(item.title):
                 errors.append(f"{where} section title contains markdown: {item.title!r}")
-            if any(_ROMAN_VALUE.fullmatch(token) for token in _ROMAN_TOKEN.findall(item.title)):
+            if _roman_heading_token(item.title):
                 errors.append(f"{where} section title contains a Roman numeral: {item.title!r}")
     errors.extend(_closing_section_errors(document))
     return tuple(errors)
