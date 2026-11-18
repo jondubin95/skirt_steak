@@ -6,7 +6,7 @@ Keyword-triggered skill plus a guarded Google Docs tab writer. The skill drafts 
 
 `schemaVersion` must be `1`. Each item is one of `masthead`, `attendance`, `section`, `presenter`, `bullet`, `motion`, or `paragraph`. The agent does not supply character offsets or style spans. A paragraph may set `"italic": true` to italicize the whole line. `attendance` uses categorized `groups` or a flat `names` list, not both. See `sample_minutes.json` for a fictional meeting.
 
-Unknown versions, kinds, or fields fail the load. Bullet `level` is 0–3. Motion `verdict` is `passes`, `fails`, or omitted.
+Unknown versions, kinds, or fields fail the load. Bullet `level` is 0–3. Motion `verdict` is `passes`, `fails`, or omitted. `fails` is refused unless the body names a seconder or a recorded vote. A motion with no seconder and no vote has no verdict.
 
 ## Guarded CLI
 

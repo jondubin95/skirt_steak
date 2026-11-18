@@ -76,7 +76,7 @@ One `motion` item. Do not invent a mover, seconder, or verdict.
 }
 ```
 
-Omit `verdict` when the notes do not record pass or fail. Replace a placeholder mover such as `XXX` with the mover named in the notes.
+Omit `verdict` when the notes do not record pass or fail. `fails` is only for a motion that was voted down. The body then names a seconder (`Jordan Hale seconds`) or the vote (`voted down`). A motion with no seconder and no vote has no verdict. Say that in the body, for example `No second; not voted`. Do not record that motion as `Motion Fails.` Replace a placeholder mover such as `XXX` with the mover named in the notes.
 
 ## Names
 

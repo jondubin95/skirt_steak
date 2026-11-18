@@ -15,6 +15,14 @@ ITEM_KINDS = frozenset(
     {"masthead", "attendance", "section", "presenter", "bullet", "motion", "paragraph"}
 )
 VERDICTS = frozenset({"passes", "fails"})
+_SECONDER = re.compile(r"(?i)\b(?:seconds|seconded)\b")
+_NO_SECOND_OR_VOTE = re.compile(
+    r"(?i)\bno\s+(?:one\s+)?seconds?\b|\bno\s+second\b|\bnot\s+voted\b|\bno\s+vote\b"
+)
+_RECORDED_VOTE = re.compile(
+    r"(?i)\b(?:voted\s+down|vote\s+failed|motion\s+failed|motion\s+fails|defeated)\b"
+    r"|\b(?:nay|nays|yea|yeas)\b"
+)
 BULLET_LEVELS = frozenset({0, 1, 2, 3})
 
 MASTHEAD_FIELDS = frozenset({"kind", "date", "organization", "title"})
@@ -83,6 +91,18 @@ def _require_str_list(value: Any, label: str) -> tuple[str, ...]:
     for i, item in enumerate(value):
         names.append(_require_str(item, f"{label}[{i}]"))
     return tuple(names)
+
+
+def motion_fail_is_earned(body: str) -> bool:
+    """True when `fails` records a vote, not a motion that was never seconded.
+
+    "Motion Fails." is the board's line for a motion that was voted down.
+    A body with no seconder and no vote, including "No second; not voted",
+    is not that line.
+    """
+    if _NO_SECOND_OR_VOTE.search(body) and not _RECORDED_VOTE.search(body):
+        return False
+    return _SECONDER.search(body) is not None or _RECORDED_VOTE.search(body) is not None
 
 
 def _reject_unknown(obj: dict[str, Any], allowed: frozenset[str], label: str) -> None:
@@ -160,9 +180,15 @@ def _parse_item(raw: Any, index: int) -> MinutesItem:
         verdict = obj.get("verdict")
         if verdict is not None and verdict not in VERDICTS:
             raise SchemaError(f"{label}.verdict must be one of {sorted(VERDICTS)}")
+        body = _require_str(obj.get("body"), f"{label}.body")
+        if verdict == "fails" and not motion_fail_is_earned(body):
+            raise SchemaError(
+                f"{label}.verdict fails is only for a motion that was voted down; "
+                "a motion with no seconder and no vote has no verdict"
+            )
         return MinutesItem(
             kind=kind,
-            body=_require_str(obj.get("body"), f"{label}.body"),
+            body=body,
             verdict=verdict,
         )
     _reject_unknown(obj, PARAGRAPH_FIELDS, label)

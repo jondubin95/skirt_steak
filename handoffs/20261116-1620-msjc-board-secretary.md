@@ -24,7 +24,7 @@ Land the workflow pull request. Leave the November minutes as they are until a r
 ## Key Decisions Already Made
 
 - The writer refuses an absent speaker and a bad minutes shape before it loads credentials. It does not read the meeting notes.
-- A named motion the notes leave unfinished, with no seconder and no vote, is recorded as fails. A seconded motion with no recorded result has no verdict.
+- `fails` records a motion the notes say was voted down. The body names a seconder or the vote. A motion with no seconder and no vote is still recorded, with no verdict, and the body says it was not voted (for example `No second; not voted`). A seconded motion with no recorded result has no verdict.
 - Keep prefilled attendance and a presenter line the notes do not repeat. Drop blank `___` motions. Drop a prefilled section the notes never discuss.
 - `.cursor/mcp.json` stays untracked. `setup_local_mcp.py` writes it on each machine.
 - Bullet merging stays the existing skill sentence.

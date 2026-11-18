@@ -15,6 +15,7 @@ from msjc_board_secretary.schema import (  # noqa: E402
     absent_speaker_conflicts,
     load_minutes_document,
     minutes_shape_errors,
+    motion_fail_is_earned,
     validate_write_guards,
 )
 
@@ -132,6 +133,51 @@ class SchemaTests(unittest.TestCase):
                     "items": [{"kind": "motion", "body": "Alex Rivera moves to adjourn.", "verdict": "maybe"}],
                 }
             )
+
+    def test_fails_requires_a_seconder_or_a_recorded_vote(self) -> None:
+        voted_down = "Alex Rivera moves to raise dues. Jordan Hale seconds."
+        self.assertTrue(motion_fail_is_earned(voted_down))
+        doc = load_minutes_document(
+            {
+                "schemaVersion": 1,
+                "items": [{"kind": "motion", "body": voted_down, "verdict": "fails"}],
+            }
+        )
+        self.assertEqual(doc.items[0].verdict, "fails")
+        recorded = "Alex Rivera moves to raise dues. Voted down."
+        self.assertTrue(motion_fail_is_earned(recorded))
+        load_minutes_document(
+            {"schemaVersion": 1, "items": [{"kind": "motion", "body": recorded, "verdict": "fails"}]}
+        )
+
+    def test_fails_is_rejected_when_nobody_seconded_or_voted(self) -> None:
+        bodies = (
+            "Alex Rivera moves to raise dues.",
+            "Alex Rivera moves to raise dues. No second; not voted",
+            "Alex Rivera moves to raise dues. No one seconds.",
+        )
+        for body in bodies:
+            self.assertFalse(motion_fail_is_earned(body), body)
+            with self.assertRaises(SchemaError) as caught:
+                load_minutes_document(
+                    {
+                        "schemaVersion": 1,
+                        "items": [{"kind": "motion", "body": body, "verdict": "fails"}],
+                    }
+                )
+            self.assertIn("no seconder and no vote", str(caught.exception))
+        unfinished = load_minutes_document(
+            {
+                "schemaVersion": 1,
+                "items": [
+                    {
+                        "kind": "motion",
+                        "body": "Alex Rivera moves to raise dues. No second; not voted",
+                    }
+                ],
+            }
+        )
+        self.assertIsNone(unfinished.items[0].verdict)
 
     def _attendance_doc(self, *items: dict) -> dict:
         return {
