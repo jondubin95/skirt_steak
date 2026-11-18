@@ -238,8 +238,63 @@ def validate_write_guards(
         raise WriteGuardError("missing document revisionId for writeControl")
 
 
-_SPEAKING_CREDIT = r"(?:said|asked|moves|seconds)\b"
-_ABSENT_CATEGORY = "not in attendance"
+_SPEAKING_VERBS = (
+    "announced",
+    "announces",
+    "answered",
+    "answers",
+    "asked",
+    "asks",
+    "commented",
+    "comments",
+    "described",
+    "describes",
+    "explained",
+    "explains",
+    "mentioned",
+    "mentions",
+    "moved",
+    "moves",
+    "noted",
+    "notes",
+    "presented",
+    "presents",
+    "presenting",
+    "proposed",
+    "proposes",
+    "remarked",
+    "remarks",
+    "replied",
+    "replies",
+    "reported",
+    "reports",
+    "said",
+    "says",
+    "seconded",
+    "seconding",
+    "seconds",
+    "stated",
+    "states",
+    "suggested",
+    "suggests",
+    "told",
+    "tells",
+)
+_SPEAKING_VERB = re.compile(
+    r"\s*\.?\s+(?:" + "|".join(sorted(_SPEAKING_VERBS, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+_PRESENTED_BY = re.compile(r"(?i)\bpresented\s+by\s+$")
+# A capital token, or Jr./Sr./a roman suffix, means the roster name is only
+# the start of a longer name ("Alex" inside "Alex Rivera Jr.").
+_NAME_CONTINUATION = re.compile(r"\s+(?:Jr\.?|Sr\.?|III|II|IV|V|[A-Z][A-Za-z'.-]*)")
+_ABSENCE_CATEGORIES = frozenset(
+    {"not in attendance", "absent", "not present", "regrets"}
+)
+
+
+def _absence_category(category: str) -> str:
+    return category.strip().rstrip(":").strip().casefold()
 
 
 def _absent_names(document: MinutesDocument) -> tuple[str, ...]:
@@ -248,24 +303,39 @@ def _absent_names(document: MinutesDocument) -> tuple[str, ...]:
         if item.kind != "attendance":
             continue
         for group in item.groups:
-            category = group.category.strip().rstrip(":").casefold()
-            if category == _ABSENT_CATEGORY:
+            if _absence_category(group.category) in _ABSENCE_CATEGORIES:
                 names.extend(group.names)
     return tuple(names)
 
 
+def _name_spans(name: str, text: str) -> list[tuple[int, int]]:
+    pattern = re.compile(rf"(?i)(?<![A-Za-z]){re.escape(name)}(?![A-Za-z])")
+    return [(match.start(), match.end()) for match in pattern.finditer(text)]
+
+
 def _speaking_credit(name: str, text: str) -> bool:
-    pattern = re.compile(
-        rf"(?i)(?:presented by {re.escape(name)}\b|{re.escape(name)}\s+{_SPEAKING_CREDIT})"
-    )
-    return pattern.search(text) is not None
+    """True when `name` itself speaks, presents, moves, or seconds.
+
+    The name must be a whole word, and it must not be the prefix of a longer
+    name. "Ann" does not match "Joann". "Alex" does not match "Alex Rivera Jr."
+    """
+    for start, end in _name_spans(name, text):
+        if _NAME_CONTINUATION.match(text, end):
+            continue
+        if _PRESENTED_BY.search(text[:start]):
+            return True
+        if _SPEAKING_VERB.match(text, end):
+            return True
+    return False
 
 
 def absent_speaker_conflicts(document: MinutesDocument) -> tuple[str, ...]:
-    """Names marked not in attendance who are credited with a speaking part.
+    """Names marked absent who are credited with a speaking part.
 
-    A mention that does not use said, asked, moves, seconds, or Presented by
-    is discussion, and it is allowed.
+    Absence labels are "Not in attendance", "Absent", "Not present", and
+    "Regrets". A mention that does not use a speaking, presenting, moving,
+    or seconding verb, and is not "Presented by", is discussion, and it is
+    allowed.
     """
     texts: list[str] = []
     for item in document.items:
