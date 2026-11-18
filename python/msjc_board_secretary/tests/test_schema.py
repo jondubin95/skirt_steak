@@ -16,6 +16,7 @@ from msjc_board_secretary.schema import (  # noqa: E402
     load_minutes_document,
     minutes_shape_errors,
     motion_fail_is_earned,
+    validate_target_identity,
     validate_write_guards,
 )
 
@@ -443,6 +444,8 @@ class SchemaTests(unittest.TestCase):
                 output_tab_id="b",
                 actual_title="T",
                 expected_title="T",
+                actual_output_tab="Minutes",
+                expected_output_tab="Minutes",
                 revision_id="rev",
             )
         with self.assertRaises(WriteGuardError):
@@ -452,6 +455,8 @@ class SchemaTests(unittest.TestCase):
                 output_tab_id="same",
                 actual_title="T",
                 expected_title="T",
+                actual_output_tab="Minutes",
+                expected_output_tab="Minutes",
                 revision_id="rev",
             )
         with self.assertRaises(WriteGuardError):
@@ -461,6 +466,28 @@ class SchemaTests(unittest.TestCase):
                 output_tab_id="b",
                 actual_title="Other",
                 expected_title="T",
+                actual_output_tab="Minutes",
+                expected_output_tab="Minutes",
+                revision_id="rev",
+            )
+        with self.assertRaises(WriteGuardError) as tab_mismatch:
+            validate_write_guards(
+                write=True,
+                input_tab_id="a",
+                output_tab_id="b",
+                actual_title="T",
+                expected_title="T",
+                actual_output_tab="Minutes",
+                expected_output_tab="Test",
+                revision_id="rev",
+            )
+        self.assertIn("output tab", str(tab_mismatch.exception))
+        with self.assertRaises(WriteGuardError):
+            validate_target_identity(
+                actual_title="T",
+                expected_title="T",
+                actual_output_tab="Minutes",
+                expected_output_tab="minutes",
                 revision_id="rev",
             )
         with self.assertRaises(WriteGuardError):
@@ -470,8 +497,20 @@ class SchemaTests(unittest.TestCase):
                 output_tab_id="b",
                 actual_title="T",
                 expected_title="T",
+                actual_output_tab="Minutes",
+                expected_output_tab="Minutes",
                 revision_id="",
             )
+        validate_write_guards(
+            write=True,
+            input_tab_id="a",
+            output_tab_id="b",
+            actual_title="T",
+            expected_title="T",
+            actual_output_tab="Minutes",
+            expected_output_tab="Minutes",
+            revision_id="rev",
+        )
 
 
 if __name__ == "__main__":

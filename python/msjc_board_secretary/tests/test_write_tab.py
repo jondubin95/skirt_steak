@@ -321,6 +321,138 @@ class WriteGuardTests(unittest.TestCase):
             self.assertTrue(write_tab.input_is_private(path))
         self.assertFalse(write_tab.input_is_private(SAMPLE))
 
+    def test_output_tab_must_match_exactly(self) -> None:
+        document = load_minutes_document(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        client = FakeDocs(_doc(document=document))
+        with self.assertRaises(WriteGuardError) as caught:
+            write_tab.perform_write(
+                client,
+                document,
+                document_id="doc",
+                expected_title="April 2026 Board Meeting Minutes 20260412",
+                input_tab="Notes",
+                output_tab="test",
+            )
+        self.assertIn("output tab", str(caught.exception))
+        self.assertEqual(client.updates, [])
+
+    def test_replace_refuses_an_inexact_output_tab(self) -> None:
+        phrase = "2026 is year to date"
+        fake = FakeDocs(_phrase_doc(phrase))
+        with self.assertRaises(WriteGuardError) as caught:
+            write_tab.perform_replace(
+                fake,
+                document_id="doc",
+                expected_title="April 2026 Board Meeting Minutes 20260412",
+                output_tab="test",
+                find_text=phrase,
+                replacement="the 2026 balance is year to date",
+            )
+        self.assertIn("output tab", str(caught.exception))
+        self.assertEqual(fake.updates, [])
+
+    def test_unconfirmed_write_refuses_before_credentials(self) -> None:
+        called = {"creds": 0}
+
+        def boom(*_args, **_kwargs):
+            called["creds"] += 1
+            raise AssertionError("credentials constructed")
+
+        original = write_tab.load_credentials
+        original_stdin = sys.stdin
+        write_tab.load_credentials = boom
+        sys.stdin = io.StringIO("")
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "minutes.json"
+                path.write_text(SAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+                with self.assertRaises(SystemExit) as caught:
+                    write_tab.main(
+                        [
+                            "--input",
+                            str(path),
+                            "--write",
+                            "--document-id",
+                            "doc",
+                            "--expected-document-title",
+                            "April 2026 Board Meeting Minutes 20260412",
+                            "--confirmed-document-title",
+                            "April 2026 Board Meeting Minutes 20260412",
+                            "--input-tab",
+                            "Notes",
+                            "--output-tab",
+                            "Test",
+                        ]
+                    )
+            self.assertIn("output tab", str(caught.exception))
+            self.assertEqual(called["creds"], 0)
+        finally:
+            write_tab.load_credentials = original
+            sys.stdin = original_stdin
+
+
+class TtyStream(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+class ConfirmationTests(unittest.TestCase):
+    title = "April 2026 Board Meeting Minutes 20260412"
+
+    def test_document_title_alone_is_not_confirmation(self) -> None:
+        self.assertFalse(
+            write_tab.full_tab_replace_is_confirmed(
+                document_title=self.title,
+                output_tab="Minutes",
+                confirmed_document_title=self.title,
+                confirmed_output_tab="",
+            )
+        )
+        with self.assertRaises(WriteGuardError) as caught:
+            write_tab.require_full_tab_confirmation(
+                document_title=self.title,
+                output_tab="Minutes",
+                confirmed_document_title=self.title,
+                confirmed_output_tab="",
+                input_stream=io.StringIO(""),
+                output_stream=io.StringIO(),
+            )
+        message = str(caught.exception)
+        self.assertIn("document title", message)
+        self.assertIn("output tab", message)
+
+    def test_named_document_and_tab_skip_the_prompt(self) -> None:
+        write_tab.require_full_tab_confirmation(
+            document_title=self.title,
+            output_tab="Minutes",
+            confirmed_document_title=self.title,
+            confirmed_output_tab="Minutes",
+            input_stream=io.StringIO(""),
+            output_stream=io.StringIO(),
+        )
+
+    def test_tty_prompt_requires_both_titles(self) -> None:
+        prompt = io.StringIO()
+        write_tab.require_full_tab_confirmation(
+            document_title=self.title,
+            output_tab="Minutes",
+            confirmed_document_title="",
+            confirmed_output_tab="",
+            input_stream=TtyStream(f"{self.title}\tMinutes\n"),
+            output_stream=prompt,
+        )
+        self.assertIn(self.title, prompt.getvalue())
+        self.assertIn("Minutes", prompt.getvalue())
+        with self.assertRaises(WriteGuardError):
+            write_tab.require_full_tab_confirmation(
+                document_title=self.title,
+                output_tab="Minutes",
+                confirmed_document_title="",
+                confirmed_output_tab="",
+                input_stream=TtyStream(f"{self.title}\n"),
+                output_stream=io.StringIO(),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

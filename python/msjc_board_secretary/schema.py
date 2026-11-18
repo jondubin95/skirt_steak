@@ -215,6 +215,27 @@ def load_minutes_document(raw: Any) -> MinutesDocument:
     return MinutesDocument(schema_version=version, items=items)
 
 
+def validate_target_identity(
+    *,
+    actual_title: str,
+    expected_title: str,
+    actual_output_tab: str,
+    expected_output_tab: str,
+    revision_id: str | None,
+) -> None:
+    """The live document title and the live output tab must both match exactly."""
+    if actual_title != expected_title:
+        raise WriteGuardError(
+            f"document title {actual_title!r} does not match expected {expected_title!r}"
+        )
+    if actual_output_tab != expected_output_tab:
+        raise WriteGuardError(
+            f"output tab {actual_output_tab!r} does not match expected {expected_output_tab!r}"
+        )
+    if not revision_id:
+        raise WriteGuardError("missing document revisionId for writeControl")
+
+
 def validate_write_guards(
     *,
     write: bool,
@@ -222,6 +243,8 @@ def validate_write_guards(
     output_tab_id: str,
     actual_title: str,
     expected_title: str,
+    actual_output_tab: str,
+    expected_output_tab: str,
     revision_id: str | None,
 ) -> None:
     if not write:
@@ -230,12 +253,13 @@ def validate_write_guards(
         raise WriteGuardError("input and output tab ids are required")
     if input_tab_id == output_tab_id:
         raise WriteGuardError("input and output tabs resolved to the same tabId")
-    if actual_title != expected_title:
-        raise WriteGuardError(
-            f"document title {actual_title!r} does not match expected {expected_title!r}"
-        )
-    if not revision_id:
-        raise WriteGuardError("missing document revisionId for writeControl")
+    validate_target_identity(
+        actual_title=actual_title,
+        expected_title=expected_title,
+        actual_output_tab=actual_output_tab,
+        expected_output_tab=expected_output_tab,
+        revision_id=revision_id,
+    )
 
 
 _SPEAKING_VERBS = (

@@ -23,7 +23,8 @@ A write also needs all of:
 - `--write`
 - `--document-id`
 - `--expected-document-title` (must match the live title exactly)
-- `--input-tab` and `--output-tab` (different tab ids)
+- `--input-tab` and `--output-tab` (different tab ids; the live output tab title must match exactly)
+- `--confirmed-document-title` and `--confirmed-output-tab`, equal to that document title and that output tab, unless the person types both at the prompt
 - input JSON under `Sensitive/` or outside the repo
 
 Before a dry-run or a write, the script refuses if a name in an absence group (`Not in attendance`, `Absent`, `Not present`, or `Regrets`) is credited with a speaking, presenting, moving, or seconding part, including `Presented by`. The name has to be the whole name: `Ann` does not match `Joann`, and `Alex` does not match `Alex Rivera Jr.` Mentioning that person is allowed. It also refuses a `___` or `XXX` placeholder, an attendance label other than `In attendance:`, a presenter line that is not `Presented by <name>.`, a section title that starts with a markdown `#` or a Roman numeral token followed by `.` or `)` (a year in the title, such as `2027 Membership Pricing`, is allowed), and a document whose last sections are not Old Business, New Business, and Adjournment. An empty one of those three must be the paragraph `None.` The check does not guess what the meeting will discuss.
