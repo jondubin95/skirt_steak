@@ -52,7 +52,7 @@ Do not hand the user the command. The script replaces the saved token only after
 
 Do not redraft from Notes, and do not rebuild the Minutes tab, for a wording fix. The Notes tab stays untouched after the first fold-in.
 
-A wording fix is one exact phrase that already appears once on the Minutes tab. Write `{"find": "...", "replaceWith": "..."}` under `Sensitive/`, then run `write_tab.py --replace` with `--write`, `--document-id`, `--expected-document-title`, and `--output-tab`. Do not pass `--input`. The command refuses unless that phrase occurs once on the output tab, and it does not edit any other tab. Delete the replace JSON afterward.
+A wording fix is one exact phrase that already appears once on the Minutes tab. Write `{"find": "...", "replaceWith": "..."}` under `Sensitive/`, then run `write_tab.py --replace` with `--write`, `--document-id`, `--expected-document-title`, and `--output-tab`. Do not pass `--input`. The command refuses unless that phrase occurs once on the output tab, and it does not edit any other tab. Before it loads credentials, it also refuses a `replaceWith` that contains `___`, `XXX` in any capitalization, a leading markdown `#`, or a Roman numeral token followed by `.` or `)`. Delete the replace JSON afterward.
 
 If the user has edited the Minutes tab by hand, those edits are the current text. A structural rewrite must re-read that live tab into the JSON first. Do not write an older JSON back over those edits.
 

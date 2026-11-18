@@ -466,24 +466,48 @@ def _closing_section_errors(document: MinutesDocument) -> list[str]:
     return errors
 
 
+def _placeholder_errors(value: str, location: str) -> list[str]:
+    found: list[str] = []
+    if "___" in value:
+        found.append(f"placeholder ___ in {location}")
+    if _PLACEHOLDER_XXX.search(value):
+        found.append(f"placeholder XXX in {location}")
+    return found
+
+
+def _heading_marker_errors(value: str, location: str) -> list[str]:
+    found: list[str] = []
+    if _MARKDOWN_HEADING.search(value):
+        found.append(f"{location} contains markdown: {value!r}")
+    if _roman_heading_token(value):
+        found.append(f"{location} contains a Roman numeral: {value!r}")
+    return found
+
+
+def minutes_phrase_errors(text: str) -> tuple[str, ...]:
+    """Placeholder and heading-marker checks for one replacement phrase.
+
+    A one-phrase replace has no attendance block and no closing sections, so
+    those document checks do not apply. The checks that do apply are the same
+    ones ``minutes_shape_errors`` uses on minutes text.
+    """
+    errors = _placeholder_errors(text, "replacement")
+    errors.extend(_heading_marker_errors(text, "replacement"))
+    return tuple(errors)
+
+
 def minutes_shape_errors(document: MinutesDocument) -> tuple[str, ...]:
     """Shape rules the JSON can violate without reading the meeting notes."""
     errors: list[str] = []
     for index, item in enumerate(document.items):
         where = f"items[{index}]"
         for label, value in _item_strings(item):
-            if "___" in value:
-                errors.append(f"placeholder ___ in {where} {label}")
-            if _PLACEHOLDER_XXX.search(value):
-                errors.append(f"placeholder XXX in {where} {label}")
+            errors.extend(_placeholder_errors(value, f"{where} {label}"))
         if item.kind == "attendance" and item.label != _ATTENDANCE_LABEL:
             errors.append(f"{where} attendance label must be {_ATTENDANCE_LABEL!r}")
         if item.kind == "presenter" and not _PRESENTER_LINE.fullmatch(item.text or ""):
             errors.append(f"{where} presenter must be 'Presented by <name>.'")
         if item.kind == "section" and item.title:
-            if _MARKDOWN_HEADING.search(item.title):
-                errors.append(f"{where} section title contains markdown: {item.title!r}")
-            if _roman_heading_token(item.title):
-                errors.append(f"{where} section title contains a Roman numeral: {item.title!r}")
+            errors.extend(_heading_marker_errors(item.title, f"{where} section title"))
     errors.extend(_closing_section_errors(document))
     return tuple(errors)

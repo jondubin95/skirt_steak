@@ -33,6 +33,7 @@ from msjc_board_secretary.schema import (  # noqa: E402
     WriteGuardError,
     absent_speaker_conflicts,
     load_minutes_document,
+    minutes_phrase_errors,
     minutes_shape_errors,
     validate_target_identity,
     validate_write_guards,
@@ -466,6 +467,9 @@ def main(argv: list[str] | None = None) -> int:
                 "replace JSON must live under Sensitive/ or outside the repo before --write"
             )
         find_text, replacement = load_replace_pair(source)
+        phrase_errors = minutes_phrase_errors(replacement)
+        if phrase_errors:
+            raise SystemExit("refusing the minutes: " + "; ".join(phrase_errors))
         creds = load_credentials(Path(args.creds), Path(args.token))
         client = GoogleDocsClient(build_docs_service(creds))
         try:

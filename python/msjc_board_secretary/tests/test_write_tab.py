@@ -204,6 +204,75 @@ class WriteGuardTests(unittest.TestCase):
         finally:
             write_tab.load_credentials = original
 
+    def _run_replace(self, replacement: str) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "replace.json"
+            path.write_text(
+                json.dumps({"find": "hall rental", "replaceWith": replacement}),
+                encoding="utf-8",
+            )
+            write_tab.main(
+                [
+                    "--replace",
+                    str(path),
+                    "--write",
+                    "--document-id",
+                    "doc",
+                    "--expected-document-title",
+                    "April 2026 Board Meeting Minutes 20260412",
+                    "--output-tab",
+                    "Test",
+                ]
+            )
+
+    def test_replace_phrase_refuses_before_credentials(self) -> None:
+        called = {"creds": 0}
+
+        def boom(*_args, **_kwargs):
+            called["creds"] += 1
+            raise AssertionError("credentials constructed")
+
+        original = write_tab.load_credentials
+        write_tab.load_credentials = boom
+        try:
+            for replacement, needle in (
+                ("the mover is ___", "placeholder ___"),
+                ("XXX seconds", "placeholder XXX"),
+                ("xxx seconds", "placeholder XXX"),
+                ("### II. Accept Minutes", "markdown"),
+                ("II) Budget", "Roman numeral"),
+            ):
+                with self.assertRaises(SystemExit) as caught:
+                    self._run_replace(replacement)
+                self.assertIn(needle, str(caught.exception))
+                self.assertIn("refusing the minutes", str(caught.exception))
+            self.assertEqual(called["creds"], 0)
+        finally:
+            write_tab.load_credentials = original
+
+    def test_clean_replace_reaches_credentials(self) -> None:
+        called = {"creds": 0}
+
+        def reached(*_args, **_kwargs):
+            called["creds"] += 1
+            raise SystemExit("credentials reached")
+
+        original = write_tab.load_credentials
+        write_tab.load_credentials = reached
+        try:
+            for replacement in (
+                "the hall rental is confirmed",
+                "D'var Torah",
+                "2027 Membership Pricing",
+                "Item #4",
+            ):
+                with self.assertRaises(SystemExit) as caught:
+                    self._run_replace(replacement)
+                self.assertEqual(str(caught.exception), "credentials reached")
+            self.assertEqual(called["creds"], 4)
+        finally:
+            write_tab.load_credentials = original
+
     def test_replace_one_match_is_limited_to_the_output_tab(self) -> None:
         phrase = "2026 is year to date"
         fake = FakeDocs(_phrase_doc(phrase))

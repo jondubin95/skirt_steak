@@ -15,6 +15,7 @@ from msjc_board_secretary.schema import (  # noqa: E402
     absent_speaker_conflicts,
     is_empty_section_paragraph,
     load_minutes_document,
+    minutes_phrase_errors,
     minutes_shape_errors,
     motion_fail_is_earned,
     validate_target_identity,
@@ -478,6 +479,20 @@ class SchemaTests(unittest.TestCase):
         end = section_indexes[rental_at + 1]
         rental_text = [item.text for item in hall.items[start:end]]
         self.assertNotIn("None.", rental_text)
+
+    def test_replacement_phrase_uses_placeholder_and_heading_checks(self) -> None:
+        self.assertEqual(minutes_phrase_errors("the hall rental is confirmed"), ())
+        for allowed in ("D'var Torah", "2027 Membership Pricing", "Item #4", "None."):
+            self.assertEqual(minutes_phrase_errors(allowed), (), allowed)
+        for blocked, needle in (
+            ("mover is ___", "placeholder ___"),
+            ("XXX seconds", "placeholder XXX"),
+            ("xxx seconds", "placeholder XXX"),
+            ("### Budget", "markdown"),
+            ("II. Accept Minutes", "Roman numeral"),
+        ):
+            errors = minutes_phrase_errors(blocked)
+            self.assertTrue(any(needle in error for error in errors), blocked)
 
     def test_xxx_placeholder_is_case_insensitive(self) -> None:
         for body in ("xxx seconds.", "Xxx seconds.", "xxX seconds."):

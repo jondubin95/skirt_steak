@@ -35,7 +35,7 @@ Defaults: client JSON `Sensitive/credentials.json`, token `Sensitive/google/gdoc
 
 When a write says the Google token refresh failed, run `python python/msjc_board_secretary/reauth.py` from the repo root and wait for the browser approval. That replaces the token after sign-in succeeds and leaves the previous file in place if the prompt is closed. Do not replace `credentials.json` unless the message says the client itself is invalid. Do not hand the command off.
 
-A one-phrase change uses `--replace` instead of rebuilding the tab. The file is private JSON with `find` and `replaceWith`. Pass `--write`, `--document-id`, `--expected-document-title`, and `--output-tab`. The phrase must occur once on that tab.
+A one-phrase change uses `--replace` instead of rebuilding the tab. The file is private JSON with `find` and `replaceWith`. Pass `--write`, `--document-id`, `--expected-document-title`, and `--output-tab`. The phrase must occur once on that tab. Before credentials load, `replaceWith` is refused for the same `___` placeholder, `XXX` in any capitalization, leading markdown `#`, or Roman heading marker that a full minutes write refuses.
 
 Stdout is a short summary (title, tab, request counts, URL). It does not print the minutes text.
 
