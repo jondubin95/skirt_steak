@@ -555,9 +555,8 @@ class SchemaTests(unittest.TestCase):
             "See II. above",
             "Presented by D. Schwartz",
             "Update from M. Rivera",
-            "(II. Accept Minutes)",
-            "[II. Budget]",
             " II. Accept Minutes",
+            "See (II. above)",
         ):
             self.assertEqual(minutes_phrase_errors(allowed), (), allowed)
         for blocked, needle in (
@@ -568,6 +567,8 @@ class SchemaTests(unittest.TestCase):
             ("II. Accept Minutes", "Roman numeral"),
             ("II) Budget", "Roman numeral"),
             ("D. Schwartz", "Roman numeral"),
+            ("(II. Accept Minutes)", "Roman numeral"),
+            ("[II. Budget]", "Roman numeral"),
         ):
             errors = minutes_phrase_errors(blocked)
             self.assertTrue(any(needle in error for error in errors), blocked)

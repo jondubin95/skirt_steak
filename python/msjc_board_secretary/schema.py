@@ -425,9 +425,10 @@ _MARKDOWN_HEADING = re.compile(r"^\s{0,3}#")
 # "2027 Membership Pricing" is title text, not a heading number.
 # In a section title the token may sit after punctuation ("(II." or "[II.").
 # In a replacement the token counts only at the start of the phrase, because
-# that is the only place a heading marker takes effect.
+# that is the only place a heading marker takes effect. A leading bracket
+# still counts ("(II." or "[II.").
 _ROMAN_HEADING_TOKEN = re.compile(r"(?<![A-Za-z])([IVXLCDM]+)(?=[.)])")
-_ROMAN_HEADING_AT_START = re.compile(r"^([IVXLCDM]+)(?=[.)])")
+_ROMAN_HEADING_AT_START = re.compile(r"^(?:[([]\s*)?([IVXLCDM]+)(?=[.)])")
 _ROMAN_VALUE = re.compile(r"^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$")
 _PLACEHOLDER_XXX = re.compile(r"\bXXX\b", re.IGNORECASE)
 _CLOSING_SECTIONS = ("Old Business", "New Business", "Adjournment")
