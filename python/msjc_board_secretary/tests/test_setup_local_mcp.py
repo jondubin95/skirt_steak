@@ -27,7 +27,7 @@ class SetupLocalMcpTests(unittest.TestCase):
             target.parent.mkdir()
             original = json.dumps({"mcpServers": {"other": {"command": "echo"}}})
             target.write_text(original, encoding="utf-8")
-            write_local_mcp(repo_root=root, docs_mcp=docs_mcp, target=target, overwrite=True)
+            write_local_mcp(docs_mcp=docs_mcp, target=target, overwrite=True)
             saved = json.loads(target.read_text(encoding="utf-8"))
             self.assertEqual(saved["mcpServers"]["other"]["command"], "echo")
             self.assertEqual(
@@ -36,7 +36,7 @@ class SetupLocalMcpTests(unittest.TestCase):
             )
             backup = target.with_name("mcp.json.bak")
             self.assertEqual(backup.read_text(encoding="utf-8"), original)
-            write_local_mcp(repo_root=root, docs_mcp=docs_mcp, target=target, overwrite=True)
+            write_local_mcp(docs_mcp=docs_mcp, target=target, overwrite=True)
             self.assertEqual(backup.read_text(encoding="utf-8"), original)
             stamped = list(target.parent.glob("mcp.json.bak-*"))
             self.assertEqual(len(stamped), 1)
@@ -50,7 +50,7 @@ class SetupLocalMcpTests(unittest.TestCase):
             original = '{"mcpServers": {"other": {"command": "echo"}}}\n'
             target.write_text(original, encoding="utf-8")
             with self.assertRaises(SystemExit) as caught:
-                write_local_mcp(repo_root=root, docs_mcp=docs_mcp, target=target)
+                write_local_mcp(docs_mcp=docs_mcp, target=target)
             self.assertIn("--replace", str(caught.exception))
             self.assertIn("Refusing to overwrite", str(caught.exception))
             self.assertEqual(target.read_text(encoding="utf-8"), original)
@@ -61,7 +61,7 @@ class SetupLocalMcpTests(unittest.TestCase):
             root = Path(tmp)
             docs_mcp = self._server(root)
             target = root / ".cursor" / "mcp.json"
-            write_local_mcp(repo_root=root, docs_mcp=docs_mcp, target=target)
+            write_local_mcp(docs_mcp=docs_mcp, target=target)
             saved = json.loads(target.read_text(encoding="utf-8"))
             self.assertEqual(saved["mcpServers"]["google-docs"]["command"], sys.executable)
 

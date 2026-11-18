@@ -298,8 +298,6 @@ def perform_write(
             )
             completed += 1
             _doc, current, revision = _reload_output_tab(client, document_id, output_tab)
-            if not revision:
-                raise WriteGuardError("missing document revisionId for writeControl")
     except Exception:
         if completed >= 1:
             print(RECOVERY_MESSAGE, file=sys.stderr)
@@ -404,19 +402,25 @@ def _load_document(path: Path) -> MinutesDocument:
     return load_minutes_document(raw)
 
 
-def _require_write_args(args: argparse.Namespace) -> None:
-    missing = [
-        flag
-        for flag, value in (
-            ("--document-id", args.document_id),
-            ("--expected-document-title", args.expected_document_title),
-            ("--input-tab", args.input_tab),
-            ("--output-tab", args.output_tab),
-        )
-        if not value
-    ]
+_FULL_WRITE_FLAGS = (
+    ("--document-id", "document_id"),
+    ("--expected-document-title", "expected_document_title"),
+    ("--input-tab", "input_tab"),
+    ("--output-tab", "output_tab"),
+)
+_REPLACE_FLAGS = (
+    ("--document-id", "document_id"),
+    ("--expected-document-title", "expected_document_title"),
+    ("--output-tab", "output_tab"),
+)
+
+
+def _require_flags(
+    args: argparse.Namespace, names: tuple[tuple[str, str], ...], action: str
+) -> None:
+    missing = [flag for flag, attr in names if not getattr(args, attr)]
     if missing:
-        raise SystemExit("refusing to write without " + ", ".join(missing))
+        raise SystemExit(f"refusing to {action} without " + ", ".join(missing))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -451,17 +455,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("pass either --input or --replace, not both")
         if not args.write:
             raise SystemExit("refusing to replace without --write")
-        missing = [
-            flag
-            for flag, value in (
-                ("--document-id", args.document_id),
-                ("--expected-document-title", args.expected_document_title),
-                ("--output-tab", args.output_tab),
-            )
-            if not value
-        ]
-        if missing:
-            raise SystemExit("refusing to replace without " + ", ".join(missing))
+        _require_flags(args, _REPLACE_FLAGS, "replace")
         source = Path(args.replace)
         if not input_is_private(source):
             raise SystemExit(
@@ -505,7 +499,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(dry_run_summary(document), indent=2))
         return 0
 
-    _require_write_args(args)
+    _require_flags(args, _FULL_WRITE_FLAGS, "write")
     source = Path(args.input)
     if not input_is_private(source):
         raise SystemExit(

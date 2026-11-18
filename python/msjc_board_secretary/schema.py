@@ -339,9 +339,9 @@ _SPEAKING_VERB = re.compile(
     re.IGNORECASE,
 )
 _PRESENTED_BY = re.compile(r"(?i)\bpresented\s+by\s+$")
-# A capital token, or Jr./Sr./a roman suffix, means the roster name is only
-# the start of a longer name ("Alex" inside "Alex Rivera Jr.").
-_NAME_CONTINUATION = re.compile(r"\s+(?:Jr\.?|Sr\.?|III|II|IV|V|[A-Z][A-Za-z'.-]*)")
+# A capital token means the roster name is only the start of a longer name
+# ("Alex" inside "Alex Rivera" or "Alex Rivera Jr.").
+_NAME_CONTINUATION = re.compile(r"\s+[A-Z][A-Za-z'.-]*")
 _ABSENCE_CATEGORIES = frozenset(
     {"not in attendance", "absent", "not present", "regrets"}
 )

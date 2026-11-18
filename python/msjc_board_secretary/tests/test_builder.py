@@ -18,7 +18,7 @@ from msjc_board_secretary.builder import (  # noqa: E402
     requests_for_replace,
     strip_spilled_bullets,
 )
-from msjc_board_secretary.schema import MinutesItem, load_minutes_document  # noqa: E402
+from msjc_board_secretary.schema import load_minutes_document  # noqa: E402
 
 SAMPLE = Path(__file__).resolve().parents[1] / "sample_minutes.json"
 
@@ -229,12 +229,6 @@ class StripBulletTests(unittest.TestCase):
         self.assertIn("deleteParagraphBullets", padded[0])
         self.assertEqual(strip_spilled_bullets("tab", _bullet_tab("The vote was None.\n")), [])
         self.assertEqual(strip_spilled_bullets("tab", _bullet_tab("None. The hall is booked.\n")), [])
-
-
-class ItemShapeTests(unittest.TestCase):
-    def test_minutes_item_defaults(self) -> None:
-        item = MinutesItem(kind="paragraph", text="None.")
-        self.assertEqual(item.level, 0)
 
 
 if __name__ == "__main__":

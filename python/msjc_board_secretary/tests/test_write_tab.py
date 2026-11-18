@@ -7,7 +7,7 @@ import json
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -17,6 +17,45 @@ from msjc_board_secretary.schema import WriteGuardError, load_minutes_document  
 from msjc_board_secretary import write_tab  # noqa: E402
 
 SAMPLE = Path(__file__).resolve().parents[1] / "sample_minutes.json"
+DOCUMENT_TITLE = "April 2026 Board Meeting Minutes 20260412"
+
+
+def write_argv(path: Path, *extra: str) -> list[str]:
+    return [
+        "--input",
+        str(path),
+        "--write",
+        "--document-id",
+        "doc",
+        "--expected-document-title",
+        DOCUMENT_TITLE,
+        "--input-tab",
+        "Notes",
+        "--output-tab",
+        "Test",
+        *extra,
+    ]
+
+
+@contextmanager
+def block_credentials(on_call=None):
+    called = {"creds": 0}
+
+    def boom(*args, **kwargs):
+        called["creds"] += 1
+        if on_call is not None:
+            return on_call(*args, **kwargs)
+        raise AssertionError("credentials constructed")
+
+    original_creds = write_tab.load_credentials
+    original_build = write_tab.build_docs_service
+    write_tab.load_credentials = boom
+    write_tab.build_docs_service = boom
+    try:
+        yield called
+    finally:
+        write_tab.load_credentials = original_creds
+        write_tab.build_docs_service = original_build
 
 
 class FakeDocs:
@@ -61,7 +100,7 @@ def _content_for(document) -> list[dict]:
     return content
 
 
-def _doc(title: str = "April 2026 Board Meeting Minutes 20260412", document=None) -> dict:
+def _doc(title: str = DOCUMENT_TITLE, document=None) -> dict:
     notes = {
         "tabProperties": {"title": "Notes", "tabId": "tab-notes"},
         "documentTab": {
@@ -98,14 +137,7 @@ def _phrase_doc(phrase: str, *, copies_on_output: int = 1) -> dict:
 
 class WriteGuardTests(unittest.TestCase):
     def test_dry_run_does_not_construct_credentials(self) -> None:
-        def boom(*_args, **_kwargs):
-            raise AssertionError("credentials or service constructed")
-
-        original_creds = write_tab.load_credentials
-        original_build = write_tab.build_docs_service
-        write_tab.load_credentials = boom
-        write_tab.build_docs_service = boom
-        try:
+        with block_credentials():
             buf = io.StringIO()
             with redirect_stdout(buf):
                 code = write_tab.main(["--input", str(SAMPLE)])
@@ -113,61 +145,26 @@ class WriteGuardTests(unittest.TestCase):
             payload = json.loads(buf.getvalue())
             self.assertEqual(payload["mode"], "dry-run")
             self.assertGreater(payload["pass1Requests"], 0)
-        finally:
-            write_tab.load_credentials = original_creds
-            write_tab.build_docs_service = original_build
 
     def test_absent_speaker_refuses_write_before_credentials(self) -> None:
         raw = json.loads(SAMPLE.read_text(encoding="utf-8"))
         raw["items"].append(
             {"kind": "bullet", "level": 1, "text": "Taylor Morgan said the hall is open."}
         )
-        called = {"creds": 0}
-
-        def boom(*_args, **_kwargs):
-            called["creds"] += 1
-            raise AssertionError("credentials constructed")
-
-        original = write_tab.load_credentials
-        write_tab.load_credentials = boom
-        try:
+        with block_credentials() as called:
             with tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / "minutes.json"
                 path.write_text(json.dumps(raw), encoding="utf-8")
                 with self.assertRaises(SystemExit) as caught:
-                    write_tab.main(
-                        [
-                            "--input",
-                            str(path),
-                            "--write",
-                            "--document-id",
-                            "doc",
-                            "--expected-document-title",
-                            "April 2026 Board Meeting Minutes 20260412",
-                            "--input-tab",
-                            "Notes",
-                            "--output-tab",
-                            "Test",
-                        ]
-                    )
+                    write_tab.main(write_argv(path))
             self.assertIn("Taylor Morgan", str(caught.exception))
             self.assertEqual(called["creds"], 0)
-        finally:
-            write_tab.load_credentials = original
 
     def test_shape_refuses_before_credentials(self) -> None:
         raw = json.loads(SAMPLE.read_text(encoding="utf-8"))
         presenter = next(item for item in raw["items"] if item["kind"] == "presenter")
         presenter["text"] = "Presented by Alex Rivera"
-        called = {"creds": 0}
-
-        def boom(*_args, **_kwargs):
-            called["creds"] += 1
-            raise AssertionError("credentials constructed")
-
-        original = write_tab.load_credentials
-        write_tab.load_credentials = boom
-        try:
+        with block_credentials() as called:
             with tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / "minutes.json"
                 path.write_text(json.dumps(raw), encoding="utf-8")
@@ -175,34 +172,12 @@ class WriteGuardTests(unittest.TestCase):
                     write_tab.main(["--input", str(path)])
             self.assertIn("presenter must be", str(caught.exception))
             self.assertEqual(called["creds"], 0)
-        finally:
-            write_tab.load_credentials = original
 
     def test_repo_json_refuses_write_before_credentials(self) -> None:
-        called = {"creds": 0}
-
-        def boom(*_args, **_kwargs):
-            called["creds"] += 1
-            raise AssertionError("credentials constructed")
-
-        original = write_tab.load_credentials
-        write_tab.load_credentials = boom
-        try:
+        with block_credentials() as called:
             with self.assertRaises(SystemExit):
-                write_tab.main(
-                    [
-                        "--input",
-                        str(SAMPLE),
-                        "--write",
-                        "--document-id", "doc",
-                        "--expected-document-title", "April 2026 Board Meeting Minutes 20260412",
-                        "--input-tab", "Notes",
-                        "--output-tab", "Test",
-                    ]
-                )
+                write_tab.main(write_argv(SAMPLE))
             self.assertEqual(called["creds"], 0)
-        finally:
-            write_tab.load_credentials = original
 
     def _run_replace(self, replacement: str) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -219,22 +194,14 @@ class WriteGuardTests(unittest.TestCase):
                     "--document-id",
                     "doc",
                     "--expected-document-title",
-                    "April 2026 Board Meeting Minutes 20260412",
+                    DOCUMENT_TITLE,
                     "--output-tab",
                     "Test",
                 ]
             )
 
     def test_replace_phrase_refuses_before_credentials(self) -> None:
-        called = {"creds": 0}
-
-        def boom(*_args, **_kwargs):
-            called["creds"] += 1
-            raise AssertionError("credentials constructed")
-
-        original = write_tab.load_credentials
-        write_tab.load_credentials = boom
-        try:
+        with block_credentials() as called:
             for replacement, needle in (
                 ("the mover is ___", "placeholder ___"),
                 ("XXX seconds", "placeholder XXX"),
@@ -247,19 +214,12 @@ class WriteGuardTests(unittest.TestCase):
                 self.assertIn(needle, str(caught.exception))
                 self.assertIn("refusing the minutes", str(caught.exception))
             self.assertEqual(called["creds"], 0)
-        finally:
-            write_tab.load_credentials = original
 
     def test_clean_replace_reaches_credentials(self) -> None:
-        called = {"creds": 0}
-
         def reached(*_args, **_kwargs):
-            called["creds"] += 1
             raise SystemExit("credentials reached")
 
-        original = write_tab.load_credentials
-        write_tab.load_credentials = reached
-        try:
+        with block_credentials(reached) as called:
             for replacement in (
                 "the hall rental is confirmed",
                 "D'var Torah",
@@ -273,8 +233,6 @@ class WriteGuardTests(unittest.TestCase):
                     self._run_replace(replacement)
                 self.assertEqual(str(caught.exception), "credentials reached")
             self.assertEqual(called["creds"], 7)
-        finally:
-            write_tab.load_credentials = original
 
     def test_replace_one_match_is_limited_to_the_output_tab(self) -> None:
         phrase = "2026 is year to date"
@@ -424,42 +382,24 @@ class WriteGuardTests(unittest.TestCase):
         self.assertEqual(fake.updates, [])
 
     def test_unconfirmed_write_refuses_before_credentials(self) -> None:
-        called = {"creds": 0}
-
-        def boom(*_args, **_kwargs):
-            called["creds"] += 1
-            raise AssertionError("credentials constructed")
-
-        original = write_tab.load_credentials
         original_stdin = sys.stdin
-        write_tab.load_credentials = boom
         sys.stdin = io.StringIO("")
         try:
-            with tempfile.TemporaryDirectory() as tmp:
-                path = Path(tmp) / "minutes.json"
-                path.write_text(SAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
-                with self.assertRaises(SystemExit) as caught:
-                    write_tab.main(
-                        [
-                            "--input",
-                            str(path),
-                            "--write",
-                            "--document-id",
-                            "doc",
-                            "--expected-document-title",
-                            "April 2026 Board Meeting Minutes 20260412",
-                            "--confirmed-document-title",
-                            "April 2026 Board Meeting Minutes 20260412",
-                            "--input-tab",
-                            "Notes",
-                            "--output-tab",
-                            "Test",
-                        ]
-                    )
-            self.assertIn("output tab", str(caught.exception))
-            self.assertEqual(called["creds"], 0)
+            with block_credentials() as called:
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "minutes.json"
+                    path.write_text(SAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+                    with self.assertRaises(SystemExit) as caught:
+                        write_tab.main(
+                            write_argv(
+                                path,
+                                "--confirmed-document-title",
+                                DOCUMENT_TITLE,
+                            )
+                        )
+                self.assertIn("output tab", str(caught.exception))
+                self.assertEqual(called["creds"], 0)
         finally:
-            write_tab.load_credentials = original
             sys.stdin = original_stdin
 
 

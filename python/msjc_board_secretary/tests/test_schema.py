@@ -194,7 +194,12 @@ class SchemaTests(unittest.TestCase):
         )
         self.assertIsNone(unfinished.items[0].verdict)
 
-    def _attendance_doc(self, *items: dict) -> dict:
+    def _attendance_doc(
+        self,
+        *items: dict,
+        absent: str = "Taylor Morgan",
+        category: str = "Not in attendance:",
+    ) -> dict:
         return {
             "schemaVersion": 1,
             "items": [
@@ -203,12 +208,18 @@ class SchemaTests(unittest.TestCase):
                     "label": "In attendance:",
                     "groups": [
                         {"category": "Officers", "names": ["Alex Rivera"]},
-                        {"category": "Not in attendance:", "names": ["Taylor Morgan"]},
+                        {"category": category, "names": [absent]},
                     ],
                 },
                 *items,
             ],
         }
+
+    def _conflicts(self, text: str, **attendance) -> tuple[str, ...]:
+        doc = load_minutes_document(
+            self._attendance_doc({"kind": "bullet", "level": 1, "text": text}, **attendance)
+        )
+        return absent_speaker_conflicts(doc)
 
     def test_sample_has_no_absent_speaker(self) -> None:
         doc = load_minutes_document(json.loads(SAMPLE.read_text(encoding="utf-8")))
@@ -254,24 +265,9 @@ class SchemaTests(unittest.TestCase):
             "Absent -",
         )
         for label in labels:
-            for text in verbs:
-                doc = load_minutes_document(
-                    {
-                        "schemaVersion": 1,
-                        "items": [
-                            {
-                                "kind": "attendance",
-                                "label": "In attendance:",
-                                "groups": [
-                                    {"category": "Officers", "names": ["Alex Rivera"]},
-                                    {"category": label, "names": ["Taylor Morgan"]},
-                                ],
-                            },
-                            {"kind": "bullet", "level": 1, "text": text},
-                        ],
-                    }
-                )
-                self.assertEqual(absent_speaker_conflicts(doc), ("Taylor Morgan",), f"{label}: {text}")
+            self.assertEqual(self._conflicts(verbs[0], category=label), ("Taylor Morgan",), label)
+        for text in verbs:
+            self.assertEqual(self._conflicts(text, category="Absent"), ("Taylor Morgan",), text)
 
     def test_absent_name_does_not_match_inside_a_longer_name(self) -> None:
         cases = (
@@ -285,60 +281,19 @@ class SchemaTests(unittest.TestCase):
             ("Alex", "Alex Rivera said the hall is open."),
         )
         for absent, text in cases:
-            doc = load_minutes_document(
-                {
-                    "schemaVersion": 1,
-                    "items": [
-                        {
-                            "kind": "attendance",
-                            "label": "In attendance:",
-                            "groups": [
-                                {"category": "Officers", "names": ["Alex Rivera"]},
-                                {"category": "Absent", "names": [absent]},
-                            ],
-                        },
-                        {"kind": "bullet", "level": 1, "text": text},
-                    ],
-                }
-            )
-            self.assertEqual(absent_speaker_conflicts(doc), (), f"{absent} in {text}")
-        spoken = load_minutes_document(
-            {
-                "schemaVersion": 1,
-                "items": [
-                    {
-                        "kind": "attendance",
-                        "label": "In attendance:",
-                        "groups": [
-                            {"category": "Officers", "names": ["Alex Rivera"]},
-                            {"category": "Absent", "names": ["Ann"]},
-                        ],
-                    },
-                    {"kind": "bullet", "level": 1, "text": "Ann said the hall is open."},
-                ],
-            }
+            self.assertEqual(self._conflicts(text, absent=absent, category="Absent"), (), f"{absent} in {text}")
+        self.assertEqual(
+            self._conflicts("Ann said the hall is open.", absent="Ann", category="Absent"),
+            ("Ann",),
         )
-        self.assertEqual(absent_speaker_conflicts(spoken), ("Ann",))
 
     def test_full_absent_name_still_conflicts(self) -> None:
         doc = load_minutes_document(
-            {
-                "schemaVersion": 1,
-                "items": [
-                    {
-                        "kind": "attendance",
-                        "label": "In attendance:",
-                        "groups": [
-                            {"category": "Officers", "names": ["Jordan Hale"]},
-                            {"category": "Regrets", "names": ["Alex Rivera Jr."]},
-                        ],
-                    },
-                    {
-                        "kind": "presenter",
-                        "text": "Presented by Alex Rivera Jr.",
-                    },
-                ],
-            }
+            self._attendance_doc(
+                {"kind": "presenter", "text": "Presented by Alex Rivera Jr."},
+                absent="Alex Rivera Jr.",
+                category="Regrets",
+            )
         )
         self.assertEqual(absent_speaker_conflicts(doc), ("Alex Rivera Jr.",))
 
@@ -374,27 +329,14 @@ class SchemaTests(unittest.TestCase):
                 self._attendance_doc({"kind": "bullet", "level": 1, "text": text})
             )
             self.assertEqual(absent_speaker_conflicts(doc), (), text)
-        possessive_mover = load_minutes_document(
-            {
-                "schemaVersion": 1,
-                "items": [
-                    {
-                        "kind": "attendance",
-                        "label": "In attendance:",
-                        "groups": [
-                            {"category": "Officers", "names": ["Jordan Hale"]},
-                            {"category": "Absent", "names": ["Alex Rivera"]},
-                        ],
-                    },
-                    {
-                        "kind": "bullet",
-                        "level": 1,
-                        "text": "Alex Rivera's replacement presented the budget.",
-                    },
-                ],
-            }
+        self.assertEqual(
+            self._conflicts(
+                "Alex Rivera's replacement presented the budget.",
+                absent="Alex Rivera",
+                category="Absent",
+            ),
+            (),
         )
-        self.assertEqual(absent_speaker_conflicts(possessive_mover), ())
         still_speaking = load_minutes_document(
             self._attendance_doc(
                 {"kind": "bullet", "level": 1, "text": "Taylor Morgan presented the budget."}

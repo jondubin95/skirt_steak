@@ -355,10 +355,7 @@ def paragraph_text(para_el: dict[str, Any]) -> str:
 
 
 def _para_text(el: dict[str, Any]) -> str:
-    para_el = el.get("paragraph") or {}
-    return "".join(
-        (e.get("textRun") or {}).get("content", "") for e in para_el.get("elements") or []
-    ).strip()
+    return paragraph_text(el.get("paragraph") or {}).strip()
 
 
 def nesting_requests(

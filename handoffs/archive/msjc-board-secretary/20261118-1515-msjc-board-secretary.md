@@ -2,7 +2,7 @@
 thread: msjc-board-secretary
 status: done
 created: 2026-11-18T15:15Z
-supersedes: handoffs/archive/msjc-board-secretary/20261118-1512-msjc-board-secretary.md
+supersedes: handoffs/archive/msjc-board-secretary/20261116-1620-msjc-board-secretary.md
 private_detail: null
 ---
 

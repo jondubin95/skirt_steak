@@ -23,17 +23,13 @@ DOCS_MCP = REPO_ROOT / "python" / "msjc_board_secretary" / "docs_mcp.py"
 TARGET = REPO_ROOT / ".cursor" / "mcp.json"
 
 
-def google_docs_server(docs_mcp: Path) -> dict[str, Any]:
-    return {"command": sys.executable, "args": [str(docs_mcp.resolve())]}
-
-
 def config_with_google_docs(existing: dict[str, Any], docs_mcp: Path) -> dict[str, Any]:
     servers = existing.get("mcpServers")
     if servers is None:
         servers = {}
     if not isinstance(servers, dict):
         raise SystemExit("mcp.json mcpServers is not an object")
-    servers["google-docs"] = google_docs_server(docs_mcp)
+    servers["google-docs"] = {"command": sys.executable, "args": [str(docs_mcp.resolve())]}
     existing["mcpServers"] = servers
     return existing
 
@@ -51,7 +47,6 @@ def backup_path(target: Path) -> Path:
 
 
 def write_local_mcp(
-    repo_root: Path = REPO_ROOT,
     docs_mcp: Path = DOCS_MCP,
     target: Path = TARGET,
     *,
