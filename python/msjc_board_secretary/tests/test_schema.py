@@ -407,18 +407,20 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(absent_speaker_conflicts(doc), ())
 
     def test_roman_heading_needs_a_marker_and_a_year_is_a_title(self) -> None:
-        for title in ("II. Accept Minutes", "II) Accept Minutes", "### II. Accept Minutes"):
+        for title in (
+            "II. Accept Minutes",
+            "II) Accept Minutes",
+            "### II. Accept Minutes",
+            "(II. Accept Minutes)",
+            "[II. Budget]",
+            "See II. above",
+        ):
             doc = load_minutes_document(self._full_minutes({"kind": "section", "title": title}))
             errors = minutes_shape_errors(doc)
             self.assertTrue(any("Roman numeral" in error for error in errors), title)
-        year = load_minutes_document(
-            self._full_minutes({"kind": "section", "title": "2027 Membership Pricing"})
-        )
-        self.assertEqual(minutes_shape_errors(year), ())
-        apostrophe = load_minutes_document(
-            self._full_minutes({"kind": "section", "title": "D'var Torah"})
-        )
-        self.assertEqual(minutes_shape_errors(apostrophe), ())
+        for title in ("2027 Membership Pricing", "D'var Torah", "iv. Accept Minutes"):
+            doc = load_minutes_document(self._full_minutes({"kind": "section", "title": title}))
+            self.assertEqual(minutes_shape_errors(doc), (), title)
 
     def test_hash_inside_a_title_is_not_a_markdown_heading(self) -> None:
         doc = load_minutes_document(self._full_minutes({"kind": "section", "title": "Item #4"}))
@@ -467,7 +469,16 @@ class SchemaTests(unittest.TestCase):
                 ],
             }
         )
-        self.assertEqual(minutes_shape_errors(padded), ())
+        padded_errors = minutes_shape_errors(padded)
+        self.assertIn(
+            "Old Business empty-section marker has leading/trailing whitespace",
+            padded_errors,
+        )
+        self.assertIn(
+            "New Business empty-section marker has leading/trailing whitespace",
+            padded_errors,
+        )
+        self.assertFalse(any("Adjournment" in error for error in padded_errors))
         sentence = load_minutes_document(
             {
                 "schemaVersion": 1,
@@ -495,7 +506,18 @@ class SchemaTests(unittest.TestCase):
 
     def test_replacement_phrase_uses_placeholder_and_heading_checks(self) -> None:
         self.assertEqual(minutes_phrase_errors("the hall rental is confirmed"), ())
-        for allowed in ("D'var Torah", "2027 Membership Pricing", "Item #4", "None."):
+        for allowed in (
+            "D'var Torah",
+            "2027 Membership Pricing",
+            "Item #4",
+            "None.",
+            "See II. above",
+            "Presented by D. Schwartz",
+            "Update from M. Rivera",
+            "(II. Accept Minutes)",
+            "[II. Budget]",
+            " II. Accept Minutes",
+        ):
             self.assertEqual(minutes_phrase_errors(allowed), (), allowed)
         for blocked, needle in (
             ("mover is ___", "placeholder ___"),
@@ -503,6 +525,8 @@ class SchemaTests(unittest.TestCase):
             ("xxx seconds", "placeholder XXX"),
             ("### Budget", "markdown"),
             ("II. Accept Minutes", "Roman numeral"),
+            ("II) Budget", "Roman numeral"),
+            ("D. Schwartz", "Roman numeral"),
         ):
             errors = minutes_phrase_errors(blocked)
             self.assertTrue(any(needle in error for error in errors), blocked)

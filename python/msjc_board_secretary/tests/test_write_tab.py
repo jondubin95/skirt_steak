@@ -265,11 +265,14 @@ class WriteGuardTests(unittest.TestCase):
                 "D'var Torah",
                 "2027 Membership Pricing",
                 "Item #4",
+                "See II. above",
+                "Presented by D. Schwartz",
+                "Update from M. Rivera",
             ):
                 with self.assertRaises(SystemExit) as caught:
                     self._run_replace(replacement)
                 self.assertEqual(str(caught.exception), "credentials reached")
-            self.assertEqual(called["creds"], 4)
+            self.assertEqual(called["creds"], 7)
         finally:
             write_tab.load_credentials = original
 

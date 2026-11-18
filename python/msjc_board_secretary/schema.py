@@ -393,20 +393,23 @@ def absent_speaker_conflicts(document: MinutesDocument) -> tuple[str, ...]:
 _PRESENTER_LINE = re.compile(r"^Presented by \S.*\.$")
 # A markdown heading is a leading "#", not a hash later in the title ("Item #4").
 _MARKDOWN_HEADING = re.compile(r"^\s{0,3}#")
-# A typed Roman heading is a numeral token followed by "." or ")", as in
-# "II. Accept Minutes". The token is not split on apostrophes, so "D'var Torah"
-# is a title. A year such as "2027 Membership Pricing" is title text, not a
-# heading number.
-_ROMAN_HEADING_TOKEN = re.compile(r"(?:^|\s)([IVXLCDM]+)(?=[.)])")
+# A typed Roman heading is an uppercase numeral token followed by "." or ")",
+# as in "II. Accept Minutes". Lowercase "iv." is title text. The token is not
+# split on apostrophes, so "D'var Torah" is a title. A year such as
+# "2027 Membership Pricing" is title text, not a heading number.
+# In a section title the token may sit after punctuation ("(II." or "[II.").
+# In a replacement the token counts only at the start of the phrase, because
+# that is the only place a heading marker takes effect.
+_ROMAN_HEADING_TOKEN = re.compile(r"(?<![A-Za-z])([IVXLCDM]+)(?=[.)])")
+_ROMAN_HEADING_AT_START = re.compile(r"^([IVXLCDM]+)(?=[.)])")
 _ROMAN_VALUE = re.compile(r"^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$")
 _PLACEHOLDER_XXX = re.compile(r"\bXXX\b", re.IGNORECASE)
 _CLOSING_SECTIONS = ("Old Business", "New Business", "Adjournment")
 _ATTENDANCE_LABEL = "In attendance:"
 # The empty closing section is a paragraph whose entire text is "None.".
-# A search would also hit incidental sentences ("The vote was None.").
 # Leading and trailing spaces are a different paragraph. Do not strip here.
 # strip_spilled_bullets strips Docs paragraph text before it calls this.
-_EMPTY_SECTION = re.compile(r"None\.")
+_EMPTY_SECTION_MARKER = "None."
 
 
 def _item_strings(item: MinutesItem) -> list[tuple[str, str]]:
@@ -437,8 +440,8 @@ def _section_bodies(items: tuple[MinutesItem, ...]) -> list[tuple[MinutesItem, t
     return bodies
 
 
-def _roman_heading_token(title: str) -> str | None:
-    for match in _ROMAN_HEADING_TOKEN.finditer(title):
+def _roman_heading_token(title: str, pattern: re.Pattern[str]) -> str | None:
+    for match in pattern.finditer(title):
         token = match.group(1)
         if _ROMAN_VALUE.fullmatch(token):
             return token
@@ -451,7 +454,7 @@ def is_empty_section_paragraph(text: str) -> bool:
     Spaces stay part of the text, so `` None.`` and ``None. `` are not the
     marker. A sentence that contains ``None.`` is not the marker either.
     """
-    return _EMPTY_SECTION.fullmatch(text) is not None
+    return text == _EMPTY_SECTION_MARKER
 
 
 def _closing_section_errors(document: MinutesDocument) -> list[str]:
@@ -463,7 +466,15 @@ def _closing_section_errors(document: MinutesDocument) -> list[str]:
     errors: list[str] = []
     for section, body in bodies[-3:]:
         title = section.title or ""
-        content = [item for item in body if item.kind != "section"]
+        content = list(body)
+        if (
+            len(content) == 1
+            and content[0].kind == "paragraph"
+            and (content[0].text or "").strip() == _EMPTY_SECTION_MARKER
+            and not is_empty_section_paragraph(content[0].text or "")
+        ):
+            errors.append(f"{title} empty-section marker has leading/trailing whitespace")
+            continue
         only_empty = (
             len(content) == 1
             and content[0].kind == "paragraph"
@@ -491,11 +502,13 @@ def _placeholder_errors(value: str, location: str) -> list[str]:
     return found
 
 
-def _heading_marker_errors(value: str, location: str) -> list[str]:
+def _heading_marker_errors(
+    value: str, location: str, roman_pattern: re.Pattern[str]
+) -> list[str]:
     found: list[str] = []
     if _MARKDOWN_HEADING.search(value):
         found.append(f"{location} contains markdown: {value!r}")
-    if _roman_heading_token(value):
+    if _roman_heading_token(value, roman_pattern):
         found.append(f"{location} contains a Roman numeral: {value!r}")
     return found
 
@@ -504,11 +517,11 @@ def minutes_phrase_errors(text: str) -> tuple[str, ...]:
     """Placeholder and heading-marker checks for one replacement phrase.
 
     A one-phrase replace has no attendance block and no closing sections, so
-    those document checks do not apply. The checks that do apply are the same
-    ones ``minutes_shape_errors`` uses on minutes text.
+    those document checks do not apply. A heading marker is refused only when
+    it starts the phrase. ``See II. above`` is ordinary text.
     """
     errors = _placeholder_errors(text, "replacement")
-    errors.extend(_heading_marker_errors(text, "replacement"))
+    errors.extend(_heading_marker_errors(text, "replacement", _ROMAN_HEADING_AT_START))
     return tuple(errors)
 
 
@@ -524,6 +537,8 @@ def minutes_shape_errors(document: MinutesDocument) -> tuple[str, ...]:
         if item.kind == "presenter" and not _PRESENTER_LINE.fullmatch(item.text or ""):
             errors.append(f"{where} presenter must be 'Presented by <name>.'")
         if item.kind == "section" and item.title:
-            errors.extend(_heading_marker_errors(item.title, f"{where} section title"))
+            errors.extend(
+                _heading_marker_errors(item.title, f"{where} section title", _ROMAN_HEADING_TOKEN)
+            )
     errors.extend(_closing_section_errors(document))
     return tuple(errors)
