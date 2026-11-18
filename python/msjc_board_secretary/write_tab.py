@@ -406,17 +406,12 @@ def _load_document(path: Path) -> MinutesDocument:
     return load_minutes_document(raw)
 
 
-_FULL_WRITE_FLAGS = (
-    ("--document-id", "document_id"),
-    ("--expected-document-title", "expected_document_title"),
-    ("--input-tab", "input_tab"),
-    ("--output-tab", "output_tab"),
-)
 _REPLACE_FLAGS = (
     ("--document-id", "document_id"),
     ("--expected-document-title", "expected_document_title"),
     ("--output-tab", "output_tab"),
 )
+_FULL_WRITE_FLAGS = _REPLACE_FLAGS + (("--input-tab", "input_tab"),)
 
 
 def _require_flags(

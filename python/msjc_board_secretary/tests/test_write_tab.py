@@ -37,6 +37,29 @@ def write_argv(path: Path, *extra: str) -> list[str]:
     ]
 
 
+def write_minutes(client, document, **overrides):
+    values = {
+        "document_id": "doc",
+        "expected_title": DOCUMENT_TITLE,
+        "input_tab": "Notes",
+        "output_tab": "Test",
+    }
+    values.update(overrides)
+    return write_tab.perform_write(client, document, **values)
+
+
+def replace_on_tab(client, phrase, **overrides):
+    values = {
+        "document_id": "doc",
+        "expected_title": DOCUMENT_TITLE,
+        "output_tab": "Test",
+        "find_text": phrase,
+        "replacement": "the 2026 balance is year to date",
+    }
+    values.update(overrides)
+    return write_tab.perform_replace(client, **values)
+
+
 @contextmanager
 def block_credentials(on_call=None):
     called = {"creds": 0}
@@ -237,14 +260,7 @@ class WriteGuardTests(unittest.TestCase):
     def test_replace_one_match_is_limited_to_the_output_tab(self) -> None:
         phrase = "2026 is year to date"
         fake = FakeDocs(_phrase_doc(phrase))
-        summary = write_tab.perform_replace(
-            fake,
-            document_id="doc",
-            expected_title="April 2026 Board Meeting Minutes 20260412",
-            output_tab="Test",
-            find_text=phrase,
-            replacement="the 2026 balance is year to date",
-        )
+        summary = replace_on_tab(fake, phrase)
         self.assertEqual(summary["matches"], 1)
         self.assertEqual(len(fake.updates), 1)
         request = fake.updates[0]["requests"][0]["replaceAllText"]
@@ -257,14 +273,7 @@ class WriteGuardTests(unittest.TestCase):
         for copies in (0, 2):
             fake = FakeDocs(_phrase_doc(phrase, copies_on_output=copies))
             with self.assertRaises(WriteGuardError):
-                write_tab.perform_replace(
-                    fake,
-                    document_id="doc",
-                    expected_title="April 2026 Board Meeting Minutes 20260412",
-                    output_tab="Test",
-                    find_text=phrase,
-                    replacement="the 2026 balance is year to date",
-                )
+                replace_on_tab(fake, phrase)
             self.assertEqual(fake.updates, [])
 
     def test_same_tab_and_wrong_title_do_not_mutate(self) -> None:
@@ -272,26 +281,12 @@ class WriteGuardTests(unittest.TestCase):
         same = FakeDocs(_doc(document=document))
         same.doc["tabs"][1]["tabProperties"]["tabId"] = "tab-notes"
         with self.assertRaises(WriteGuardError):
-            write_tab.perform_write(
-                same,
-                document,
-                document_id="doc",
-                expected_title="April 2026 Board Meeting Minutes 20260412",
-                input_tab="Notes",
-                output_tab="Test",
-            )
+            write_minutes(same, document)
         self.assertEqual(same.updates, [])
 
         wrong = FakeDocs(_doc("Other title", document))
         with self.assertRaises(WriteGuardError):
-            write_tab.perform_write(
-                wrong,
-                document,
-                document_id="doc",
-                expected_title="April 2026 Board Meeting Minutes 20260412",
-                input_tab="Notes",
-                output_tab="Test",
-            )
+            write_minutes(wrong, document)
         self.assertEqual(wrong.updates, [])
 
     def test_missing_revision_aborts_before_mutation(self) -> None:
@@ -299,27 +294,13 @@ class WriteGuardTests(unittest.TestCase):
         client = FakeDocs(_doc(document=document))
         client.doc["revisionId"] = ""
         with self.assertRaises(WriteGuardError):
-            write_tab.perform_write(
-                client,
-                document,
-                document_id="doc",
-                expected_title="April 2026 Board Meeting Minutes 20260412",
-                input_tab="Notes",
-                output_tab="Test",
-            )
+            write_minutes(client, document)
         self.assertEqual(client.updates, [])
 
     def test_each_batch_locks_the_prior_revision(self) -> None:
         document = load_minutes_document(json.loads(SAMPLE.read_text(encoding="utf-8")))
         client = FakeDocs(_doc(document=document))
-        summary = write_tab.perform_write(
-            client,
-            document,
-            document_id="doc",
-            expected_title="April 2026 Board Meeting Minutes 20260412",
-            input_tab="Notes",
-            output_tab="Test",
-        )
+        summary = write_minutes(client, document)
         self.assertGreaterEqual(len(client.updates), 1)
         self.assertEqual(client.updates[0]["writeControl"]["requiredRevisionId"], "rev-1")
         for previous, body in enumerate(client.updates):
@@ -333,14 +314,7 @@ class WriteGuardTests(unittest.TestCase):
         err = io.StringIO()
         with redirect_stderr(err):
             with self.assertRaises(RuntimeError):
-                write_tab.perform_write(
-                    client,
-                    document,
-                    document_id="doc",
-                    expected_title="April 2026 Board Meeting Minutes 20260412",
-                    input_tab="Notes",
-                    output_tab="Test",
-                )
+                write_minutes(client, document)
         self.assertIn("Pass 1 replaced the tab", err.getvalue())
         self.assertEqual(len(client.updates), 2)
 
@@ -355,14 +329,7 @@ class WriteGuardTests(unittest.TestCase):
         document = load_minutes_document(json.loads(SAMPLE.read_text(encoding="utf-8")))
         client = FakeDocs(_doc(document=document))
         with self.assertRaises(WriteGuardError) as caught:
-            write_tab.perform_write(
-                client,
-                document,
-                document_id="doc",
-                expected_title="April 2026 Board Meeting Minutes 20260412",
-                input_tab="Notes",
-                output_tab="test",
-            )
+            write_minutes(client, document, output_tab="test")
         self.assertIn("output tab", str(caught.exception))
         self.assertEqual(client.updates, [])
 
@@ -370,14 +337,7 @@ class WriteGuardTests(unittest.TestCase):
         phrase = "2026 is year to date"
         fake = FakeDocs(_phrase_doc(phrase))
         with self.assertRaises(WriteGuardError) as caught:
-            write_tab.perform_replace(
-                fake,
-                document_id="doc",
-                expected_title="April 2026 Board Meeting Minutes 20260412",
-                output_tab="test",
-                find_text=phrase,
-                replacement="the 2026 balance is year to date",
-            )
+            replace_on_tab(fake, phrase, output_tab="test")
         self.assertIn("output tab", str(caught.exception))
         self.assertEqual(fake.updates, [])
 
