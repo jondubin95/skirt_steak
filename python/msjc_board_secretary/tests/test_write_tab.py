@@ -212,7 +212,7 @@ class WriteGuardTests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as caught:
                     self._run_replace(replacement)
                 self.assertIn(needle, str(caught.exception))
-                self.assertIn("refusing the minutes", str(caught.exception))
+                self.assertIn("refusing the replacement", str(caught.exception))
             self.assertEqual(called["creds"], 0)
 
     def test_clean_replace_reaches_credentials(self) -> None:
@@ -410,7 +410,7 @@ class InstructionTextTests(unittest.TestCase):
         skill = (root / ".cursor/skills/msjc-board-secretary/SKILL.md").read_text(encoding="utf-8")
         readme = (package / "README.md").read_text(encoding="utf-8")
         reauth = (package / "reauth.py").read_text(encoding="utf-8")
-        step = skill.split("8. ", 1)[1].split("\n9. ", 1)[0]
+        step = skill.split("<!-- step-8 -->", 1)[1].split("<!-- step-9 -->", 1)[0]
         self.assertIn("--replace` together with `--write`", step)
         self.assertIn("pass 1 has replaced the tab", step)
         self.assertNotIn("before Google accepts it", skill)

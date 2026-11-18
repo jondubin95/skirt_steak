@@ -105,7 +105,11 @@ def full_tab_replace_is_confirmed(
     confirmed_document_title: str,
     confirmed_output_tab: str,
 ) -> bool:
-    """True only when the request named both the document and the output tab."""
+    """True only when the request named both the document and the output tab.
+
+    Blank titles do not match. The CLI requires those flags first; a direct
+    caller can still pass blanks, and blanks must not count as confirmation.
+    """
     return (
         bool(document_title)
         and bool(output_tab)
@@ -464,7 +468,7 @@ def main(argv: list[str] | None = None) -> int:
         find_text, replacement = load_replace_pair(source)
         phrase_errors = minutes_phrase_errors(replacement)
         if phrase_errors:
-            raise SystemExit("refusing the minutes: " + "; ".join(phrase_errors))
+            raise SystemExit("refusing the replacement: " + "; ".join(phrase_errors))
         creds = load_credentials(Path(args.creds), Path(args.token))
         client = GoogleDocsClient(build_docs_service(creds))
         try:

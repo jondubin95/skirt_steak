@@ -45,7 +45,9 @@ Do not hand the user the command. The person approves the sign-in prompt where i
 5. Draft semantic JSON (`schemaVersion` 1) using only `masthead`, `attendance`, `section`, `presenter`, `bullet`, `motion`, and `paragraph`. Follow [template-spec.md](template-spec.md). Do not include character offsets or style spans. Prefer categorized attendance `groups`.
 6. Write that JSON only under `Sensitive/` or a system temporary directory. Never write it to a tracked path, and do not put the minutes text in the shell command line.
 7. Show the user the exact document title and the output tab title. When the user already named that document and that output tab in the request, treat that as the confirmation. Otherwise stop until they confirm. A document title alone is not confirmation. Example: replace the Minutes tab of `April 2026 Board Meeting Minutes 20260412`.
+<!-- step-8 -->
 8. Run the writer with `--write` and those exact titles, plus `--confirmed-document-title` and `--confirmed-output-tab` set to the same two strings. The writer refuses the full-tab replace until both match. That full write is for the first fold-in, or for a change that adds, removes, or reorders paragraphs. A later wording fix uses `--replace` together with `--write`, as Corrections describes. Keep the JSON file until the user says the minutes are finished. When pass 1 has replaced the tab and a later pass fails, keep that file and re-run the same command with `--write`. The retry rebuilds the tab from it.
+<!-- step-9 -->
 9. Reply with the document title, output tab, and URL. Do not paste the minutes text back into the chat.
 
 ### Corrections

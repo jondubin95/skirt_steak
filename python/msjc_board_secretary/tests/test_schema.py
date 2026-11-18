@@ -222,6 +222,8 @@ class SchemaTests(unittest.TestCase):
         return absent_speaker_conflicts(doc)
 
     def test_sample_has_no_absent_speaker(self) -> None:
+        # The sample names no absent speaker, so deleting the check would still pass.
+        # The refusal tests cover the absence rule.
         doc = load_minutes_document(json.loads(SAMPLE.read_text(encoding="utf-8")))
         self.assertEqual(absent_speaker_conflicts(doc), ())
 
@@ -388,6 +390,8 @@ class SchemaTests(unittest.TestCase):
         }
 
     def test_sample_shape_is_writable(self) -> None:
+        # The sample is already valid, so deleting a shape check would still pass.
+        # The refusal tests cover the shape rules.
         doc = load_minutes_document(json.loads(SAMPLE.read_text(encoding="utf-8")))
         self.assertEqual(minutes_shape_errors(doc), ())
 
