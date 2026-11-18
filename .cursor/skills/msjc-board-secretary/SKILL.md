@@ -30,11 +30,11 @@ If neither the local server nor the plugin read is available, stop and say so. D
 
 ### Sign-in
 
-A failed token refresh is not a reason to replace `Sensitive/credentials.json`. From the repo root, run this and wait for the browser approval:
+A failed token refresh is not a reason to replace `Sensitive/credentials.json`. From the repo root, run:
 
 `python python/msjc_board_secretary/reauth.py`
 
-Do not hand the user the command. The script replaces the saved token only after the browser prompt succeeds, removes a leftover bad token file, and prints `token saved`. It does not print the token or the authorization code. If the prompt is closed, the previous token file stays in place. When `token saved` appears, retry the same writer command. A link from an earlier run is dead.
+Do not hand the user the command. The person approves the sign-in prompt where it is shown. The script replaces the saved token only after that approval succeeds, removes a leftover bad token file, and prints `token saved`. It does not print the token or the authorization code. If the prompt is closed, the previous token file stays in place. When `token saved` appears, retry the same writer command. A link from an earlier run is dead.
 
 ### Monthly workflow
 
@@ -45,7 +45,7 @@ Do not hand the user the command. The script replaces the saved token only after
 5. Draft semantic JSON (`schemaVersion` 1) using only `masthead`, `attendance`, `section`, `presenter`, `bullet`, `motion`, and `paragraph`. Follow [template-spec.md](template-spec.md). Do not include character offsets or style spans. Prefer categorized attendance `groups`.
 6. Write that JSON only under `Sensitive/` or a system temporary directory. Never write it to a tracked path, and do not put the minutes text in the shell command line.
 7. Show the user the exact document title and the output tab title. When the user already named that document and that output tab in the request, treat that as the confirmation. Otherwise stop until they confirm. A document title alone is not confirmation. Example: replace the Minutes tab of `April 2026 Board Meeting Minutes 20260412`.
-8. Run the writer with `--write` and those exact titles, plus `--confirmed-document-title` and `--confirmed-output-tab` set to the same two strings. The writer refuses the full-tab replace until both match. That full write is for the first fold-in, or for a change that adds, removes, or reorders paragraphs. A later wording fix uses `--replace` instead, below. Keep the JSON file through later structural corrections in the same session. Delete it when the user says the minutes are finished, and also delete it if the write fails before Google accepts it.
+8. Run the writer with `--write` and those exact titles, plus `--confirmed-document-title` and `--confirmed-output-tab` set to the same two strings. The writer refuses the full-tab replace until both match. That full write is for the first fold-in, or for a change that adds, removes, or reorders paragraphs. A later wording fix uses `--replace` together with `--write`, as Corrections describes. Keep the JSON file until the user says the minutes are finished. When pass 1 has replaced the tab and a later pass fails, keep that file and re-run the same command with `--write`. The retry rebuilds the tab from it.
 9. Reply with the document title, output tab, and URL. Do not paste the minutes text back into the chat.
 
 ### Corrections

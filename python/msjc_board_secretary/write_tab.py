@@ -45,6 +45,11 @@ SCOPES = [
 ]
 DEFAULT_CREDS = REPO_ROOT / "Sensitive" / "credentials.json"
 DEFAULT_TOKEN = REPO_ROOT / "Sensitive" / "google" / "gdocs_token.json"
+REAUTH_MESSAGE = (
+    "Google token refresh failed. Run "
+    "python python/msjc_board_secretary/reauth.py from the repo "
+    "root, complete the sign-in prompt where it is shown, then retry this command."
+)
 RECOVERY_MESSAGE = (
     "Pass 1 replaced the tab, and re-running the exact same CLI command with "
     "--write will cleanly wipe and rebuild the tab from the private JSON file."
@@ -173,11 +178,7 @@ def load_credentials(creds_path: Path, token_path: Path) -> Any:
             try:
                 creds.refresh(Request())
             except RefreshError as exc:
-                raise SystemExit(
-                    "Google token refresh failed. Run "
-                    "python python/msjc_board_secretary/reauth.py from the repo "
-                    "root, wait for the browser approval, then retry this command."
-                ) from exc
+                raise SystemExit(REAUTH_MESSAGE) from exc
         else:
             if not creds_path.is_file():
                 raise SystemExit(f"Missing OAuth client file: {creds_path}")

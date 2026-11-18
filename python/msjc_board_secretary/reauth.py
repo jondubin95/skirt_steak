@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Browser sign-in for the board-minutes writer.
+"""Sign-in for the board-minutes writer.
 
 Run from the repo root when write_tab.py reports that the Google token
-refresh failed. Approving the prompt replaces Sensitive/google/gdocs_token.json.
+refresh failed. The person approves the sign-in prompt where it is shown.
+Approving the prompt replaces Sensitive/google/gdocs_token.json.
 The previous token file is replaced only after sign-in succeeds.
 The script does not print the saved token or the authorization code.
 """

@@ -460,6 +460,26 @@ class WriteGuardTests(unittest.TestCase):
             sys.stdin = original_stdin
 
 
+class InstructionTextTests(unittest.TestCase):
+    def test_sign_in_text_and_step_8_agree(self) -> None:
+        root = Path(__file__).resolve().parents[3]
+        package = Path(__file__).resolve().parents[1]
+        skill = (root / ".cursor/skills/msjc-board-secretary/SKILL.md").read_text(encoding="utf-8")
+        readme = (package / "README.md").read_text(encoding="utf-8")
+        reauth = (package / "reauth.py").read_text(encoding="utf-8")
+        step = skill.split("8. ", 1)[1].split("\n9. ", 1)[0]
+        self.assertIn("--replace` together with `--write`", step)
+        self.assertIn("pass 1 has replaced the tab", step)
+        self.assertNotIn("before Google accepts it", skill)
+        self.assertNotIn("browser", write_tab.REAUTH_MESSAGE.casefold())
+        self.assertIn("sign-in prompt where it is shown", write_tab.REAUTH_MESSAGE)
+        for text in (skill, readme, reauth):
+            folded = text.casefold()
+            self.assertNotIn("browser approval", folded)
+            self.assertNotIn("browser prompt", folded)
+            self.assertNotIn("browser sign-in", folded)
+
+
 class TtyStream(io.StringIO):
     def isatty(self) -> bool:
         return True
