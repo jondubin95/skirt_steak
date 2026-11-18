@@ -16,8 +16,22 @@ ITEM_KINDS = frozenset(
 )
 VERDICTS = frozenset({"passes", "fails"})
 _SECONDER = re.compile(r"(?i)\b(?:seconds|seconded)\b")
+# "seconded" and "nobody" are included. "Jordan Hale seconds" does not match:
+# these phrases all require a negation.
 _NO_SECOND_OR_VOTE = re.compile(
-    r"(?i)\bno\s+(?:one\s+)?seconds?\b|\bno\s+second\b|\bnot\s+voted\b|\bno\s+vote\b"
+    r"(?i)\bno\s+(?:one\s+|body\s+)?second(?:s|ed)?\b"
+    r"|\bnobody\s+second(?:s|ed)?\b"
+    r"|\bnever\s+seconded\b"
+    r"|\bwithout\s+a\s+second\b"
+    r"|\black\s+of\s+a\s+second\b"
+    r"|\bnot\s+voted\b"
+    r"|\bno\s+vote\b"
+)
+# "motion fails" and "defeated" record a vote only when the body does not
+# also say the motion died for lack of a second. Yeas, nays, "voted down",
+# and "vote failed" are an explicit vote either way.
+_EXPLICIT_VOTE = re.compile(
+    r"(?i)\b(?:voted\s+down|vote\s+failed)\b|\b(?:nay|nays|yea|yeas)\b"
 )
 _RECORDED_VOTE = re.compile(
     r"(?i)\b(?:voted\s+down|vote\s+failed|motion\s+failed|motion\s+fails|defeated)\b"
@@ -93,14 +107,16 @@ def _require_str_list(value: Any, label: str) -> tuple[str, ...]:
     return tuple(names)
 
 
-def motion_fail_is_earned(body: str) -> bool:
-    """True when `fails` records a vote, not a motion that was never seconded.
+def motion_verdict_is_earned(body: str) -> bool:
+    """True when `passes` or `fails` records a seconded motion or a vote.
 
     "Motion Fails." is the board's line for a motion that was voted down.
-    A body with no seconder and no vote, including "No second; not voted",
-    is not that line.
+    A body with no seconder and no vote, including "No second; not voted"
+    and "No one seconded.", is not that line. A lack-of-second phrase is
+    not itself a vote, so "motion fails" and "defeated" do not earn a
+    verdict while one is present.
     """
-    if _NO_SECOND_OR_VOTE.search(body) and not _RECORDED_VOTE.search(body):
+    if _NO_SECOND_OR_VOTE.search(body) and not _EXPLICIT_VOTE.search(body):
         return False
     return _SECONDER.search(body) is not None or _RECORDED_VOTE.search(body) is not None
 
@@ -181,9 +197,9 @@ def _parse_item(raw: Any, index: int) -> MinutesItem:
         if verdict is not None and verdict not in VERDICTS:
             raise SchemaError(f"{label}.verdict must be one of {sorted(VERDICTS)}")
         body = _require_str(obj.get("body"), f"{label}.body")
-        if verdict == "fails" and not motion_fail_is_earned(body):
+        if verdict is not None and not motion_verdict_is_earned(body):
             raise SchemaError(
-                f"{label}.verdict fails is only for a motion that was voted down; "
+                f"{label}.verdict {verdict} needs a seconder or a recorded vote; "
                 "a motion with no seconder and no vote has no verdict"
             )
         return MinutesItem(

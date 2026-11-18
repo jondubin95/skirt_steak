@@ -17,7 +17,7 @@ from msjc_board_secretary.schema import (  # noqa: E402
     load_minutes_document,
     minutes_phrase_errors,
     minutes_shape_errors,
-    motion_fail_is_earned,
+    motion_verdict_is_earned,
     validate_target_identity,
     validate_write_guards,
 )
@@ -136,38 +136,51 @@ class SchemaTests(unittest.TestCase):
                 }
             )
 
-    def test_fails_requires_a_seconder_or_a_recorded_vote(self) -> None:
-        voted_down = "Alex Rivera moves to raise dues. Jordan Hale seconds."
-        self.assertTrue(motion_fail_is_earned(voted_down))
-        doc = load_minutes_document(
-            {
-                "schemaVersion": 1,
-                "items": [{"kind": "motion", "body": voted_down, "verdict": "fails"}],
-            }
+    def test_verdict_requires_a_seconder_or_a_recorded_vote(self) -> None:
+        earned = (
+            "Alex Rivera moves to raise dues. Jordan Hale seconds.",
+            "Alex Rivera moves to raise dues. Jordan Hale seconded.",
+            "Alex Rivera moves to raise dues. Voted down.",
+            "Alex Rivera moves to raise dues. The vote failed.",
+            "Alex Rivera moves to raise dues. 3 yeas and 4 nays.",
+            "Motion fails for lack of a second. Voted down, 1 yea to 6 nays.",
         )
-        self.assertEqual(doc.items[0].verdict, "fails")
-        recorded = "Alex Rivera moves to raise dues. Voted down."
-        self.assertTrue(motion_fail_is_earned(recorded))
-        load_minutes_document(
-            {"schemaVersion": 1, "items": [{"kind": "motion", "body": recorded, "verdict": "fails"}]}
-        )
+        for body in earned:
+            self.assertTrue(motion_verdict_is_earned(body), body)
+            for verdict in ("passes", "fails"):
+                doc = load_minutes_document(
+                    {
+                        "schemaVersion": 1,
+                        "items": [{"kind": "motion", "body": body, "verdict": verdict}],
+                    }
+                )
+                self.assertEqual(doc.items[0].verdict, verdict, body)
 
-    def test_fails_is_rejected_when_nobody_seconded_or_voted(self) -> None:
+    def test_verdict_is_rejected_without_a_seconder_or_a_vote(self) -> None:
         bodies = (
             "Alex Rivera moves to raise dues.",
             "Alex Rivera moves to raise dues. No second; not voted",
             "Alex Rivera moves to raise dues. No one seconds.",
+            "Alex Rivera moves to raise dues. No one seconded.",
+            "Alex Rivera moves to raise dues. Nobody seconded it.",
+            "Alex Rivera moves to raise dues. It was never seconded.",
+            "Alex Rivera moves to raise dues. The motion died without a second.",
+            "Alex Rivera moves to raise dues. It failed without a second.",
+            "Motion fails for lack of a second.",
+            "Defeated for lack of a second.",
         )
         for body in bodies:
-            self.assertFalse(motion_fail_is_earned(body), body)
-            with self.assertRaises(SchemaError) as caught:
-                load_minutes_document(
-                    {
-                        "schemaVersion": 1,
-                        "items": [{"kind": "motion", "body": body, "verdict": "fails"}],
-                    }
-                )
-            self.assertIn("no seconder and no vote", str(caught.exception))
+            self.assertFalse(motion_verdict_is_earned(body), body)
+            for verdict in ("passes", "fails"):
+                with self.assertRaises(SchemaError) as caught:
+                    load_minutes_document(
+                        {
+                            "schemaVersion": 1,
+                            "items": [{"kind": "motion", "body": body, "verdict": verdict}],
+                        }
+                    )
+                self.assertIn("no seconder and no vote", str(caught.exception))
+                self.assertIn(verdict, str(caught.exception))
         unfinished = load_minutes_document(
             {
                 "schemaVersion": 1,
