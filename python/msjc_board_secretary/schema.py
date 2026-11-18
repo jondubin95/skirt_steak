@@ -383,10 +383,14 @@ _MARKDOWN_HEADING = re.compile(r"^\s{0,3}#")
 # heading number.
 _ROMAN_HEADING_TOKEN = re.compile(r"(?:^|\s)([IVXLCDM]+)(?=[.)])")
 _ROMAN_VALUE = re.compile(r"^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$")
-_PLACEHOLDER_XXX = re.compile(r"\bXXX\b")
+_PLACEHOLDER_XXX = re.compile(r"\bXXX\b", re.IGNORECASE)
 _CLOSING_SECTIONS = ("Old Business", "New Business", "Adjournment")
 _ATTENDANCE_LABEL = "In attendance:"
-_EMPTY_SECTION = "None."
+# The empty closing section is a paragraph whose entire text is "None.".
+# A search would also hit incidental sentences ("The vote was None.").
+# Leading and trailing spaces are a different paragraph. Do not strip here.
+# strip_spilled_bullets strips Docs paragraph text before it calls this.
+_EMPTY_SECTION = re.compile(r"None\.")
 
 
 def _item_strings(item: MinutesItem) -> list[tuple[str, str]]:
@@ -425,6 +429,15 @@ def _roman_heading_token(title: str) -> str | None:
     return None
 
 
+def is_empty_section_paragraph(text: str) -> bool:
+    """True only when the whole paragraph is the empty-section marker.
+
+    Spaces stay part of the text, so `` None.`` and ``None. `` are not the
+    marker. A sentence that contains ``None.`` is not the marker either.
+    """
+    return _EMPTY_SECTION.fullmatch(text) is not None
+
+
 def _closing_section_errors(document: MinutesDocument) -> list[str]:
     bodies = _section_bodies(document.items)
     titles = tuple((section.title or "") for section, _body in bodies)
@@ -438,12 +451,13 @@ def _closing_section_errors(document: MinutesDocument) -> list[str]:
         only_empty = (
             len(content) == 1
             and content[0].kind == "paragraph"
-            and content[0].text == _EMPTY_SECTION
+            and is_empty_section_paragraph(content[0].text or "")
         )
         if only_empty:
             continue
         has_empty_line = any(
-            item.kind == "paragraph" and item.text == _EMPTY_SECTION for item in content
+            item.kind == "paragraph" and is_empty_section_paragraph(item.text or "")
+            for item in content
         )
         if not content:
             errors.append(f"{title} is empty; the body must be the paragraph None.")

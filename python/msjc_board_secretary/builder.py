@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .schema import MinutesDocument, MinutesItem
+from .schema import MinutesDocument, MinutesItem, is_empty_section_paragraph
 
 HEADING_TEXT_STYLE = {
     "bold": True,
@@ -488,7 +488,7 @@ def strip_spilled_bullets(tab_id: str, tab: dict[str, Any]) -> list[dict[str, An
         if style == "HEADING_3":
             continue
         is_motion = text.startswith("Motion:")
-        is_none = text == "None."
+        is_none = is_empty_section_paragraph(text)
         if not (is_motion or is_none):
             continue
         start = int(el["startIndex"])

@@ -13,6 +13,7 @@ from msjc_board_secretary.schema import (  # noqa: E402
     SchemaError,
     WriteGuardError,
     absent_speaker_conflicts,
+    is_empty_section_paragraph,
     load_minutes_document,
     minutes_shape_errors,
     motion_fail_is_earned,
@@ -39,7 +40,6 @@ class SchemaTests(unittest.TestCase):
                 "section",
                 "bullet",
                 "bullet",
-                "paragraph",
                 "section",
                 "paragraph",
                 "section",
@@ -435,6 +435,61 @@ class SchemaTests(unittest.TestCase):
         errors = minutes_shape_errors(mixed)
         self.assertIn("Old Business has None. alongside other text", errors)
         self.assertIn("New Business is empty; the body must be the paragraph None.", errors)
+
+    def test_empty_section_marker_is_the_whole_paragraph(self) -> None:
+        self.assertTrue(is_empty_section_paragraph("None."))
+        for incidental in (" None.", "None. ", "none.", "NONE.", "The vote was None.", "None. The hall is booked."):
+            self.assertFalse(is_empty_section_paragraph(incidental), incidental)
+        padded = load_minutes_document(
+            {
+                "schemaVersion": 1,
+                "items": [
+                    {"kind": "section", "title": "Old Business"},
+                    {"kind": "paragraph", "text": " None."},
+                    {"kind": "section", "title": "New Business"},
+                    {"kind": "paragraph", "text": "None. "},
+                    {"kind": "section", "title": "Adjournment"},
+                    {"kind": "paragraph", "text": "None."},
+                ],
+            }
+        )
+        self.assertEqual(minutes_shape_errors(padded), ())
+        sentence = load_minutes_document(
+            {
+                "schemaVersion": 1,
+                "items": [
+                    {"kind": "section", "title": "Old Business"},
+                    {"kind": "paragraph", "text": "The vote was None."},
+                    {"kind": "bullet", "level": 1, "text": "The boiler was discussed."},
+                    {"kind": "section", "title": "New Business"},
+                    {"kind": "paragraph", "text": "None."},
+                    {"kind": "section", "title": "Adjournment"},
+                    {"kind": "paragraph", "text": "None."},
+                ],
+            }
+        )
+        errors = minutes_shape_errors(sentence)
+        self.assertFalse(any("Old Business" in error for error in errors))
+        hall = load_minutes_document(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        titles = [item.title for item in hall.items if item.kind == "section"]
+        rental_at = titles.index("Hall Rental")
+        section_indexes = [i for i, item in enumerate(hall.items) if item.kind == "section"]
+        start = section_indexes[rental_at] + 1
+        end = section_indexes[rental_at + 1]
+        rental_text = [item.text for item in hall.items[start:end]]
+        self.assertNotIn("None.", rental_text)
+
+    def test_xxx_placeholder_is_case_insensitive(self) -> None:
+        for body in ("xxx seconds.", "Xxx seconds.", "xxX seconds."):
+            doc = load_minutes_document(self._full_minutes({"kind": "motion", "body": body}))
+            errors = minutes_shape_errors(doc)
+            self.assertTrue(any(error.startswith("placeholder XXX") for error in errors), body)
+        longer = load_minutes_document(
+            self._full_minutes({"kind": "paragraph", "text": "XXXX stays in the notes."})
+        )
+        self.assertFalse(
+            any("placeholder XXX" in error for error in minutes_shape_errors(longer))
+        )
 
     def test_write_guards(self) -> None:
         with self.assertRaises(WriteGuardError):
