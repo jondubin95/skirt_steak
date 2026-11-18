@@ -279,6 +279,10 @@ def validate_write_guards(
 
 
 _SPEAKING_VERBS = (
+    "added",
+    "adds",
+    "agreed",
+    "agrees",
     "announced",
     "announces",
     "answered",
@@ -287,6 +291,8 @@ _SPEAKING_VERBS = (
     "asks",
     "commented",
     "comments",
+    "confirmed",
+    "confirms",
     "described",
     "describes",
     "explained",
@@ -297,6 +303,8 @@ _SPEAKING_VERBS = (
     "moves",
     "noted",
     "notes",
+    "offered",
+    "offers",
     "presented",
     "presents",
     "presenting",
@@ -313,15 +321,21 @@ _SPEAKING_VERBS = (
     "seconded",
     "seconding",
     "seconds",
+    "shared",
+    "shares",
     "stated",
     "states",
     "suggested",
     "suggests",
+    "thanked",
+    "thanks",
     "told",
     "tells",
 )
 _SPEAKING_VERB = re.compile(
-    r"\s*\.?\s+(?:" + "|".join(sorted(_SPEAKING_VERBS, key=len, reverse=True)) + r")\b",
+    r"(?:\s*\.?\s+|,\s+who\s+)(?:"
+    + "|".join(sorted(_SPEAKING_VERBS, key=len, reverse=True))
+    + r")\b",
     re.IGNORECASE,
 )
 _PRESENTED_BY = re.compile(r"(?i)\bpresented\s+by\s+$")
@@ -331,10 +345,15 @@ _NAME_CONTINUATION = re.compile(r"\s+(?:Jr\.?|Sr\.?|III|II|IV|V|[A-Z][A-Za-z'.-]
 _ABSENCE_CATEGORIES = frozenset(
     {"not in attendance", "absent", "not present", "regrets"}
 )
+_ABSENCE_TRAILING_PUNCTUATION = ".:;,–—-"
+# A name character is a letter (including non-ASCII), a digit, or a hyphen.
+# "Ann" is not the end of "Jo-Ann" or "key2Ann" or "JoséAnn".
+_NAME_CHAR = r"(?:[^\W_]|-)"
+_POSSESSIVE_MARK = frozenset({"'", "\u2019"})
 
 
 def _absence_category(category: str) -> str:
-    return category.strip().rstrip(":").strip().casefold()
+    return category.strip().rstrip(_ABSENCE_TRAILING_PUNCTUATION).strip().casefold()
 
 
 def _absent_names(document: MinutesDocument) -> tuple[str, ...]:
@@ -349,7 +368,9 @@ def _absent_names(document: MinutesDocument) -> tuple[str, ...]:
 
 
 def _name_spans(name: str, text: str) -> list[tuple[int, int]]:
-    pattern = re.compile(rf"(?i)(?<![A-Za-z]){re.escape(name)}(?![A-Za-z])")
+    pattern = re.compile(
+        rf"(?i)(?<!{_NAME_CHAR}){re.escape(name)}(?!{_NAME_CHAR})"
+    )
     return [(match.start(), match.end()) for match in pattern.finditer(text)]
 
 
@@ -357,10 +378,15 @@ def _speaking_credit(name: str, text: str) -> bool:
     """True when `name` itself speaks, presents, moves, or seconds.
 
     The name must be a whole word, and it must not be the prefix of a longer
-    name. "Ann" does not match "Joann". "Alex" does not match "Alex Rivera Jr."
+    name. "Ann" does not match "Joann", "Jo-Ann", or "key2Ann". "Alex" does
+    not match "Alex Rivera Jr." A possessive ("Taylor Morgan's") is a mention.
+    A comma credits the name only in ", who <verb>". "Taylor Morgan, the
+    treasurer, said" is discussion.
     """
     for start, end in _name_spans(name, text):
         if _NAME_CONTINUATION.match(text, end):
+            continue
+        if end < len(text) and text[end] in _POSSESSIVE_MARK:
             continue
         if _PRESENTED_BY.search(text[:start]):
             return True
@@ -373,9 +399,9 @@ def absent_speaker_conflicts(document: MinutesDocument) -> tuple[str, ...]:
     """Names marked absent who are credited with a speaking part.
 
     Absence labels are "Not in attendance", "Absent", "Not present", and
-    "Regrets". A mention that does not use a speaking, presenting, moving,
-    or seconding verb, and is not "Presented by", is discussion, and it is
-    allowed.
+    "Regrets", ignoring trailing punctuation such as "." or "-". A mention
+    that does not use a speaking, presenting, moving, or seconding verb, and
+    is not "Presented by", is discussion, and it is allowed.
     """
     texts: list[str] = []
     for item in document.items:
