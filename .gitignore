@@ -20,6 +20,8 @@ env/
 
 # Local read-only Docs MCP. Do not commit the server launch config.
 .cursor/mcp.json
+.cursor/mcp.json.bak
+.cursor/mcp.json.bak-*
 
 # Nested local repo
 python/Project/Gem_Factory/gem-factory/

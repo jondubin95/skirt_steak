@@ -41,7 +41,7 @@ Stdout is a short summary (title, tab, request counts, URL). It does not print t
 
 ## Local read-only MCP
 
-Do not commit an `mcp.json` that starts this server. From the repo root, run `python python/msjc_board_secretary/setup_local_mcp.py`. That writes `.cursor/mcp.json` with the absolute path of `docs_mcp.py` and leaves the file untracked. Enable the server in Cursor if it shows up disabled. The server uses the same Sensitive credential paths.
+Do not commit an `mcp.json` that starts this server. From the repo root, run `python python/msjc_board_secretary/setup_local_mcp.py`. That writes `.cursor/mcp.json` with this interpreter and the absolute path of `docs_mcp.py`, and leaves the file untracked. If the file already exists, the script refuses to overwrite it. Pass `--replace` to overwrite; it copies the current file to `.cursor/mcp.json.bak` first and says where that copy is. Enable the server in Cursor if it shows up disabled. The server uses the same Sensitive credential paths.
 
 Skills under `.cursor/skills/` are discovered when this repo is the Cursor workspace root.
 
