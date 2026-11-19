@@ -7,7 +7,7 @@ import json
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -17,6 +17,68 @@ from msjc_board_secretary.schema import WriteGuardError, load_minutes_document  
 from msjc_board_secretary import write_tab  # noqa: E402
 
 SAMPLE = Path(__file__).resolve().parents[1] / "sample_minutes.json"
+DOCUMENT_TITLE = "April 2026 Board Meeting Minutes 20260412"
+
+
+def write_argv(path: Path, *extra: str) -> list[str]:
+    return [
+        "--input",
+        str(path),
+        "--write",
+        "--document-id",
+        "doc",
+        "--expected-document-title",
+        DOCUMENT_TITLE,
+        "--input-tab",
+        "Notes",
+        "--output-tab",
+        "Test",
+        *extra,
+    ]
+
+
+def write_minutes(client, document, **overrides):
+    values = {
+        "document_id": "doc",
+        "expected_title": DOCUMENT_TITLE,
+        "input_tab": "Notes",
+        "output_tab": "Test",
+    }
+    values.update(overrides)
+    return write_tab.perform_write(client, document, **values)
+
+
+def replace_on_tab(client, phrase, **overrides):
+    values = {
+        "document_id": "doc",
+        "expected_title": DOCUMENT_TITLE,
+        "output_tab": "Test",
+        "find_text": phrase,
+        "replacement": "the 2026 balance is year to date",
+    }
+    values.update(overrides)
+    return write_tab.perform_replace(client, **values)
+
+
+@contextmanager
+def block_credentials(on_call=None):
+    called = {"creds": 0}
+
+    def boom(*args, **kwargs):
+        called["creds"] += 1
+        if on_call is not None:
+            return on_call(*args, **kwargs)
+        raise AssertionError("credentials constructed")
+
+    original_creds = write_tab.load_credentials
+    original_build = write_tab.build_docs_service
+    write_tab.load_credentials = boom
+    write_tab.build_docs_service = boom
+    try:
+        yield called
+    finally:
+        write_tab.load_credentials = original_creds
+        write_tab.build_docs_service = original_build
 
 
 class FakeDocs:
@@ -61,7 +123,7 @@ def _content_for(document) -> list[dict]:
     return content
 
 
-def _doc(title: str = "April 2026 Board Meeting Minutes 20260412", document=None) -> dict:
+def _doc(title: str = DOCUMENT_TITLE, document=None) -> dict:
     notes = {
         "tabProperties": {"title": "Notes", "tabId": "tab-notes"},
         "documentTab": {
@@ -98,14 +160,7 @@ def _phrase_doc(phrase: str, *, copies_on_output: int = 1) -> dict:
 
 class WriteGuardTests(unittest.TestCase):
     def test_dry_run_does_not_construct_credentials(self) -> None:
-        def boom(*_args, **_kwargs):
-            raise AssertionError("credentials or service constructed")
-
-        original_creds = write_tab.load_credentials
-        original_build = write_tab.build_docs_service
-        write_tab.load_credentials = boom
-        write_tab.build_docs_service = boom
-        try:
+        with block_credentials():
             buf = io.StringIO()
             with redirect_stdout(buf):
                 code = write_tab.main(["--input", str(SAMPLE)])
@@ -113,47 +168,99 @@ class WriteGuardTests(unittest.TestCase):
             payload = json.loads(buf.getvalue())
             self.assertEqual(payload["mode"], "dry-run")
             self.assertGreater(payload["pass1Requests"], 0)
-        finally:
-            write_tab.load_credentials = original_creds
-            write_tab.build_docs_service = original_build
+
+    def test_absent_speaker_refuses_write_before_credentials(self) -> None:
+        raw = json.loads(SAMPLE.read_text(encoding="utf-8"))
+        raw["items"].append(
+            {"kind": "bullet", "level": 1, "text": "Taylor Morgan said the hall is open."}
+        )
+        with block_credentials() as called:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "minutes.json"
+                path.write_text(json.dumps(raw), encoding="utf-8")
+                with self.assertRaises(SystemExit) as caught:
+                    write_tab.main(write_argv(path))
+            self.assertIn("Taylor Morgan", str(caught.exception))
+            self.assertEqual(called["creds"], 0)
+
+    def test_shape_refuses_before_credentials(self) -> None:
+        raw = json.loads(SAMPLE.read_text(encoding="utf-8"))
+        presenter = next(item for item in raw["items"] if item["kind"] == "presenter")
+        presenter["text"] = "Presented by Alex Rivera"
+        with block_credentials() as called:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "minutes.json"
+                path.write_text(json.dumps(raw), encoding="utf-8")
+                with self.assertRaises(SystemExit) as caught:
+                    write_tab.main(["--input", str(path)])
+            self.assertIn("presenter must be", str(caught.exception))
+            self.assertEqual(called["creds"], 0)
 
     def test_repo_json_refuses_write_before_credentials(self) -> None:
-        called = {"creds": 0}
-
-        def boom(*_args, **_kwargs):
-            called["creds"] += 1
-            raise AssertionError("credentials constructed")
-
-        original = write_tab.load_credentials
-        write_tab.load_credentials = boom
-        try:
+        with block_credentials() as called:
             with self.assertRaises(SystemExit):
-                write_tab.main(
-                    [
-                        "--input",
-                        str(SAMPLE),
-                        "--write",
-                        "--document-id", "doc",
-                        "--expected-document-title", "April 2026 Board Meeting Minutes 20260412",
-                        "--input-tab", "Notes",
-                        "--output-tab", "Test",
-                    ]
-                )
+                write_tab.main(write_argv(SAMPLE))
             self.assertEqual(called["creds"], 0)
-        finally:
-            write_tab.load_credentials = original
+
+    def _run_replace(self, replacement: str) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "replace.json"
+            path.write_text(
+                json.dumps({"find": "hall rental", "replaceWith": replacement}),
+                encoding="utf-8",
+            )
+            write_tab.main(
+                [
+                    "--replace",
+                    str(path),
+                    "--write",
+                    "--document-id",
+                    "doc",
+                    "--expected-document-title",
+                    DOCUMENT_TITLE,
+                    "--output-tab",
+                    "Test",
+                ]
+            )
+
+    def test_replace_phrase_refuses_before_credentials(self) -> None:
+        with block_credentials() as called:
+            for replacement, needle in (
+                ("the mover is ___", "placeholder ___"),
+                ("XXX seconds", "placeholder XXX"),
+                ("xxx seconds", "placeholder XXX"),
+                ("### II. Accept Minutes", "markdown"),
+                ("II) Budget", "Roman numeral"),
+            ):
+                with self.assertRaises(SystemExit) as caught:
+                    self._run_replace(replacement)
+                self.assertIn(needle, str(caught.exception))
+                self.assertIn("refusing the replacement", str(caught.exception))
+            self.assertEqual(called["creds"], 0)
+
+    def test_clean_replace_reaches_credentials(self) -> None:
+        def reached(*_args, **_kwargs):
+            raise SystemExit("credentials reached")
+
+        with block_credentials(reached) as called:
+            for replacement in (
+                "the hall rental is confirmed",
+                "D'var Torah",
+                "2027 Membership Pricing",
+                "Item #4",
+                "See II. above",
+                "Presented by D. Schwartz",
+                "Update from M. Rivera",
+            ):
+                with self.assertRaises(SystemExit) as caught:
+                    self._run_replace(replacement)
+                self.assertEqual(str(caught.exception), "credentials reached")
+            self.assertEqual(called["creds"], 7)
 
     def test_replace_one_match_is_limited_to_the_output_tab(self) -> None:
         phrase = "2026 is year to date"
         fake = FakeDocs(_phrase_doc(phrase))
-        summary = write_tab.perform_replace(
-            fake,
-            document_id="doc",
-            expected_title="April 2026 Board Meeting Minutes 20260412",
-            output_tab="Test",
-            find_text=phrase,
-            replacement="the 2026 balance is year to date",
-        )
+        summary = replace_on_tab(fake, phrase)
         self.assertEqual(summary["matches"], 1)
         self.assertEqual(len(fake.updates), 1)
         request = fake.updates[0]["requests"][0]["replaceAllText"]
@@ -166,14 +273,7 @@ class WriteGuardTests(unittest.TestCase):
         for copies in (0, 2):
             fake = FakeDocs(_phrase_doc(phrase, copies_on_output=copies))
             with self.assertRaises(WriteGuardError):
-                write_tab.perform_replace(
-                    fake,
-                    document_id="doc",
-                    expected_title="April 2026 Board Meeting Minutes 20260412",
-                    output_tab="Test",
-                    find_text=phrase,
-                    replacement="the 2026 balance is year to date",
-                )
+                replace_on_tab(fake, phrase)
             self.assertEqual(fake.updates, [])
 
     def test_same_tab_and_wrong_title_do_not_mutate(self) -> None:
@@ -181,26 +281,12 @@ class WriteGuardTests(unittest.TestCase):
         same = FakeDocs(_doc(document=document))
         same.doc["tabs"][1]["tabProperties"]["tabId"] = "tab-notes"
         with self.assertRaises(WriteGuardError):
-            write_tab.perform_write(
-                same,
-                document,
-                document_id="doc",
-                expected_title="April 2026 Board Meeting Minutes 20260412",
-                input_tab="Notes",
-                output_tab="Test",
-            )
+            write_minutes(same, document)
         self.assertEqual(same.updates, [])
 
         wrong = FakeDocs(_doc("Other title", document))
         with self.assertRaises(WriteGuardError):
-            write_tab.perform_write(
-                wrong,
-                document,
-                document_id="doc",
-                expected_title="April 2026 Board Meeting Minutes 20260412",
-                input_tab="Notes",
-                output_tab="Test",
-            )
+            write_minutes(wrong, document)
         self.assertEqual(wrong.updates, [])
 
     def test_missing_revision_aborts_before_mutation(self) -> None:
@@ -208,27 +294,13 @@ class WriteGuardTests(unittest.TestCase):
         client = FakeDocs(_doc(document=document))
         client.doc["revisionId"] = ""
         with self.assertRaises(WriteGuardError):
-            write_tab.perform_write(
-                client,
-                document,
-                document_id="doc",
-                expected_title="April 2026 Board Meeting Minutes 20260412",
-                input_tab="Notes",
-                output_tab="Test",
-            )
+            write_minutes(client, document)
         self.assertEqual(client.updates, [])
 
     def test_each_batch_locks_the_prior_revision(self) -> None:
         document = load_minutes_document(json.loads(SAMPLE.read_text(encoding="utf-8")))
         client = FakeDocs(_doc(document=document))
-        summary = write_tab.perform_write(
-            client,
-            document,
-            document_id="doc",
-            expected_title="April 2026 Board Meeting Minutes 20260412",
-            input_tab="Notes",
-            output_tab="Test",
-        )
+        summary = write_minutes(client, document)
         self.assertGreaterEqual(len(client.updates), 1)
         self.assertEqual(client.updates[0]["writeControl"]["requiredRevisionId"], "rev-1")
         for previous, body in enumerate(client.updates):
@@ -242,14 +314,7 @@ class WriteGuardTests(unittest.TestCase):
         err = io.StringIO()
         with redirect_stderr(err):
             with self.assertRaises(RuntimeError):
-                write_tab.perform_write(
-                    client,
-                    document,
-                    document_id="doc",
-                    expected_title="April 2026 Board Meeting Minutes 20260412",
-                    input_tab="Notes",
-                    output_tab="Test",
-                )
+                write_minutes(client, document)
         self.assertIn("Pass 1 replaced the tab", err.getvalue())
         self.assertEqual(len(client.updates), 2)
 
@@ -259,6 +324,126 @@ class WriteGuardTests(unittest.TestCase):
             path.write_text(SAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
             self.assertTrue(write_tab.input_is_private(path))
         self.assertFalse(write_tab.input_is_private(SAMPLE))
+
+    def test_output_tab_must_match_exactly(self) -> None:
+        document = load_minutes_document(json.loads(SAMPLE.read_text(encoding="utf-8")))
+        client = FakeDocs(_doc(document=document))
+        with self.assertRaises(WriteGuardError) as caught:
+            write_minutes(client, document, output_tab="test")
+        self.assertIn("output tab", str(caught.exception))
+        self.assertEqual(client.updates, [])
+
+    def test_replace_refuses_an_inexact_output_tab(self) -> None:
+        phrase = "2026 is year to date"
+        fake = FakeDocs(_phrase_doc(phrase))
+        with self.assertRaises(WriteGuardError) as caught:
+            replace_on_tab(fake, phrase, output_tab="test")
+        self.assertIn("output tab", str(caught.exception))
+        self.assertEqual(fake.updates, [])
+
+    def test_unconfirmed_write_refuses_before_credentials(self) -> None:
+        original_stdin = sys.stdin
+        sys.stdin = io.StringIO("")
+        try:
+            with block_credentials() as called:
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "minutes.json"
+                    path.write_text(SAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+                    with self.assertRaises(SystemExit) as caught:
+                        write_tab.main(
+                            write_argv(
+                                path,
+                                "--confirmed-document-title",
+                                DOCUMENT_TITLE,
+                            )
+                        )
+                self.assertIn("output tab", str(caught.exception))
+                self.assertEqual(called["creds"], 0)
+        finally:
+            sys.stdin = original_stdin
+
+
+class InstructionTextTests(unittest.TestCase):
+    def test_sign_in_text_and_step_8_agree(self) -> None:
+        root = Path(__file__).resolve().parents[3]
+        package = Path(__file__).resolve().parents[1]
+        skill = (root / ".cursor/skills/msjc-board-secretary/SKILL.md").read_text(encoding="utf-8")
+        readme = (package / "README.md").read_text(encoding="utf-8")
+        reauth = (package / "reauth.py").read_text(encoding="utf-8")
+        step = skill.split("<!-- step-8 -->", 1)[1].split("<!-- step-9 -->", 1)[0]
+        self.assertIn("--replace` together with `--write`", step)
+        self.assertIn("pass 1 has replaced the tab", step)
+        self.assertNotIn("before Google accepts it", skill)
+        self.assertNotIn("browser", write_tab.REAUTH_MESSAGE.casefold())
+        self.assertIn("sign-in prompt where it is shown", write_tab.REAUTH_MESSAGE)
+        for text in (skill, readme, reauth):
+            folded = text.casefold()
+            self.assertNotIn("browser approval", folded)
+            self.assertNotIn("browser prompt", folded)
+            self.assertNotIn("browser sign-in", folded)
+
+
+class TtyStream(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+class ConfirmationTests(unittest.TestCase):
+    title = "April 2026 Board Meeting Minutes 20260412"
+
+    def test_document_title_alone_is_not_confirmation(self) -> None:
+        self.assertFalse(
+            write_tab.full_tab_replace_is_confirmed(
+                document_title=self.title,
+                output_tab="Minutes",
+                confirmed_document_title=self.title,
+                confirmed_output_tab="",
+            )
+        )
+        with self.assertRaises(WriteGuardError) as caught:
+            write_tab.require_full_tab_confirmation(
+                document_title=self.title,
+                output_tab="Minutes",
+                confirmed_document_title=self.title,
+                confirmed_output_tab="",
+                input_stream=io.StringIO(""),
+                output_stream=io.StringIO(),
+            )
+        message = str(caught.exception)
+        self.assertIn("document title", message)
+        self.assertIn("output tab", message)
+
+    def test_named_document_and_tab_skip_the_prompt(self) -> None:
+        write_tab.require_full_tab_confirmation(
+            document_title=self.title,
+            output_tab="Minutes",
+            confirmed_document_title=self.title,
+            confirmed_output_tab="Minutes",
+            input_stream=io.StringIO(""),
+            output_stream=io.StringIO(),
+        )
+
+    def test_tty_prompt_requires_both_titles(self) -> None:
+        prompt = io.StringIO()
+        write_tab.require_full_tab_confirmation(
+            document_title=self.title,
+            output_tab="Minutes",
+            confirmed_document_title="",
+            confirmed_output_tab="",
+            input_stream=TtyStream(f"{self.title}\tMinutes\n"),
+            output_stream=prompt,
+        )
+        self.assertIn(self.title, prompt.getvalue())
+        self.assertIn("Minutes", prompt.getvalue())
+        with self.assertRaises(WriteGuardError):
+            write_tab.require_full_tab_confirmation(
+                document_title=self.title,
+                output_tab="Minutes",
+                confirmed_document_title="",
+                confirmed_output_tab="",
+                input_stream=TtyStream(f"{self.title}\n"),
+                output_stream=io.StringIO(),
+            )
 
 
 if __name__ == "__main__":

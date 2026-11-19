@@ -16,8 +16,9 @@ from msjc_board_secretary.builder import (  # noqa: E402
     document_to_paragraphs,
     nesting_requests,
     requests_for_replace,
+    strip_spilled_bullets,
 )
-from msjc_board_secretary.schema import MinutesItem, load_minutes_document  # noqa: E402
+from msjc_board_secretary.schema import load_minutes_document  # noqa: E402
 
 SAMPLE = Path(__file__).resolve().parents[1] / "sample_minutes.json"
 
@@ -31,7 +32,7 @@ class BuilderTests(unittest.TestCase):
         paragraphs = document_to_paragraphs(_sample_doc())
         kinds = [p.kind for p in paragraphs]
         self.assertIn("h3", kinds)
-        self.assertEqual(kinds.count("blank"), 2)
+        self.assertEqual(kinds.count("blank"), 5)
         officers = next(p for p in paragraphs if p.text.startswith("Officers:"))
         bold = next(span for span in officers.spans if span.bold)
         self.assertEqual(bold.size, 12)
@@ -202,10 +203,32 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(style_range["endIndex"], 1 + docs_len("Executive session concluded"))
 
 
-class ItemShapeTests(unittest.TestCase):
-    def test_minutes_item_defaults(self) -> None:
-        item = MinutesItem(kind="paragraph", text="None.")
-        self.assertEqual(item.level, 0)
+def _bullet_tab(text: str) -> dict:
+    return {
+        "documentTab": {
+            "body": {
+                "content": [
+                    {
+                        "startIndex": 1,
+                        "endIndex": 2 + len(text),
+                        "paragraph": {
+                            "bullet": {"listId": "list-1"},
+                            "elements": [{"textRun": {"content": text}}],
+                        },
+                    }
+                ]
+            }
+        }
+    }
+
+
+class StripBulletTests(unittest.TestCase):
+    def test_empty_marker_is_matched_only_after_strip(self) -> None:
+        padded = strip_spilled_bullets("tab", _bullet_tab(" None.\n"))
+        self.assertEqual(len(padded), 1)
+        self.assertIn("deleteParagraphBullets", padded[0])
+        self.assertEqual(strip_spilled_bullets("tab", _bullet_tab("The vote was None.\n")), [])
+        self.assertEqual(strip_spilled_bullets("tab", _bullet_tab("None. The hall is booked.\n")), [])
 
 
 if __name__ == "__main__":

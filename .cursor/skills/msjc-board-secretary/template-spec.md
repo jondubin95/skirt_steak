@@ -11,7 +11,7 @@ Deterministic rules for the Board Secretary skill. The writer turns semantic JSO
   - Journal Dinner Updates (or the current event name)
   - Committee Items
 - The last three sections are always Old Business, New Business, and Adjournment, in that order. If one is empty, its body is `None.`
-- An unanticipated major section (for example a special presentation) is inserted where the notes place it. Numbering stays contiguous because the writer emits one uppercase-Roman list, not numerals typed into the heading.
+- An unanticipated major section (for example a special presentation) is inserted where the notes place it. Numbering stays contiguous because the writer emits one uppercase-Roman list. Do not type a Roman heading token such as `II.` or `II)` into the title. A year or other Arabic number that belongs in the title, such as `2027 Membership Pricing`, is title text, not a numbered heading.
 
 ## Render contract
 
@@ -76,7 +76,7 @@ One `motion` item. Do not invent a mover, seconder, or verdict.
 }
 ```
 
-Omit `verdict` when the notes do not record pass or fail. Replace a placeholder mover such as `XXX` with the mover named in the notes.
+Omit `verdict` when the notes do not record pass or fail. `fails` is only for a motion the notes record as voted down. Replace a placeholder mover such as `XXX` with the mover named in the notes.
 
 ## Names
 
@@ -115,7 +115,7 @@ Failure modes to avoid, described without a source document:
 
 | Failure | Required result |
 |---|---|
-| Heading text includes `###` or a typed Roman numeral | Title only, real `HEADING_3`, one contiguous uppercase-Roman list |
+| Heading text starts with `#` or includes a Roman token followed by `.` or `)` | Title only, real `HEADING_3`, one contiguous uppercase-Roman list |
 | A motion is a blockquote or an inline bold sentence | Plain underlined paragraph from the writer |
 | Presenter line is a heading | Italic normal paragraph under the section |
 | Bullet starts with a bold `Topic:` label | The topic is part of the sentence, or a level-0 label with no colon prefix |
