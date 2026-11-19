@@ -103,6 +103,26 @@ class SchemaTests(unittest.TestCase):
                 {"schemaVersion": 1, "items": [{"kind": "bullet", "text": "Hall", "level": 4}]}
             )
 
+    def test_schema_version_and_bullet_level_must_be_int(self) -> None:
+        paragraph = [{"kind": "paragraph", "text": "Hi"}]
+        for raw in (
+            '{"schemaVersion": true, "items": [{"kind": "paragraph", "text": "Hi"}]}',
+            '{"schemaVersion": 1.0, "items": [{"kind": "paragraph", "text": "Hi"}]}',
+            '{"schemaVersion": false, "items": [{"kind": "paragraph", "text": "Hi"}]}',
+        ):
+            with self.assertRaises(SchemaError):
+                load_minutes_document(json.loads(raw))
+        for raw in (
+            '{"schemaVersion": 1, "items": [{"kind": "bullet", "text": "Hall", "level": true}]}',
+            '{"schemaVersion": 1, "items": [{"kind": "bullet", "text": "Hall", "level": false}]}',
+            '{"schemaVersion": 1, "items": [{"kind": "bullet", "text": "Hall", "level": 1.0}]}',
+        ):
+            with self.assertRaises(SchemaError):
+                load_minutes_document(json.loads(raw))
+        loaded = load_minutes_document({"schemaVersion": 1, "items": paragraph})
+        self.assertEqual(loaded.schema_version, 1)
+        self.assertIs(type(loaded.schema_version), int)
+
     def test_italic_paragraph(self) -> None:
         doc = load_minutes_document(
             {
@@ -139,11 +159,24 @@ class SchemaTests(unittest.TestCase):
     def test_verdict_requires_a_seconder_or_a_recorded_vote(self) -> None:
         earned = (
             "Alex Rivera moves to raise dues. Jordan Hale seconds.",
+            "Jordan Hale seconds.",
             "Alex Rivera moves to raise dues. Jordan Hale seconded.",
             "Alex Rivera moves to raise dues. Voted down.",
+            "Voted down.",
+            "vote failed",
             "Alex Rivera moves to raise dues. The vote failed.",
             "Alex Rivera moves to raise dues. 3 yeas and 4 nays.",
             "Motion fails for lack of a second. Voted down, 1 yea to 6 nays.",
+            "No one seconded at first. Jordan Hale later seconds.",
+            "No second reading was required. Jordan Hale seconds.",
+            "There is no second location. Jordan Hale seconds.",
+            "Motion fails for lack of a second. Jordan Hale seconds.",
+            "Motion passes.",
+            "The motion passes.",
+            "The motion passed, 7-0.",
+            "Passed unanimously.",
+            "Motion fails.",
+            "The motion failed, 4-3.",
         )
         for body in earned:
             self.assertTrue(motion_verdict_is_earned(body), body)
@@ -168,6 +201,39 @@ class SchemaTests(unittest.TestCase):
             "Alex Rivera moves to raise dues. It failed without a second.",
             "Motion fails for lack of a second.",
             "Defeated for lack of a second.",
+            "The motion was not seconded.",
+            "Not seconded.",
+            "The motion wasn't seconded.",
+            "The motion wasn\u2019t seconded.",
+            "The motion hasn't been seconded.",
+            "The motion hasn\u2019t been seconded.",
+            "The motion was seconded by no one.",
+            "Seconded by nobody.",
+            "Jordan Hale seconds the motion. It was not seconded.",
+            "The motion failed to receive a second.",
+            "The motion failed to get a second.",
+            "Motion fails for lack of the second.",
+            "Motion fails for want of a second.",
+            "Defeated for want of a second.",
+            "not voted down",
+            "The motion was not voted down.",
+            "was not voted down",
+            "never voted down",
+            "The motion wasn't voted down.",
+            "The motion wasn\u2019t voted down.",
+            "not vote failed",
+            "The vote not failed.",
+            "not passed unanimously",
+            "The motion was not passed unanimously.",
+            "Jordan Hale seconds. We did not vote.",
+            "We did not vote on it. Jordan Hale seconds.",
+            "We didn't vote. Jordan Hale seconds.",
+            "We didn\u2019t vote. Jordan Hale seconds.",
+            "Jordan Hale seconds. No vote was taken.",
+            "Passed.",
+            "It passed.",
+            "It passed, 4 to 3.",
+            "It failed, 4 to 3.",
         )
         for body in bodies:
             self.assertFalse(motion_verdict_is_earned(body), body)
@@ -278,15 +344,53 @@ class SchemaTests(unittest.TestCase):
             ("Ann", "Jo-Ann said the hall is open."),
             ("Ann", "The key2Ann said the hall is open."),
             ("Ann", "JoséAnn said the hall is open."),
+            ("Ann", "Mary-Ann said the hall is open."),
             ("Alex", "Alex Rivera Jr. said the hall is open."),
             ("Alex", "Presented by Alex Rivera Jr."),
             ("Alex", "Alex Rivera said the hall is open."),
+            ("Ann", "Mary Ann said the hall is open."),
+            ("Lee", "Mary Lee said the hall is open."),
+            ("Ortiz", "Sam Ortiz said the hall is open."),
+            ("Brien", "O'Brien said the hall is open."),
+            ("Brien", "O\u2019Brien said the hall is open."),
+            ("Ann", "O'Ann said the hall is open."),
+            ("Rivera", "alex Rivera said the hall is open."),
+            ("Alex Rivera", "Presented by Alex Rivera, Jr."),
+            ("Alex Rivera", "Presented by Alex Rivera, Sr."),
+            ("Alex Rivera", "Presented by Alex Rivera, III"),
+            ("Alex Rivera", "Alex Rivera, Jr. said the hall is open."),
+            ("Alex Rivera", "Alex Rivera Jr. said the hall is open."),
+            ("Alex Rivera", "Presented by Alex Rivera Jr."),
         )
         for absent, text in cases:
             self.assertEqual(self._conflicts(text, absent=absent, category="Absent"), (), f"{absent} in {text}")
         self.assertEqual(
             self._conflicts("Ann said the hall is open.", absent="Ann", category="Absent"),
             ("Ann",),
+        )
+        self.assertEqual(
+            self._conflicts(
+                "Mary Ann said the hall is open.",
+                absent="Mary Ann",
+                category="Absent",
+            ),
+            ("Mary Ann",),
+        )
+        self.assertEqual(
+            self._conflicts(
+                "O'Brien said the hall is open.",
+                absent="O'Brien",
+                category="Absent",
+            ),
+            ("O'Brien",),
+        )
+        self.assertEqual(
+            self._conflicts(
+                "Presented by Alex Rivera.",
+                absent="Alex Rivera",
+                category="Absent",
+            ),
+            ("Alex Rivera",),
         )
 
     def test_full_absent_name_still_conflicts(self) -> None:
@@ -298,6 +402,26 @@ class SchemaTests(unittest.TestCase):
             )
         )
         self.assertEqual(absent_speaker_conflicts(doc), ("Alex Rivera Jr.",))
+
+    def test_notes_reports_and_moves_followed_by_was_or_were_are_nouns(self) -> None:
+        for text in (
+            "Taylor Morgan notes were distributed.",
+            "Taylor Morgan reports were late.",
+            "Taylor Morgan moves were recorded.",
+            "Taylor Morgan notes was the only copy.",
+            "Taylor Morgan reports was late.",
+            "Taylor Morgan moves was recorded.",
+        ):
+            self.assertEqual(self._conflicts(text), (), text)
+        for text in (
+            "Taylor Morgan noted the open invoice.",
+            "Taylor Morgan reported the boiler quote.",
+            "Taylor Morgan moved to table the quote.",
+            "Taylor Morgan notes the time.",
+            "Taylor Morgan reports the leak.",
+            "Taylor Morgan moves to adjourn.",
+        ):
+            self.assertEqual(self._conflicts(text), ("Taylor Morgan",), text)
 
     def test_who_clause_credits_an_absent_speaker(self) -> None:
         credited = load_minutes_document(
@@ -520,6 +644,26 @@ class SchemaTests(unittest.TestCase):
             padded_errors,
         )
         self.assertFalse(any("Adjournment" in error for error in padded_errors))
+        beside = load_minutes_document(
+            {
+                "schemaVersion": 1,
+                "items": [
+                    {"kind": "section", "title": "Old Business"},
+                    {"kind": "paragraph", "text": " None."},
+                    {"kind": "bullet", "level": 1, "text": "The boiler was discussed."},
+                    {"kind": "section", "title": "New Business"},
+                    {"kind": "paragraph", "text": "\u00a0None."},
+                    {"kind": "bullet", "level": 1, "text": "The hall is booked."},
+                    {"kind": "section", "title": "Adjournment"},
+                    {"kind": "paragraph", "text": "None."},
+                    {"kind": "paragraph", "text": " None."},
+                ],
+            }
+        )
+        beside_errors = minutes_shape_errors(beside)
+        self.assertIn("Old Business has None. alongside other text", beside_errors)
+        self.assertIn("New Business has None. alongside other text", beside_errors)
+        self.assertIn("Adjournment has None. alongside other text", beside_errors)
         sentence = load_minutes_document(
             {
                 "schemaVersion": 1,
@@ -553,9 +697,10 @@ class SchemaTests(unittest.TestCase):
             "Item #4",
             "None.",
             "See II. above",
+            " See II. above",
+            "\ufeffSee II. above",
             "Presented by D. Schwartz",
             "Update from M. Rivera",
-            " II. Accept Minutes",
             "See (II. above)",
         ):
             self.assertEqual(minutes_phrase_errors(allowed), (), allowed)
@@ -569,6 +714,15 @@ class SchemaTests(unittest.TestCase):
             ("D. Schwartz", "Roman numeral"),
             ("(II. Accept Minutes)", "Roman numeral"),
             ("[II. Budget]", "Roman numeral"),
+            (" II. Accept Minutes", "Roman numeral"),
+            ("\tII. Accept Minutes", "Roman numeral"),
+            ("\nII. Accept Minutes", "Roman numeral"),
+            (" (II. Accept Minutes)", "Roman numeral"),
+            ("\u00a0II. Accept Minutes", "Roman numeral"),
+            ("\u200bII. Accept Minutes", "Roman numeral"),
+            ("\u200b(II. Accept Minutes)", "Roman numeral"),
+            ("\ufeffII. Accept Minutes", "Roman numeral"),
+            ("\ufeff\u00a0II. Accept Minutes", "Roman numeral"),
         ):
             errors = minutes_phrase_errors(blocked)
             self.assertTrue(any(needle in error for error in errors), blocked)
