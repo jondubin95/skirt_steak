@@ -19,6 +19,11 @@ HEADING_TEXT_STYLE = {
 HEADING_TEXT_FIELDS = "bold,fontSize,weightedFontFamily,foregroundColor"
 BODY_TEXT_STYLE = {"weightedFontFamily": {"fontFamily": "Arial", "weight": 400}}
 BODY_TEXT_FIELDS = "weightedFontFamily"
+MOTION_PARAGRAPH_STYLE = {
+    "namedStyleType": "NORMAL_TEXT",
+    "spaceBelow": {"magnitude": 12, "unit": "PT"},
+    "indentEnd": {"magnitude": 30, "unit": "PT"},
+}
 VERDICT_TEXT = {"passes": "Motion Passes.", "fails": "Motion Fails."}
 
 
@@ -213,11 +218,7 @@ def requests_for_replace(
                 {
                     "updateParagraphStyle": {
                         "range": {"tabId": tab_id, "startIndex": start, "endIndex": end},
-                        "paragraphStyle": {
-                            "namedStyleType": "NORMAL_TEXT",
-                            "spaceBelow": {"magnitude": 12, "unit": "PT"},
-                            "indentEnd": {"magnitude": 30, "unit": "PT"},
-                        },
+                        "paragraphStyle": MOTION_PARAGRAPH_STYLE,
                         "fields": "namedStyleType,spaceBelow,indentEnd",
                     }
                 }
@@ -502,11 +503,7 @@ def strip_spilled_bullets(tab_id: str, tab: dict[str, Any]) -> list[dict[str, An
                 {
                     "updateParagraphStyle": {
                         "range": {"tabId": tab_id, "startIndex": start, "endIndex": end},
-                        "paragraphStyle": {
-                            "namedStyleType": "NORMAL_TEXT",
-                            "spaceBelow": {"magnitude": 12, "unit": "PT"},
-                            "indentEnd": {"magnitude": 30, "unit": "PT"},
-                        },
+                        "paragraphStyle": MOTION_PARAGRAPH_STYLE,
                         "fields": "namedStyleType,spaceBelow,indentEnd",
                     }
                 }
