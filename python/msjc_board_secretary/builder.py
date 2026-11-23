@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .schema import MinutesDocument, MinutesItem
+from .schema import MinutesDocument, MinutesItem, is_empty_section_paragraph
 
 HEADING_TEXT_STYLE = {
     "bold": True,
@@ -19,6 +19,11 @@ HEADING_TEXT_STYLE = {
 HEADING_TEXT_FIELDS = "bold,fontSize,weightedFontFamily,foregroundColor"
 BODY_TEXT_STYLE = {"weightedFontFamily": {"fontFamily": "Arial", "weight": 400}}
 BODY_TEXT_FIELDS = "weightedFontFamily"
+MOTION_PARAGRAPH_STYLE = {
+    "namedStyleType": "NORMAL_TEXT",
+    "spaceBelow": {"magnitude": 12, "unit": "PT"},
+    "indentEnd": {"magnitude": 30, "unit": "PT"},
+}
 VERDICT_TEXT = {"passes": "Motion Passes.", "fails": "Motion Fails."}
 
 
@@ -213,11 +218,7 @@ def requests_for_replace(
                 {
                     "updateParagraphStyle": {
                         "range": {"tabId": tab_id, "startIndex": start, "endIndex": end},
-                        "paragraphStyle": {
-                            "namedStyleType": "NORMAL_TEXT",
-                            "spaceBelow": {"magnitude": 12, "unit": "PT"},
-                            "indentEnd": {"magnitude": 30, "unit": "PT"},
-                        },
+                        "paragraphStyle": MOTION_PARAGRAPH_STYLE,
                         "fields": "namedStyleType,spaceBelow,indentEnd",
                     }
                 }
@@ -355,10 +356,7 @@ def paragraph_text(para_el: dict[str, Any]) -> str:
 
 
 def _para_text(el: dict[str, Any]) -> str:
-    para_el = el.get("paragraph") or {}
-    return "".join(
-        (e.get("textRun") or {}).get("content", "") for e in para_el.get("elements") or []
-    ).strip()
+    return paragraph_text(el.get("paragraph") or {}).strip()
 
 
 def nesting_requests(
@@ -488,7 +486,7 @@ def strip_spilled_bullets(tab_id: str, tab: dict[str, Any]) -> list[dict[str, An
         if style == "HEADING_3":
             continue
         is_motion = text.startswith("Motion:")
-        is_none = text == "None."
+        is_none = is_empty_section_paragraph(text)
         if not (is_motion or is_none):
             continue
         start = int(el["startIndex"])
@@ -505,11 +503,7 @@ def strip_spilled_bullets(tab_id: str, tab: dict[str, Any]) -> list[dict[str, An
                 {
                     "updateParagraphStyle": {
                         "range": {"tabId": tab_id, "startIndex": start, "endIndex": end},
-                        "paragraphStyle": {
-                            "namedStyleType": "NORMAL_TEXT",
-                            "spaceBelow": {"magnitude": 12, "unit": "PT"},
-                            "indentEnd": {"magnitude": 30, "unit": "PT"},
-                        },
+                        "paragraphStyle": MOTION_PARAGRAPH_STYLE,
                         "fields": "namedStyleType,spaceBelow,indentEnd",
                     }
                 }
