@@ -15,10 +15,18 @@
  * HOLD_LABEL_NAME on the thread opts that thread out. The draft is not
  * sent. Removing the label makes it eligible again. The clock is still
  * the draft's last save, not the moment the label came off.
+ * Install stores that label's id. A thread matches Hold when the label
+ * id is the stored one or the name is exactly HOLD_LABEL_NAME, so a
+ * rename, a nest, or a recase of the same label still holds. An older
+ * install with no stored id looks the label up by name once and stores it.
  *
  * SEND_FAILED_LABEL_NAME on the thread means a previous non-quota
- * failure. Those drafts are skipped so a one-minute trigger does not
- * send them again. Removing the label makes them eligible again.
+ * send() failure, or a draft this script refused to send again after
+ * a kill inside send(). The same id-or-exact-name match applies.
+ * Those drafts are skipped so a one-minute trigger does not send them
+ * again. The skip is logged once per draft, not on every run.
+ * Removing the label makes them eligible again. A read error before
+ * send(), and a daily computer-time limit, do not apply this label.
  *
  * LEGACY_SEND_LABEL_NAME ("Send in 5") is not an eligibility gate.
  * Older versions of this script required it. It is removed after a
@@ -32,11 +40,18 @@
  * A recipient-quota error and a Gmail read/write quota error leave the
  * draft eligible and stop the rest of the pass. Those throw at most
  * once per hour so a one-minute trigger does not fail on every run.
- * Any other send failure applies SEND_FAILED_LABEL_NAME when no other
+ * Any other send() failure is recorded by draft id and message id and
+ * is not sent again. SEND_FAILED_LABEL_NAME is applied when no other
  * draft on that thread is still waiting or held back by quota.
- * A draft with no To, Cc, or Bcc is that kind of failure: it is logged
- * and parked, and it does not stop the pass. Empty To with a Cc or
- * Bcc is sendable. Reply drafts are ordinary drafts; GmailDraft.send()
+ * If that message id changes, the record is cleared and the normal
+ * clock applies. Once Send failed is on the thread, that record is
+ * cleared, so removing the label makes the draft eligible again.
+ * A kill inside send() leaves an in-flight record. The next run does
+ * not send that same message again. It applies Send failed immediately,
+ * even when another draft on the thread is still waiting.
+ * A draft with no To, Cc, or Bcc is logged and parked without calling
+ * send(), and it does not stop the pass. Empty To with a Cc or Bcc is
+ * sendable. Reply drafts are ordinary drafts; GmailDraft.send()
  * keeps the thread.
  */
 
@@ -55,6 +70,14 @@ const LOCK_WAIT_MILLISECONDS = 0;
 // Timestamp of the last thrown persistent failure. Not a draft id.
 const PERSISTENT_FAILURE_LATCH_PROPERTY = "delayedSendPersistentFailureLatchedAt";
 const PERSISTENT_FAILURE_THROW_INTERVAL_MILLISECONDS = 60 * 60 * 1000;
+const HOLD_LABEL_ID_PROPERTY = "delayedSendHoldLabelId";
+const SEND_FAILED_LABEL_ID_PROPERTY = "delayedSendSendFailedLabelId";
+// Map of draft id to the message id that already failed send().
+const FAILED_SEND_BY_DRAFT_ID_PROPERTY = "delayedSendFailedSendByDraftId";
+// One {draftId, messageId, startedAt} written immediately before send().
+const IN_FLIGHT_SEND_PROPERTY = "delayedSendInFlightSend";
+// Draft ids already logged for a Send failed skip.
+const SEND_FAILED_SKIP_LOGGED_PROPERTY = "delayedSendSendFailedSkipLoggedDraftIds";
 const QUOTA_REMAINING_DRAFTS_LOG_MESSAGE =
   "Gmail quota reached. Remaining drafts stay for a later run.";
 const QUOTA_DRAFTS_LEFT_UNSENT_THROW_MESSAGE =
@@ -72,6 +95,8 @@ function installDelayedGmailSend() {
   assertDelayedSendConfigured_();
   const holdLabel = getOrCreateLabel_(HOLD_LABEL_NAME);
   const failedLabel = getOrCreateLabel_(SEND_FAILED_LABEL_NAME);
+  storeLabelId_(HOLD_LABEL_ID_PROPERTY, holdLabel);
+  storeLabelId_(SEND_FAILED_LABEL_ID_PROPERTY, failedLabel);
   const removedTriggerCount = deleteDelayedSendTriggers_();
   ScriptApp.newTrigger(sendDraftsAfterDelay.name)
     .timeBased()
@@ -147,6 +172,8 @@ function sendDraftsWithLockHeld_() {
 
   const eligibleDrafts = [];
   const threadLabelStateByThreadId = {};
+  const skippedSendFailedDraftIds = [];
+  const labelIds = rememberedLabelIds_();
   let eligibleCount = 0;
   let sentCount = 0;
   let waitingCount = 0;
@@ -159,7 +186,13 @@ function sendDraftsWithLockHeld_() {
     let draftId = "unavailable";
     try {
       draftId = draft.getId();
-      const snapshot = snapshotEligibleDraft_(draft, draftId, threadLabelStateByThreadId);
+      const snapshot = snapshotEligibleDraft_(
+        draft,
+        draftId,
+        threadLabelStateByThreadId,
+        labelIds,
+        skippedSendFailedDraftIds
+      );
       if (!snapshot) {
         continue;
       }
@@ -170,20 +203,12 @@ function sendDraftsWithLockHeld_() {
         Logger.log(DRAFT_DELETED_BEFORE_SEND_LOG_TEMPLATE, draftId);
         continue;
       }
-      failedCount++;
-      logDraftProblem_("Delayed send failed for one draft. id=%s error=%s", draftId, error);
+      logDraftProblem_("Delayed send will retry this draft. id=%s error=%s", draftId, error);
       if (isRetryLaterQuotaError_(error)) {
+        failedCount++;
         retryLaterQuotaReached = true;
         Logger.log(QUOTA_REMAINING_DRAFTS_LOG_MESSAGE);
         break;
-      }
-      const failedThread = markDraftSendFailed_(draft, draftId);
-      if (failedThread) {
-        removeLegacySendLabelFromThread_(
-          failedThread,
-          draftId,
-          "Send failed is applied, but removing the legacy label failed. id=%s error=%s"
-        );
       }
     }
   }
@@ -194,10 +219,19 @@ function sendDraftsWithLockHeld_() {
     }
     const snapshot = eligibleDrafts[eligibleIndex];
     try {
-      const result = sendDraftIfOldEnough_(snapshot, delayMilliseconds);
+      const result = sendDraftIfOldEnough_(
+        snapshot,
+        delayMilliseconds,
+        passStartedAtMilliseconds,
+        labelIds
+      );
       snapshot.outcome = result.outcome;
       snapshot.sentMessage = result.sentMessage || null;
-      if (result.outcome === "held" || result.outcome === "skipped") {
+      if (
+        result.outcome === "held" ||
+        result.outcome === "skipped" ||
+        result.outcome === "retry"
+      ) {
         continue;
       }
       eligibleCount++;
@@ -207,6 +241,8 @@ function sendDraftsWithLockHeld_() {
         waitingCount++;
       } else if (result.outcome === "canceled") {
         canceledCount++;
+      } else if (result.outcome === "failed") {
+        failedCount++;
       } else {
         throw new Error("Unexpected delayed-send outcome: " + result.outcome);
       }
@@ -221,21 +257,28 @@ function sendDraftsWithLockHeld_() {
       snapshot.outcome = "failed";
       eligibleCount++;
       failedCount++;
-      logDraftProblem_(
-        "Delayed send failed for one draft. id=%s error=%s",
-        snapshot.draftId,
-        error
-      );
       if (isRetryLaterQuotaError_(error)) {
         snapshot.outcome = "quota";
         retryLaterQuotaReached = true;
+        logDraftProblem_(
+          "Delayed send failed for one draft. id=%s error=%s",
+          snapshot.draftId,
+          error
+        );
         Logger.log(QUOTA_REMAINING_DRAFTS_LOG_MESSAGE);
         break;
       }
+      Logger.log(
+        "Delayed send failed for one draft. id=%s subject=%s error=%s",
+        snapshot.draftId,
+        subjectForLog_(snapshot),
+        formatError_(error)
+      );
     }
   }
 
   settleThreadLabels_(eligibleDrafts);
+  logSendFailedSkipsOnce_(skippedSendFailedDraftIds);
 
   if (eligibleCount === 0 && failedCount === 0 && canceledCount === 0) {
     clearPersistentFailureLatch_();
@@ -263,20 +306,27 @@ function finishRetryLaterQuota_(error) {
   throwPersistentFailureAtMostOncePerHour_(QUOTA_DRAFTS_LEFT_UNSENT_THROW_MESSAGE);
 }
 
-function snapshotEligibleDraft_(draft, draftId, threadLabelStateByThreadId) {
+function snapshotEligibleDraft_(
+  draft,
+  draftId,
+  threadLabelStateByThreadId,
+  labelIds,
+  skippedSendFailedDraftIds
+) {
   const message = draft.getMessage();
   const thread = message.getThread();
   const threadId = thread.getId();
   let labelState = threadLabelStateByThreadId[threadId];
   if (labelState === undefined) {
-    labelState = readThreadLabelState_(thread);
+    labelState = readThreadLabelState_(thread, labelIds);
     threadLabelStateByThreadId[threadId] = labelState;
   }
   if (labelState.sendFailed) {
+    skippedSendFailedDraftIds.push(draftId);
     return null;
   }
   if (labelState.hold) {
-    Logger.log("Holding draft. id=%s subject=%s", draftId, message.getSubject());
+    Logger.log("Holding draft. id=%s", draftId);
     return null;
   }
   return {
@@ -289,26 +339,42 @@ function snapshotEligibleDraft_(draft, draftId, threadLabelStateByThreadId) {
   };
 }
 
-function readThreadLabelState_(thread) {
+function readThreadLabelState_(thread, labelIds) {
   const labelsOnThread = thread.getLabels();
   const state = { hold: false, sendFailed: false };
+  const resolvedLabelIds = labelIds || { holdId: null, sendFailedId: null };
   for (let labelIndex = 0; labelIndex < labelsOnThread.length; labelIndex++) {
-    const name = labelsOnThread[labelIndex].getName();
-    if (name === HOLD_LABEL_NAME) {
+    const label = labelsOnThread[labelIndex];
+    const name = label.getName();
+    const labelId = label.getId();
+    if (name === HOLD_LABEL_NAME || (resolvedLabelIds.holdId && labelId === resolvedLabelIds.holdId)) {
       state.hold = true;
-    } else if (name === SEND_FAILED_LABEL_NAME) {
+    }
+    if (
+      name === SEND_FAILED_LABEL_NAME ||
+      (resolvedLabelIds.sendFailedId && labelId === resolvedLabelIds.sendFailedId)
+    ) {
       state.sendFailed = true;
     }
   }
   return state;
 }
 
-function sendDraftIfOldEnough_(snapshot, delayMilliseconds) {
+function sendDraftIfOldEnough_(snapshot, delayMilliseconds, passStartedAtMilliseconds, labelIds) {
   const draftId = snapshot.draftId;
   const listedMessage = snapshot.message;
+  const listedMessageId = listedMessage.getId();
+  const interruptedResult = handleInterruptedSend_(draftId, listedMessageId, passStartedAtMilliseconds);
+  if (interruptedResult) {
+    return interruptedResult;
+  }
+  const knownFailureResult = handleKnownFailedSend_(draftId, listedMessageId);
+  if (knownFailureResult) {
+    return knownFailureResult;
+  }
   const listedAgeMilliseconds = messageAgeMilliseconds_(listedMessage.getDate(), Date.now());
   if (!isOldEnoughToSend_(listedAgeMilliseconds, delayMilliseconds)) {
-    logWaitingDraft_(draftId, listedMessage.getSubject(), listedAgeMilliseconds, "listed");
+    logWaitingDraft_(draftId, listedAgeMilliseconds, "listed");
     return { outcome: "waiting" };
   }
 
@@ -323,10 +389,23 @@ function sendDraftIfOldEnough_(snapshot, delayMilliseconds) {
       Logger.log(DRAFT_DELETED_BEFORE_SEND_LOG_TEMPLATE, draftId);
       return { outcome: "canceled" };
     }
-    throw error;
+    if (isRetryLaterQuotaError_(error)) {
+      throw error;
+    }
+    logDraftProblem_("Delayed send will retry this draft. id=%s error=%s", draftId, error);
+    return { outcome: "retry" };
   }
   const freshMessage = freshDraft.getMessage();
-  const freshState = readThreadLabelState_(freshMessage.getThread());
+  let freshState;
+  try {
+    freshState = readThreadLabelState_(freshMessage.getThread(), labelIds);
+  } catch (error) {
+    if (isRetryLaterQuotaError_(error)) {
+      throw error;
+    }
+    logDraftProblem_("Delayed send will retry this draft. id=%s error=%s", draftId, error);
+    return { outcome: "retry" };
+  }
   if (freshState.hold) {
     Logger.log("Draft gained Hold before send. id=%s", draftId);
     return { outcome: "held" };
@@ -335,9 +414,14 @@ function sendDraftIfOldEnough_(snapshot, delayMilliseconds) {
     Logger.log("Draft gained Send failed before send. id=%s", draftId);
     return { outcome: "skipped" };
   }
+  const freshMessageId = freshDraft.getMessageId();
+  if (freshMessageId !== listedMessageId) {
+    clearFailedSendRecord_(draftId);
+    clearInFlightIfDraft_(draftId);
+  }
   const freshAgeMilliseconds = messageAgeMilliseconds_(freshMessage.getDate(), Date.now());
   if (!isOldEnoughToSend_(freshAgeMilliseconds, delayMilliseconds)) {
-    logWaitingDraft_(draftId, freshMessage.getSubject(), freshAgeMilliseconds, "recheck");
+    logWaitingDraft_(draftId, freshAgeMilliseconds, "recheck");
     return { outcome: "waiting" };
   }
   if (!draftHasRecipient_(freshMessage)) {
@@ -345,10 +429,24 @@ function sendDraftIfOldEnough_(snapshot, delayMilliseconds) {
   }
 
   const subject = freshMessage.getSubject();
-  const sentMessage = freshDraft.send();
+  snapshot.subject = subject;
+  writeInFlight_(draftId, freshMessageId);
+  let sentMessage;
+  try {
+    sentMessage = freshDraft.send();
+  } catch (error) {
+    if (!isRetryLaterQuotaError_(error)) {
+      recordFailedSend_(draftId, freshMessageId);
+    }
+    throw error;
+  } finally {
+    clearInFlight_();
+  }
   if (!sentMessage) {
+    recordFailedSend_(draftId, freshMessageId);
     throw new Error("GmailDraft.send() returned no message");
   }
+  clearFailedSendRecord_(draftId);
   Logger.log("Sent draft. id=%s subject=%s", draftId, subject);
   return { outcome: "sent", sentMessage: sentMessage };
 }
@@ -392,7 +490,8 @@ function settleOneThread_(eligibleDrafts, threadId) {
     threadHasOutcome_(records, "waiting") ||
     threadHasOutcome_(records, "pending") ||
     threadHasOutcome_(records, "quota") ||
-    threadHasOutcome_(records, "held");
+    threadHasOutcome_(records, "held") ||
+    threadHasOutcome_(records, "retry");
   let failedThread = null;
   if (threadHasOutcome_(records, "failed")) {
     if (stillOpen) {
@@ -404,6 +503,9 @@ function settleOneThread_(eligibleDrafts, threadId) {
     } else {
       const failedRecord = firstRecordWithOutcome_(records, "failed");
       failedThread = markDraftSendFailed_(failedRecord.draft, failedRecord.draftId);
+      if (failedThread) {
+        clearFailedSendRecordsFor_(records);
+      }
     }
   }
   if (stillOpen) {
@@ -421,6 +523,14 @@ function settleOneThread_(eligibleDrafts, threadId) {
       failedRecord.draftId,
       "Send failed is applied, but removing the legacy label failed. id=%s error=%s"
     );
+  }
+}
+
+function clearFailedSendRecordsFor_(records) {
+  for (let recordIndex = 0; recordIndex < records.length; recordIndex++) {
+    if (records[recordIndex].outcome === "failed") {
+      clearFailedSendRecord_(records[recordIndex].draftId);
+    }
   }
 }
 
@@ -608,12 +718,11 @@ function logDraftProblem_(template, draftId, error) {
   Logger.log(template, draftId, formatError_(error));
 }
 
-function logWaitingDraft_(draftId, subject, ageMilliseconds, stage) {
+function logWaitingDraft_(draftId, ageMilliseconds, stage) {
   Logger.log(
-    "Waiting to send draft. stage=%s id=%s subject=%s ageSeconds=%s",
+    "Waiting to send draft. stage=%s id=%s ageSeconds=%s",
     stage,
     draftId,
-    subject,
     Math.round(ageMilliseconds / 1000)
   );
 }
@@ -626,6 +735,8 @@ function logWaitingDraft_(draftId, subject, ageMilliseconds, stage) {
  * a short burst. Live failures also use "for one day: gmail".
  * "too many times: email" matches the documented daily form. It is not
  * a substring of the "for one day" or "in a short time" forms.
+ * "Service using too much computer time for one day." is the documented
+ * daily computer-time cap. That one retries too. It is not a send failure.
  */
 function isRetryLaterQuotaError_(error) {
   const parts = [];
@@ -641,7 +752,8 @@ function isRetryLaterQuotaError_(error) {
     text.indexOf("in a short time: email") !== -1 ||
     text.indexOf("in a short time: gmail") !== -1 ||
     text.indexOf("too many times: email") !== -1 ||
-    text.indexOf("too many times: gmail") !== -1
+    text.indexOf("too many times: gmail") !== -1 ||
+    text.indexOf("too much computer time") !== -1
   );
 }
 
@@ -701,6 +813,341 @@ function clearPersistentFailureLatch_() {
     properties.deleteProperty(PERSISTENT_FAILURE_LATCH_PROPERTY);
   } catch (error) {
     logPersistentFailureLatchProblem_("clear", error);
+  }
+}
+
+function storeLabelId_(propertyName, label) {
+  const labelId = label.getId();
+  if (typeof labelId !== "string" || labelId === "") {
+    throw new Error("Label has no id");
+  }
+  PropertiesService.getScriptProperties().setProperty(propertyName, labelId);
+}
+
+function rememberedLabelIds_() {
+  const labelIds = { holdId: null, sendFailedId: null };
+  let properties;
+  try {
+    properties = PropertiesService.getScriptProperties();
+    labelIds.holdId = properties.getProperty(HOLD_LABEL_ID_PROPERTY);
+    labelIds.sendFailedId = properties.getProperty(SEND_FAILED_LABEL_ID_PROPERTY);
+  } catch (error) {
+    Logger.log(
+      "Could not read stored label ids. Matching by name only. error=%s",
+      formatError_(error)
+    );
+    return labelIds;
+  }
+  if (!labelIds.holdId) {
+    labelIds.holdId = lookupAndStoreLabelId_(properties, HOLD_LABEL_NAME, HOLD_LABEL_ID_PROPERTY);
+  }
+  if (!labelIds.sendFailedId) {
+    labelIds.sendFailedId = lookupAndStoreLabelId_(
+      properties,
+      SEND_FAILED_LABEL_NAME,
+      SEND_FAILED_LABEL_ID_PROPERTY
+    );
+  }
+  return labelIds;
+}
+
+function lookupAndStoreLabelId_(properties, labelName, propertyName) {
+  try {
+    const label = GmailApp.getUserLabelByName(labelName);
+    if (!label) {
+      return null;
+    }
+    const labelId = label.getId();
+    if (typeof labelId !== "string" || labelId === "") {
+      return null;
+    }
+    try {
+      properties.setProperty(propertyName, labelId);
+    } catch (error) {
+      Logger.log("Could not store label id. label=%s error=%s", labelName, formatError_(error));
+    }
+    return labelId;
+  } catch (error) {
+    Logger.log(
+      "Could not look up label id. Matching by name only. label=%s error=%s",
+      labelName,
+      formatError_(error)
+    );
+    return null;
+  }
+}
+
+function handleInterruptedSend_(draftId, listedMessageId, passStartedAtMilliseconds) {
+  const inFlight = readInFlight_();
+  if (!inFlight || inFlight.draftId !== draftId) {
+    return null;
+  }
+  if (inFlight.messageId !== listedMessageId) {
+    clearInFlight_();
+    Logger.log("Cleared interrupted-send record after the draft changed. id=%s", draftId);
+    return null;
+  }
+  if (!(inFlight.startedAt < passStartedAtMilliseconds)) {
+    return null;
+  }
+  let freshDraft;
+  try {
+    freshDraft = GmailApp.getDraft(draftId);
+  } catch (error) {
+    if (isMissingDraftError_(error)) {
+      clearInFlight_();
+      Logger.log("possible interrupted send, check Sent. id=%s", draftId);
+      Logger.log(DRAFT_DELETED_BEFORE_SEND_LOG_TEMPLATE, draftId);
+      return { outcome: "canceled" };
+    }
+    if (isRetryLaterQuotaError_(error)) {
+      throw error;
+    }
+    logDraftProblem_("Delayed send will retry this draft. id=%s error=%s", draftId, error);
+    return { outcome: "retry" };
+  }
+  if (freshDraft.getMessageId() !== inFlight.messageId) {
+    clearInFlight_();
+    Logger.log("Cleared interrupted-send record after the draft changed. id=%s", draftId);
+    return null;
+  }
+  Logger.log("possible interrupted send, check Sent. id=%s", draftId);
+  const failedThread = markDraftSendFailed_(freshDraft, draftId);
+  if (failedThread) {
+    clearInFlight_();
+    clearFailedSendRecord_(draftId);
+    removeLegacySendLabelFromThread_(
+      failedThread,
+      draftId,
+      "Send failed is applied, but removing the legacy label failed. id=%s error=%s"
+    );
+  }
+  return { outcome: "skipped" };
+}
+
+function handleKnownFailedSend_(draftId, listedMessageId) {
+  const recordedMessageId = recordedFailedSendMessageId_(draftId);
+  if (!recordedMessageId) {
+    return null;
+  }
+  if (recordedMessageId !== listedMessageId) {
+    clearFailedSendRecord_(draftId);
+    Logger.log("Cleared failed-send record after the draft changed. id=%s", draftId);
+    return null;
+  }
+  let freshDraft;
+  try {
+    freshDraft = GmailApp.getDraft(draftId);
+  } catch (error) {
+    if (isMissingDraftError_(error)) {
+      clearFailedSendRecord_(draftId);
+      Logger.log(DRAFT_DELETED_BEFORE_SEND_LOG_TEMPLATE, draftId);
+      return { outcome: "canceled" };
+    }
+    if (isRetryLaterQuotaError_(error)) {
+      throw error;
+    }
+    logDraftProblem_("Delayed send will retry this draft. id=%s error=%s", draftId, error);
+    return { outcome: "retry" };
+  }
+  if (freshDraft.getMessageId() !== recordedMessageId) {
+    clearFailedSendRecord_(draftId);
+    Logger.log("Cleared failed-send record after the draft changed. id=%s", draftId);
+    return null;
+  }
+  Logger.log("Not sending again after a failed send. id=%s", draftId);
+  return { outcome: "failed" };
+}
+
+function clearInFlightIfDraft_(draftId) {
+  const inFlight = readInFlight_();
+  if (inFlight && inFlight.draftId === draftId) {
+    clearInFlight_();
+  }
+}
+
+function writeInFlight_(draftId, messageId) {
+  try {
+    PropertiesService.getScriptProperties().setProperty(
+      IN_FLIGHT_SEND_PROPERTY,
+      JSON.stringify({
+        draftId: draftId,
+        messageId: messageId,
+        startedAt: Date.now(),
+      })
+    );
+  } catch (error) {
+    Logger.log(
+      "Could not store the in-flight send record. id=%s error=%s",
+      draftId,
+      formatError_(error)
+    );
+  }
+}
+
+function clearInFlight_() {
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    if (properties.getProperty(IN_FLIGHT_SEND_PROPERTY) === null) {
+      return;
+    }
+    properties.deleteProperty(IN_FLIGHT_SEND_PROPERTY);
+  } catch (error) {
+    Logger.log("Could not clear the in-flight send record. error=%s", formatError_(error));
+  }
+}
+
+function readInFlight_() {
+  try {
+    const parsed = readStoredJson_(IN_FLIGHT_SEND_PROPERTY);
+    if (!parsed || typeof parsed.draftId !== "string" || typeof parsed.messageId !== "string") {
+      return null;
+    }
+    if (typeof parsed.startedAt !== "number" || !isFinite(parsed.startedAt)) {
+      return null;
+    }
+    return parsed;
+  } catch (error) {
+    Logger.log("Could not read the in-flight send record. error=%s", formatError_(error));
+    return null;
+  }
+}
+
+function recordedFailedSendMessageId_(draftId) {
+  try {
+    const failedSendsByDraftId = readFailedSendMap_();
+    if (!Object.prototype.hasOwnProperty.call(failedSendsByDraftId, draftId)) {
+      return null;
+    }
+    const messageId = failedSendsByDraftId[draftId];
+    if (typeof messageId !== "string" || messageId === "") {
+      return null;
+    }
+    return messageId;
+  } catch (error) {
+    Logger.log("Could not read the failed-send record. id=%s error=%s", draftId, formatError_(error));
+    return null;
+  }
+}
+
+function recordFailedSend_(draftId, messageId) {
+  try {
+    const failedSendsByDraftId = readFailedSendMap_();
+    failedSendsByDraftId[draftId] = messageId;
+    writeFailedSendMap_(failedSendsByDraftId);
+  } catch (error) {
+    Logger.log("Could not record the failed send. id=%s error=%s", draftId, formatError_(error));
+  }
+}
+
+function clearFailedSendRecord_(draftId) {
+  try {
+    const failedSendsByDraftId = readFailedSendMap_();
+    if (!Object.prototype.hasOwnProperty.call(failedSendsByDraftId, draftId)) {
+      return;
+    }
+    delete failedSendsByDraftId[draftId];
+    writeFailedSendMap_(failedSendsByDraftId);
+  } catch (error) {
+    Logger.log("Could not clear the failed-send record. id=%s error=%s", draftId, formatError_(error));
+  }
+}
+
+function readFailedSendMap_() {
+  const parsed = readStoredJson_(FAILED_SEND_BY_DRAFT_ID_PROPERTY);
+  if (!parsed || typeof parsed !== "object" || typeof parsed.length === "number") {
+    return {};
+  }
+  return parsed;
+}
+
+function writeFailedSendMap_(failedSendsByDraftId) {
+  const properties = PropertiesService.getScriptProperties();
+  if (!mapHasAnyKey_(failedSendsByDraftId)) {
+    if (properties.getProperty(FAILED_SEND_BY_DRAFT_ID_PROPERTY) !== null) {
+      properties.deleteProperty(FAILED_SEND_BY_DRAFT_ID_PROPERTY);
+    }
+    return;
+  }
+  properties.setProperty(FAILED_SEND_BY_DRAFT_ID_PROPERTY, JSON.stringify(failedSendsByDraftId));
+}
+
+function mapHasAnyKey_(map) {
+  for (const key in map) {
+    if (Object.prototype.hasOwnProperty.call(map, key)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function readStoredJson_(propertyName) {
+  const raw = PropertiesService.getScriptProperties().getProperty(propertyName);
+  if (raw === null || raw === "") {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    Logger.log("Could not parse script property %s. error=%s", propertyName, formatError_(error));
+    return null;
+  }
+}
+
+function logSendFailedSkipsOnce_(draftIds) {
+  if (draftIds.length === 0) {
+    return;
+  }
+  const currentIds = [];
+  const seen = {};
+  for (let index = 0; index < draftIds.length; index++) {
+    const draftId = draftIds[index];
+    if (seen[draftId]) {
+      continue;
+    }
+    seen[draftId] = true;
+    currentIds.push(draftId);
+  }
+  let stored = {};
+  let canRead = true;
+  try {
+    const parsed = readStoredJson_(SEND_FAILED_SKIP_LOGGED_PROPERTY);
+    if (parsed && typeof parsed.length === "number") {
+      for (let index = 0; index < parsed.length; index++) {
+        stored[parsed[index]] = true;
+      }
+    }
+  } catch (error) {
+    canRead = false;
+    Logger.log("Could not record the Send failed skip log. error=%s", formatError_(error));
+  }
+  for (let index = 0; index < currentIds.length; index++) {
+    if (!canRead || !stored[currentIds[index]]) {
+      Logger.log("Skipping draft on Send failed. id=%s", currentIds[index]);
+    }
+  }
+  if (!canRead) {
+    return;
+  }
+  try {
+    PropertiesService.getScriptProperties().setProperty(
+      SEND_FAILED_SKIP_LOGGED_PROPERTY,
+      JSON.stringify(currentIds)
+    );
+  } catch (error) {
+    Logger.log("Could not record the Send failed skip log. error=%s", formatError_(error));
+  }
+}
+
+// The send error is the failure to log. A subject read must not replace it.
+function subjectForLog_(snapshot) {
+  if (typeof snapshot.subject === "string") {
+    return snapshot.subject;
+  }
+  try {
+    return snapshot.message.getSubject();
+  } catch (error) {
+    return "";
   }
 }
 
