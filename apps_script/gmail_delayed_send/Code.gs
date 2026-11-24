@@ -18,18 +18,21 @@
  * rename, a nest, or a recase of the same label still holds. An older
  * install with no stored id looks the label up by name once and stores it.
  *
- * Once a pass has seen Hold, the script stores draft id to message id in
- * delayedSendHeldDrafts. The draft id stays across an edit. The message
- * id does not. Gmail API drafts.update replaces the message and the new
- * message carries no user labels, so a standalone draft loses Hold.
- * If Hold is gone and the message id changed, the edit dropped it: put
- * Hold back, remember the new message id, and skip. If Hold is gone and
- * the message id is the same, a person removed it: forget the held entry
- * and start the release clock. A Release label always wins over Hold.
+ * Once a pass has saved Hold, the script stores draft id to message id.
+ * The draft id stays across an edit. The message id does not. Gmail API
+ * drafts.update replaces the message and cannot set user labels, so a
+ * standalone draft loses Hold. An older message on the thread can still
+ * carry the label. If Hold is gone and the message id changed, the edit
+ * dropped it: put Hold back and skip. If Hold is gone and the message id
+ * is the same, that is not a release on one look. A fresh getDraft plus
+ * a fresh label read must agree, and the next pass must agree again,
+ * before the held entry is forgotten and the release clock starts.
+ * Release now, matched by its stored label id only, wins over Hold.
  * The draft sends only when the message is DELAY_MINUTES old and the
  * release clock is unset or also DELAY_MINUTES old. If putting Hold back
  * throws, keep the held entry and try again next pass. Do not mark that
- * Send failed. When the sticky state cannot be read, hold rather than send.
+ * Send failed. When the sticky state cannot be read or saved, hold
+ * rather than send, and throw at most once an hour.
  *
  * SEND_FAILED_LABEL_NAME on the thread means a previous non-quota
  * send() failure, or a draft this script refused to send again after
@@ -45,11 +48,13 @@
  * thread is still waiting or held back by a quota error. Leaving it
  * in place does not change who sends.
  *
- * A draft message cannot carry a user label. Hold, Release, and Send
- * failed are thread labels. Every draft on that thread shares them.
- * If any remembered draft on a thread changed message id while Hold is
- * gone, the other drafts on that thread stay held too. The label is
- * shared, so a removed label and an edit that stripped it look the same.
+ * Labels cannot be set on a draft through drafts.create or drafts.update.
+ * An older message can still carry Hold, Release now, or Send failed.
+ * GmailApp reports thread labels, the union of the message labels.
+ * Every draft on that thread shares that union. If any remembered draft
+ * on a thread changed message id while Hold is gone, the other drafts
+ * on that thread stay held too. A removed label and an edit that
+ * stripped it look the same until a second pass agrees.
  *
  * A recipient-quota error and a Gmail read/write quota error leave the
  * draft eligible and stop the rest of the pass. Those throw at most
@@ -71,7 +76,7 @@
 
 const DELAY_MINUTES = 5;
 const HOLD_LABEL_NAME = "Hold";
-const RELEASE_LABEL_NAME = "Release";
+const RELEASE_LABEL_NAME = "Release now";
 const SEND_FAILED_LABEL_NAME = "Send failed";
 const LEGACY_SEND_LABEL_NAME = "Send in 5";
 // ClockTriggerBuilder.everyMinutes allows only these values. 2 is rejected.
@@ -90,13 +95,37 @@ const RELEASE_LABEL_ID_PROPERTY = "delayedSendReleaseLabelId";
 const SEND_FAILED_LABEL_ID_PROPERTY = "delayedSendSendFailedLabelId";
 // Map of draft id to the message id last seen while the thread had Hold.
 const HELD_DRAFTS_PROPERTY = "delayedSendHeldDrafts";
-// Map of draft id to the epoch ms when Hold came off or Release was seen.
+// Map of draft id to the epoch ms when Hold came off or Release now was seen.
 const RELEASED_AT_PROPERTY = "delayedSendReleasedAt";
-// Script properties allow 9KB per value. Stay under that for these maps.
+// Map of draft id to the message id confirmed once as a manual Hold removal.
+const RELEASE_SEEN_ONCE_PROPERTY = "delayedSendReleaseSeenOnce";
+// Map of draft id to how many completed passes have not listed that draft.
+const STICKY_ABSENT_PASSES_PROPERTY = "delayedSendStickyAbsentPasses";
+// "1" while sticky state did not fit. Every draft stays held.
+const STICKY_OVERFLOW_PROPERTY = "delayedSendStickyOverflow";
+// Miss timestamps for Hold and Send failed name lookups. Not Release now.
+const LABEL_LOOKUP_COOLDOWN_PROPERTY = "delayedSendLabelLookupCooldown";
+// Script properties allow 9KB per value. Shards stay under that.
 const STICKY_PROPERTY_CHAR_CAP = 7000;
+// Whole script-property store is 500KB. Leave room for the other keys.
+const STICKY_TOTAL_CHAR_CAP = 200000;
+const STICKY_MAX_SHARDS = 40;
+const LABEL_LOOKUP_COOLDOWN_MILLISECONDS = 60 * 60 * 1000;
+const RELEASED_AT_PRUNE_MARGIN_MILLISECONDS = 60 * 1000;
+const STICKY_ABSENT_PASSES_BEFORE_PRUNE = 3;
 // Stored when Hold must be restored and this pass has no prior message id.
 // It matches no Gmail message id, so the next pass tries the restore again.
 const STICKY_HOLD_PENDING_MESSAGE_ID = "pending-hold-restore";
+const STICKY_UNREADABLE_MESSAGE =
+  "Could not read sticky Hold state. Holding every draft until fixed.";
+const STICKY_STORE_FAILED_MESSAGE =
+  "Could not store sticky Hold state. Holding every draft until fixed.";
+const STICKY_OVERFLOW_MESSAGE =
+  "Sticky Hold state does not fit in script properties. Holding every draft until fixed.";
+const RELEASE_STUCK_MESSAGE =
+  "Could not remove Release now. Holding that thread until the label can be removed.";
+const RESTORE_FAILED_MESSAGE =
+  "Could not re-apply Hold. Holding the draft and trying again.";
 // Map of draft id to the message id that already failed send().
 const FAILED_SEND_BY_DRAFT_ID_PROPERTY = "delayedSendFailedSendByDraftId";
 // One {draftId, messageId, startedAt} written immediately before send().
@@ -111,16 +140,31 @@ const DRAFT_DELETED_BEFORE_SEND_LOG_TEMPLATE = "Draft deleted before send. id=%s
 const LEGACY_DELAYED_SEND_HANDLER_NAME = "sendLabeledDraftsAfterDelay";
 
 /**
- * Creates the Hold, Release, and Send failed labels when missing and
+ * Creates the Hold, Release now, and Send failed labels when missing and
  * installs one time trigger. Running this again deletes duplicate
  * triggers for the current handler and for the older opt-in handler first.
+ * A stored label id is reused even when that label was renamed or nested.
+ * Release now is not adopted from a pre-existing label of the same name.
  * "Send in 5" is not created.
  */
 function installDelayedGmailSend() {
   assertDelayedSendConfigured_();
-  const holdLabel = getOrCreateLabel_(HOLD_LABEL_NAME);
-  const releaseLabel = getOrCreateLabel_(RELEASE_LABEL_NAME);
-  const failedLabel = getOrCreateLabel_(SEND_FAILED_LABEL_NAME);
+  const properties = PropertiesService.getScriptProperties();
+  const holdLabel = labelForInstall_(
+    properties.getProperty(HOLD_LABEL_ID_PROPERTY),
+    HOLD_LABEL_NAME,
+    false
+  );
+  const releaseLabel = labelForInstall_(
+    properties.getProperty(RELEASE_LABEL_ID_PROPERTY),
+    RELEASE_LABEL_NAME,
+    true
+  );
+  const failedLabel = labelForInstall_(
+    properties.getProperty(SEND_FAILED_LABEL_ID_PROPERTY),
+    SEND_FAILED_LABEL_NAME,
+    false
+  );
   storeLabelId_(HOLD_LABEL_ID_PROPERTY, holdLabel);
   storeLabelId_(RELEASE_LABEL_ID_PROPERTY, releaseLabel);
   storeLabelId_(SEND_FAILED_LABEL_ID_PROPERTY, failedLabel);
@@ -182,183 +226,309 @@ function sendLabeledDraftsAfterDelay() {
 function sendDraftsWithLockHeld_() {
   const passStartedAtMilliseconds = Date.now();
   const delayMilliseconds = delayMilliseconds_();
-  const sticky = readStickyHoldState_();
-
-  let drafts;
+  const passFlags = newPassFlags_();
+  let sticky = unreadableStickyHoldState_();
+  let failureMessage = null;
+  let clearLatch = false;
+  let drafts = [];
   try {
-    drafts = GmailApp.getDrafts();
-  } catch (error) {
-    if (isRetryLaterQuotaError_(error)) {
-      finishRetryLaterQuota_(error);
-      return;
-    }
-    throw error;
-  }
-  const liveDraftIds = liveDraftIdsFromList_(drafts);
-  if (drafts.length === 0) {
-    clearPersistentFailureLatch_();
-    finishStickyHoldPass_(sticky, liveDraftIds);
-    return;
-  }
-
-  const eligibleDrafts = [];
-  const draftViews = [];
-  const threadLabelStateByThreadId = {};
-  const skippedSendFailedDraftIds = [];
-  const labelIds = rememberedLabelIds_();
-  let eligibleCount = 0;
-  let sentCount = 0;
-  let waitingCount = 0;
-  let failedCount = 0;
-  let canceledCount = 0;
-  let retryLaterQuotaReached = false;
-
-  for (let draftIndex = 0; draftIndex < drafts.length; draftIndex++) {
-    const draft = drafts[draftIndex];
-    let draftId = "unavailable";
+    let snapshot = null;
     try {
-      draftId = draft.getId();
-      draftViews.push(
-        readDraftView_(draft, draftId, threadLabelStateByThreadId, labelIds)
-      );
+      snapshot = PropertiesService.getScriptProperties().getProperties();
     } catch (error) {
-      if (isMissingDraftError_(error)) {
-        if (draftId !== "unavailable") {
-          clearStickyDraft_(sticky, draftId);
-        }
-        canceledCount++;
-        Logger.log(DRAFT_DELETED_BEFORE_SEND_LOG_TEMPLATE, draftId);
-        continue;
-      }
-      logDraftProblem_("Delayed send will retry this draft. id=%s error=%s", draftId, error);
-      if (isRetryLaterQuotaError_(error)) {
-        failedCount++;
-        retryLaterQuotaReached = true;
-        Logger.log(QUOTA_REMAINING_DRAFTS_LOG_MESSAGE);
-        break;
-      }
-    }
-  }
-
-  applyStickyHoldForPass_(draftViews, sticky, labelIds, passStartedAtMilliseconds);
-
-  for (let viewIndex = 0; viewIndex < draftViews.length; viewIndex++) {
-    const view = draftViews[viewIndex];
-    if (view.labelState.sendFailed) {
-      skippedSendFailedDraftIds.push(view.draftId);
-      continue;
-    }
-    if (view.decision === "hold") {
-      Logger.log("Holding draft. id=%s", view.draftId);
-      continue;
-    }
-    eligibleDrafts.push({
-      draft: view.draft,
-      draftId: view.draftId,
-      message: view.message,
-      threadId: view.threadId,
-      outcome: "pending",
-      sentMessage: null,
-    });
-  }
-
-  for (let eligibleIndex = 0; eligibleIndex < eligibleDrafts.length; eligibleIndex++) {
-    if (retryLaterQuotaReached) {
-      break;
-    }
-    const snapshot = eligibleDrafts[eligibleIndex];
-    try {
-      const result = sendDraftIfOldEnough_(
-        snapshot,
-        delayMilliseconds,
-        passStartedAtMilliseconds,
-        labelIds,
-        sticky
-      );
-      snapshot.outcome = result.outcome;
-      snapshot.sentMessage = result.sentMessage || null;
-      if (result.outcome === "sent" || result.outcome === "canceled") {
-        clearStickyDraft_(sticky, snapshot.draftId);
-      }
-      if (
-        result.outcome === "held" ||
-        result.outcome === "skipped" ||
-        result.outcome === "retry"
-      ) {
-        continue;
-      }
-      eligibleCount++;
-      if (result.outcome === "sent") {
-        sentCount++;
-      } else if (result.outcome === "waiting") {
-        waitingCount++;
-      } else if (result.outcome === "canceled") {
-        canceledCount++;
-      } else if (result.outcome === "failed") {
-        failedCount++;
-      } else {
-        throw new Error("Unexpected delayed-send outcome: " + result.outcome);
-      }
-    } catch (error) {
-      if (isMissingDraftError_(error)) {
-        snapshot.outcome = "canceled";
-        clearStickyDraft_(sticky, snapshot.draftId);
-        eligibleCount++;
-        canceledCount++;
-        Logger.log(DRAFT_DELETED_BEFORE_SEND_LOG_TEMPLATE, snapshot.draftId);
-        continue;
-      }
-      snapshot.outcome = "failed";
-      eligibleCount++;
-      failedCount++;
-      if (isRetryLaterQuotaError_(error)) {
-        snapshot.outcome = "quota";
-        retryLaterQuotaReached = true;
-        logDraftProblem_(
-          "Delayed send failed for one draft. id=%s error=%s",
-          snapshot.draftId,
-          error
-        );
-        Logger.log(QUOTA_REMAINING_DRAFTS_LOG_MESSAGE);
-        break;
-      }
       Logger.log(
-        "Delayed send failed for one draft. id=%s subject=%s error=%s",
-        snapshot.draftId,
-        subjectForLog_(snapshot),
+        "Could not read sticky Hold state. Holding every draft this pass. error=%s",
         formatError_(error)
       );
+      failureMessage = STICKY_UNREADABLE_MESSAGE;
+      return;
+    }
+    sticky = readStickyHoldState_(snapshot, passStartedAtMilliseconds);
+    if (!sticky.readable) {
+      Logger.log("Could not read sticky Hold state. Holding every draft this pass.");
+      failureMessage = STICKY_UNREADABLE_MESSAGE;
+    }
+    try {
+      drafts = GmailApp.getDrafts();
+    } catch (error) {
+      if (isRetryLaterQuotaError_(error)) {
+        Logger.log(
+          "Gmail quota reached before any draft was sent. error=%s",
+          formatError_(error)
+        );
+        failureMessage = QUOTA_DRAFTS_LEFT_UNSENT_THROW_MESSAGE;
+        return;
+      }
+      throw error;
+    }
+    if (!sticky.readable) {
+      return;
+    }
+    if (drafts.length === 0) {
+      pruneStickyDrafts_(sticky, {}, true, passFlags);
+      clearLatch = !passFlags.quota;
+      if (passFlags.quota) {
+        failureMessage = QUOTA_DRAFTS_LEFT_UNSENT_THROW_MESSAGE;
+      }
+      return;
+    }
+    let labelIds;
+    try {
+      labelIds = rememberedLabelIds_(passStartedAtMilliseconds, snapshot);
+    } catch (error) {
+      if (isRetryLaterQuotaError_(error)) {
+        Logger.log(
+          "Gmail quota reached before any draft was sent. error=%s",
+          formatError_(error)
+        );
+        failureMessage = QUOTA_DRAFTS_LEFT_UNSENT_THROW_MESSAGE;
+        return;
+      }
+      throw error;
+    }
+    const eligibleDrafts = [];
+    const draftViews = [];
+    const threadLabelStateByThreadId = {};
+    const skippedSendFailedDraftIds = [];
+    const liveIds = {};
+    let eligibleCount = 0;
+    let sentCount = 0;
+    let waitingCount = 0;
+    let failedCount = 0;
+    let canceledCount = 0;
+    let scanComplete = true;
+    for (let draftIndex = 0; draftIndex < drafts.length; draftIndex++) {
+      const draft = drafts[draftIndex];
+      let draftId = "unavailable";
+      try {
+        draftId = draft.getId();
+        liveIds[draftId] = true;
+        draftViews.push(
+          readDraftView_(draft, draftId, threadLabelStateByThreadId, labelIds)
+        );
+      } catch (error) {
+        // A not-found error during an edit must not forget Hold. Pruning
+        // confirms a draft that is actually gone.
+        scanComplete = false;
+        logDraftProblem_("Delayed send will retry this draft. id=%s error=%s", draftId, error);
+        if (isRetryLaterQuotaError_(error)) {
+          failedCount++;
+          passFlags.quota = true;
+          Logger.log(QUOTA_REMAINING_DRAFTS_LOG_MESSAGE);
+          break;
+        }
+      }
+    }
+    passFlags.scanComplete = scanComplete;
+    const startedWithOverflowLatch = sticky.overflowLatch;
+    applyStickyHoldForPass_(
+      draftViews,
+      sticky,
+      labelIds,
+      passStartedAtMilliseconds,
+      passFlags
+    );
+    if (passFlags.scanComplete && !passFlags.quota) {
+      pruneStickyDrafts_(sticky, liveIds, true, passFlags);
+    }
+    const checkpoint = persistStickyHoldState_(
+      sticky,
+      passStartedAtMilliseconds,
+      delayMilliseconds
+    );
+    const blockSends =
+      !checkpoint.ok || startedWithOverflowLatch || passFlags.quota;
+    if (blockSends) {
+      forceHoldAllDraftViews_(draftViews);
+      passFlags.skipLabelWrites = true;
+    }
+    if (!checkpoint.ok) {
+      failureMessage = checkpoint.overflow
+        ? STICKY_OVERFLOW_MESSAGE
+        : STICKY_STORE_FAILED_MESSAGE;
+    } else if (passFlags.quota) {
+      failureMessage = QUOTA_DRAFTS_LEFT_UNSENT_THROW_MESSAGE;
+    } else if (startedWithOverflowLatch && sticky.overflowLatch) {
+      failureMessage = STICKY_OVERFLOW_MESSAGE;
+    }
+    if (!passFlags.skipLabelWrites) {
+      applyStickyLabelMutations_(draftViews, sticky, labelIds, passFlags);
+      if (passFlags.quota) {
+        failureMessage = QUOTA_DRAFTS_LEFT_UNSENT_THROW_MESSAGE;
+        passFlags.skipLabelWrites = true;
+      } else {
+        if (passFlags.releaseStuck) {
+          failureMessage = failureMessage || RELEASE_STUCK_MESSAGE;
+        }
+        if (passFlags.restoreFailed) {
+          failureMessage = failureMessage || RESTORE_FAILED_MESSAGE;
+        }
+      }
+    }
+    if (!passFlags.quota && checkpoint.ok && !startedWithOverflowLatch) {
+      for (let viewIndex = 0; viewIndex < draftViews.length; viewIndex++) {
+        const view = draftViews[viewIndex];
+        if (view.labelState.sendFailed && view.decision !== "release") {
+          skippedSendFailedDraftIds.push(view.draftId);
+          continue;
+        }
+        if (view.decision === "hold" || view.decision === "release-pending") {
+          Logger.log("Holding draft. id=%s", view.draftId);
+          continue;
+        }
+        eligibleDrafts.push({
+          draft: view.draft,
+          draftId: view.draftId,
+          message: view.message,
+          threadId: view.threadId,
+          outcome: "pending",
+          sentMessage: null,
+        });
+      }
+      for (let eligibleIndex = 0; eligibleIndex < eligibleDrafts.length; eligibleIndex++) {
+        if (passFlags.quota || passFlags.persistFailed) {
+          break;
+        }
+        const snapshot = eligibleDrafts[eligibleIndex];
+        try {
+          const result = sendDraftIfOldEnough_(
+            snapshot,
+            delayMilliseconds,
+            passStartedAtMilliseconds,
+            labelIds,
+            sticky,
+            passFlags,
+            draftViews
+          );
+          snapshot.outcome = result.outcome;
+          snapshot.sentMessage = result.sentMessage || null;
+          if (result.outcome === "sent") {
+            clearStickyDraft_(sticky, snapshot.draftId);
+          }
+          if (passFlags.persistFailed) {
+            failureMessage = failureMessage || STICKY_STORE_FAILED_MESSAGE;
+          }
+          if (passFlags.releaseStuck) {
+            failureMessage = failureMessage || RELEASE_STUCK_MESSAGE;
+          }
+          if (passFlags.quota) {
+            failureMessage = QUOTA_DRAFTS_LEFT_UNSENT_THROW_MESSAGE;
+            break;
+          }
+          if (
+            result.outcome === "held" ||
+            result.outcome === "skipped" ||
+            result.outcome === "retry"
+          ) {
+            continue;
+          }
+          eligibleCount++;
+          if (result.outcome === "sent") {
+            sentCount++;
+          } else if (result.outcome === "waiting") {
+            waitingCount++;
+          } else if (result.outcome === "canceled") {
+            canceledCount++;
+          } else if (result.outcome === "failed") {
+            failedCount++;
+          } else {
+            throw new Error("Unexpected delayed-send outcome: " + result.outcome);
+          }
+        } catch (error) {
+          if (isMissingDraftError_(error)) {
+            snapshot.outcome = "canceled";
+            eligibleCount++;
+            canceledCount++;
+            Logger.log(DRAFT_DELETED_BEFORE_SEND_LOG_TEMPLATE, snapshot.draftId);
+            continue;
+          }
+          snapshot.outcome = "failed";
+          eligibleCount++;
+          failedCount++;
+          if (isRetryLaterQuotaError_(error)) {
+            snapshot.outcome = "quota";
+            passFlags.quota = true;
+            failureMessage = QUOTA_DRAFTS_LEFT_UNSENT_THROW_MESSAGE;
+            logDraftProblem_(
+              "Delayed send failed for one draft. id=%s error=%s",
+              snapshot.draftId,
+              error
+            );
+            Logger.log(QUOTA_REMAINING_DRAFTS_LOG_MESSAGE);
+            break;
+          }
+          Logger.log(
+            "Delayed send failed for one draft. id=%s subject=%s error=%s",
+            snapshot.draftId,
+            subjectForLog_(snapshot),
+            formatError_(error)
+          );
+        }
+      }
+      settleThreadLabels_(eligibleDrafts);
+      logSendFailedSkipsOnce_(skippedSendFailedDraftIds);
+      if (
+        !failureMessage &&
+        (eligibleCount > 0 || failedCount > 0 || canceledCount > 0)
+      ) {
+        Logger.log(
+          "Delayed send pass finished. drafts=%s eligible=%s sent=%s waiting=%s failed=%s canceled=%s elapsedMs=%s",
+          drafts.length,
+          eligibleCount,
+          sentCount,
+          waitingCount,
+          failedCount,
+          canceledCount,
+          Date.now() - passStartedAtMilliseconds
+        );
+      }
+    }
+    if (!failureMessage) {
+      clearLatch = true;
+    }
+  } finally {
+    if (sticky.readable) {
+      const persisted = persistStickyHoldState_(
+        sticky,
+        passStartedAtMilliseconds,
+        delayMilliseconds
+      );
+      if (!persisted.ok) {
+        failureMessage = persisted.overflow
+          ? STICKY_OVERFLOW_MESSAGE
+          : failureMessage || STICKY_STORE_FAILED_MESSAGE;
+        if (!failureMessage) {
+          failureMessage = STICKY_STORE_FAILED_MESSAGE;
+        }
+        clearLatch = false;
+      }
+    }
+    if (failureMessage) {
+      throwPersistentFailureAtMostOncePerHour_(failureMessage);
+    } else if (clearLatch) {
+      clearPersistentFailureLatch_();
     }
   }
-
-  settleThreadLabels_(eligibleDrafts);
-  logSendFailedSkipsOnce_(skippedSendFailedDraftIds);
-  finishStickyHoldPass_(sticky, liveDraftIds);
-
-  if (eligibleCount === 0 && failedCount === 0 && canceledCount === 0) {
-    clearPersistentFailureLatch_();
-    return;
-  }
-  Logger.log(
-    "Delayed send pass finished. drafts=%s eligible=%s sent=%s waiting=%s failed=%s canceled=%s elapsedMs=%s",
-    drafts.length,
-    eligibleCount,
-    sentCount,
-    waitingCount,
-    failedCount,
-    canceledCount,
-    Date.now() - passStartedAtMilliseconds
-  );
-  if (retryLaterQuotaReached) {
-    throwPersistentFailureAtMostOncePerHour_(QUOTA_DRAFTS_LEFT_UNSENT_THROW_MESSAGE);
-    return;
-  }
-  clearPersistentFailureLatch_();
 }
 
-function finishRetryLaterQuota_(error) {
-  Logger.log("Gmail quota reached before any draft was sent. error=%s", formatError_(error));
-  throwPersistentFailureAtMostOncePerHour_(QUOTA_DRAFTS_LEFT_UNSENT_THROW_MESSAGE);
+function newPassFlags_() {
+  return {
+    scanComplete: true,
+    quota: false,
+    skipLabelWrites: false,
+    persistFailed: false,
+    restoreFailed: false,
+    releaseStuck: false,
+    userLabels: null,
+    userLabelsLoaded: false,
+  };
+}
+
+function forceHoldAllDraftViews_(views) {
+  for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
+    views[viewIndex].decision = "hold";
+    views[viewIndex].labelAction = null;
+  }
 }
 
 function readDraftView_(draft, draftId, threadLabelStateByThreadId, labelIds) {
@@ -390,21 +560,22 @@ function readThreadLabelState_(thread, labelIds) {
     const label = labelsOnThread[labelIndex];
     const name = label.getName();
     const labelId = label.getId();
-    if (labelMatches_(name, labelId, HOLD_LABEL_NAME, resolvedLabelIds.holdId)) {
+    if (labelMatches_(name, labelId, HOLD_LABEL_NAME, resolvedLabelIds.holdId, true)) {
       state.hold = true;
     }
-    if (labelMatches_(name, labelId, RELEASE_LABEL_NAME, resolvedLabelIds.releaseId)) {
+    // Release now matches the stored id only. A same-named user label does not.
+    if (labelMatches_(name, labelId, RELEASE_LABEL_NAME, resolvedLabelIds.releaseId, false)) {
       state.release = true;
     }
-    if (labelMatches_(name, labelId, SEND_FAILED_LABEL_NAME, resolvedLabelIds.sendFailedId)) {
+    if (labelMatches_(name, labelId, SEND_FAILED_LABEL_NAME, resolvedLabelIds.sendFailedId, true)) {
       state.sendFailed = true;
     }
   }
   return state;
 }
 
-function labelMatches_(name, labelId, expectedName, storedId) {
-  if (name === expectedName) {
+function labelMatches_(name, labelId, expectedName, storedId, matchByName) {
+  if (matchByName !== false && name === expectedName) {
     return true;
   }
   return Boolean(storedId) && labelId === storedId;
@@ -415,7 +586,9 @@ function sendDraftIfOldEnough_(
   delayMilliseconds,
   passStartedAtMilliseconds,
   labelIds,
-  sticky
+  sticky,
+  passFlags,
+  views
 ) {
   const draftId = snapshot.draftId;
   const listedMessage = snapshot.message;
@@ -454,13 +627,23 @@ function sendDraftIfOldEnough_(
     return { outcome: "waiting" };
   }
 
-  // Re-read before send so a save, Hold, Release, or Send failed during
+  // Re-read before send so a save, Hold, Release now, or Send failed during
   // this run still resets or cancels. GmailApp can serve a stale message
-  // from the earlier getDrafts() result. A sticky Hold entry also blocks
-  // the send when the fresh thread no longer shows Hold.
+  // from the earlier getDrafts() result. One getThread is reused below.
+  if (passFlags && (passFlags.persistFailed || passFlags.quota)) {
+    return { outcome: "held" };
+  }
   let freshDraft;
+  let freshMessage;
+  let freshMessageId;
+  let freshThread;
+  let freshState;
   try {
     freshDraft = GmailApp.getDraft(draftId);
+    freshMessage = freshDraft.getMessage();
+    freshMessageId = freshDraft.getMessageId();
+    freshThread = freshMessage.getThread();
+    freshState = readThreadLabelState_(freshThread, labelIds);
   } catch (error) {
     if (isMissingDraftError_(error)) {
       Logger.log(DRAFT_DELETED_BEFORE_SEND_LOG_TEMPLATE, draftId);
@@ -472,27 +655,14 @@ function sendDraftIfOldEnough_(
     logDraftProblem_("Delayed send will retry this draft. id=%s error=%s", draftId, error);
     return { outcome: "retry" };
   }
-  const freshMessage = freshDraft.getMessage();
-  let freshState;
-  try {
-    freshState = readThreadLabelState_(freshMessage.getThread(), labelIds);
-  } catch (error) {
-    if (isRetryLaterQuotaError_(error)) {
-      throw error;
-    }
-    logDraftProblem_("Delayed send will retry this draft. id=%s error=%s", draftId, error);
-    return { outcome: "retry" };
-  }
   if (freshState.sendFailed) {
     Logger.log("Draft gained Send failed before send. id=%s", draftId);
     return { outcome: "skipped" };
   }
-  const freshMessageId = freshDraft.getMessageId();
   if (freshMessageId !== listedMessageId) {
     clearFailedSendRecord_(draftId);
     clearInFlightIfDraft_(draftId);
   }
-  const freshThread = freshMessage.getThread();
   if (
     preSendStickySaysHold_(
       sticky,
@@ -501,7 +671,10 @@ function sendDraftIfOldEnough_(
       freshState,
       freshThread,
       labelIds,
-      passStartedAtMilliseconds
+      passStartedAtMilliseconds,
+      passFlags,
+      views,
+      delayMilliseconds
     )
   ) {
     return { outcome: "held" };
@@ -538,6 +711,54 @@ function sendDraftIfOldEnough_(
   const subject = freshMessage.getSubject();
   snapshot.subject = subject;
   writeInFlight_(draftId, freshMessageId);
+  let lastState;
+  try {
+    lastState = readThreadLabelState_(freshThread, labelIds);
+  } catch (error) {
+    clearInFlight_();
+    if (isRetryLaterQuotaError_(error)) {
+      throw error;
+    }
+    logDraftProblem_("Delayed send will retry this draft. id=%s error=%s", draftId, error);
+    return { outcome: "retry" };
+  }
+  if (lastState.sendFailed) {
+    clearInFlight_();
+    Logger.log("Draft gained Send failed before send. id=%s", draftId);
+    return { outcome: "skipped" };
+  }
+  if (lastState.hold || lastState.release) {
+    clearInFlight_();
+    if (
+      preSendStickySaysHold_(
+        sticky,
+        draftId,
+        freshMessageId,
+        lastState,
+        freshThread,
+        labelIds,
+        passStartedAtMilliseconds,
+        passFlags,
+        views,
+        delayMilliseconds
+      )
+    ) {
+      return { outcome: "held" };
+    }
+    const lastAgeMilliseconds = messageAgeMilliseconds_(freshMessage.getDate(), Date.now());
+    if (
+      !draftClocksAllowSend_(
+        sticky,
+        draftId,
+        lastAgeMilliseconds,
+        delayMilliseconds,
+        passStartedAtMilliseconds
+      )
+    ) {
+      logWaitingDraft_(draftId, lastAgeMilliseconds, "recheck");
+      return { outcome: "waiting" };
+    }
+  }
   let sentMessage;
   try {
     sentMessage = freshDraft.send();
@@ -667,6 +888,46 @@ function getOrCreateLabel_(labelName) {
   return GmailApp.createLabel(labelName);
 }
 
+function labelForInstall_(storedId, canonicalName, refuseExistingName) {
+  const existingStoredLabel = labelWithStoredId_(storedId);
+  if (existingStoredLabel) {
+    return existingStoredLabel;
+  }
+  if (refuseExistingName) {
+    return createLabelWithoutAdoptingExisting_(canonicalName);
+  }
+  return getOrCreateLabel_(canonicalName);
+}
+
+function labelWithStoredId_(storedId) {
+  if (typeof storedId !== "string" || storedId === "") {
+    return null;
+  }
+  const labels = GmailApp.getUserLabels();
+  for (let labelIndex = 0; labelIndex < labels.length; labelIndex++) {
+    if (labels[labelIndex].getId() === storedId) {
+      return labels[labelIndex];
+    }
+  }
+  return null;
+}
+
+function createLabelWithoutAdoptingExisting_(labelName) {
+  if (!GmailApp.getUserLabelByName(labelName)) {
+    return GmailApp.createLabel(labelName);
+  }
+  const alternateName = labelName + " (delayed send)";
+  if (GmailApp.getUserLabelByName(alternateName)) {
+    throw new Error(
+      "Refusing to adopt an existing " +
+        labelName +
+        " label. Rename that label and run install again."
+    );
+  }
+  Logger.log("Did not adopt existing label %s. Created %s.", labelName, alternateName);
+  return GmailApp.createLabel(alternateName);
+}
+
 /**
  * Applies Send failed. Returns the thread when the label is on the thread
  * after this call, including when it was already there. Returns null when
@@ -700,7 +961,16 @@ function markDraftSendFailed_(draft, draftId) {
 }
 
 function threadHasLabelName_(thread, labelName) {
-  const labelsOnThread = thread.getLabels();
+  let labelsOnThread;
+  try {
+    labelsOnThread = thread.getLabels();
+  } catch (error) {
+    if (isRetryLaterQuotaError_(error)) {
+      throw error;
+    }
+    Logger.log("Could not read labels. error=%s", formatError_(error));
+    return false;
+  }
   for (let labelIndex = 0; labelIndex < labelsOnThread.length; labelIndex++) {
     if (labelsOnThread[labelIndex].getName() === labelName) {
       return true;
@@ -932,45 +1202,82 @@ function storeLabelId_(propertyName, label) {
   PropertiesService.getScriptProperties().setProperty(propertyName, labelId);
 }
 
-function rememberedLabelIds_() {
+function rememberedLabelIds_(nowMilliseconds, snapshot) {
   const labelIds = { holdId: null, sendFailedId: null, releaseId: null };
+  const stored = snapshot || {};
+  labelIds.holdId = stored[HOLD_LABEL_ID_PROPERTY] || null;
+  labelIds.releaseId = stored[RELEASE_LABEL_ID_PROPERTY] || null;
+  labelIds.sendFailedId = stored[SEND_FAILED_LABEL_ID_PROPERTY] || null;
   let properties;
   try {
     properties = PropertiesService.getScriptProperties();
-    labelIds.holdId = properties.getProperty(HOLD_LABEL_ID_PROPERTY);
-    labelIds.releaseId = properties.getProperty(RELEASE_LABEL_ID_PROPERTY);
-    labelIds.sendFailedId = properties.getProperty(SEND_FAILED_LABEL_ID_PROPERTY);
   } catch (error) {
     Logger.log(
-      "Could not read stored label ids. Matching by name only. error=%s",
+      "Could not read stored label ids. Matching Hold and Send failed by name only. error=%s",
       formatError_(error)
     );
     return labelIds;
   }
+  const cooldown = labelLookupCooldownMap_(stored[LABEL_LOOKUP_COOLDOWN_PROPERTY]);
   if (!labelIds.holdId) {
-    labelIds.holdId = lookupAndStoreLabelId_(properties, HOLD_LABEL_NAME, HOLD_LABEL_ID_PROPERTY);
-  }
-  if (!labelIds.releaseId) {
-    labelIds.releaseId = lookupAndStoreLabelId_(
+    labelIds.holdId = lookupAndStoreLabelId_(
       properties,
-      RELEASE_LABEL_NAME,
-      RELEASE_LABEL_ID_PROPERTY
+      HOLD_LABEL_NAME,
+      HOLD_LABEL_ID_PROPERTY,
+      nowMilliseconds,
+      cooldown
     );
   }
+  // Release now is never resolved by name. A missing id does not match.
   if (!labelIds.sendFailedId) {
     labelIds.sendFailedId = lookupAndStoreLabelId_(
       properties,
       SEND_FAILED_LABEL_NAME,
-      SEND_FAILED_LABEL_ID_PROPERTY
+      SEND_FAILED_LABEL_ID_PROPERTY,
+      nowMilliseconds,
+      cooldown
     );
   }
   return labelIds;
 }
 
-function lookupAndStoreLabelId_(properties, labelName, propertyName) {
+function labelLookupCooldownMap_(raw) {
+  if (raw === null || raw === undefined || raw === "") {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || typeof parsed.length === "number") {
+      return {};
+    }
+    return parsed;
+  } catch (error) {
+    return {};
+  }
+}
+
+function lookupAndStoreLabelId_(properties, labelName, propertyName, nowMilliseconds, cooldown) {
+  const lastMiss = cooldown[propertyName];
+  if (
+    typeof lastMiss === "number" &&
+    isFinite(lastMiss) &&
+    nowMilliseconds - lastMiss < LABEL_LOOKUP_COOLDOWN_MILLISECONDS
+  ) {
+    return null;
+  }
   try {
     const label = GmailApp.getUserLabelByName(labelName);
     if (!label) {
+      cooldown[propertyName] = nowMilliseconds;
+      try {
+        properties.setProperty(LABEL_LOOKUP_COOLDOWN_PROPERTY, JSON.stringify(cooldown));
+      } catch (error) {
+        Logger.log(
+          "Could not store label lookup cooldown. label=%s error=%s",
+          labelName,
+          formatError_(error)
+        );
+      }
       return null;
     }
     const labelId = label.getId();
@@ -979,11 +1286,18 @@ function lookupAndStoreLabelId_(properties, labelName, propertyName) {
     }
     try {
       properties.setProperty(propertyName, labelId);
+      if (Object.prototype.hasOwnProperty.call(cooldown, propertyName)) {
+        delete cooldown[propertyName];
+        properties.setProperty(LABEL_LOOKUP_COOLDOWN_PROPERTY, JSON.stringify(cooldown));
+      }
     } catch (error) {
       Logger.log("Could not store label id. label=%s error=%s", labelName, formatError_(error));
     }
     return labelId;
   } catch (error) {
+    if (isRetryLaterQuotaError_(error)) {
+      throw error;
+    }
     Logger.log(
       "Could not look up label id. Matching by name only. label=%s error=%s",
       labelName,
@@ -1255,12 +1569,9 @@ function logSendFailedSkipsOnce_(draftIds) {
   }
 }
 
-function applyStickyHoldForPass_(views, sticky, labelIds, nowMilliseconds) {
+function applyStickyHoldForPass_(views, sticky, labelIds, nowMilliseconds, passFlags) {
   if (!sticky.readable) {
-    Logger.log("Could not read sticky Hold state. Holding every draft this pass.");
-    for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
-      views[viewIndex].decision = "hold";
-    }
+    forceHoldAllDraftViews_(views);
     return;
   }
   const viewsByThreadId = {};
@@ -1278,31 +1589,30 @@ function applyStickyHoldForPass_(views, sticky, labelIds, nowMilliseconds) {
       viewsByThreadId[threadIds[threadIndex]],
       sticky,
       labelIds,
-      nowMilliseconds
+      nowMilliseconds,
+      passFlags
     );
   }
 }
 
-function applyStickyHoldForThread_(views, sticky, labelIds, nowMilliseconds) {
+function applyStickyHoldForThread_(views, sticky, labelIds, nowMilliseconds, passFlags) {
   const labelState = views[0].labelState;
-  const thread = views[0].thread;
+  if (!passFlags.scanComplete || passFlags.quota) {
+    holdThreadBecauseScanIsIncomplete_(views, sticky, labelState, passFlags);
+    return;
+  }
   if (labelState.release) {
+    armReleaseForViews_(views, sticky, nowMilliseconds);
     for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
-      delete sticky.held[views[viewIndex].draftId];
-      sticky.releasedAt[views[viewIndex].draftId] = nowMilliseconds;
-      views[viewIndex].decision = "release";
+      views[viewIndex].labelAction = "clear-release";
+      views[viewIndex].decision = "release-pending";
       Logger.log("Release label wins. id=%s", views[viewIndex].draftId);
     }
-    removeReleaseAndHoldLabels_(thread, labelIds);
-    labelState.hold = false;
-    labelState.release = false;
     return;
   }
   if (labelState.hold) {
     for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
-      sticky.held[views[viewIndex].draftId] = views[viewIndex].messageId;
-      delete sticky.releasedAt[views[viewIndex].draftId];
-      views[viewIndex].decision = "hold";
+      rememberHold_(sticky, views[viewIndex]);
     }
     return;
   }
@@ -1314,51 +1624,250 @@ function applyStickyHoldForThread_(views, sticky, labelIds, nowMilliseconds) {
     }
     if (sticky.held[draftId] !== views[viewIndex].messageId) {
       editDroppedHold = true;
-      break;
     }
   }
   if (editDroppedHold) {
-    const restored = restoreHoldLabel_(thread);
     for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
-      keepThreadHeldAfterEdit_(views[viewIndex], sticky, restored);
-    }
-    if (restored) {
-      labelState.hold = true;
+      views[viewIndex].decision = "hold";
+      views[viewIndex].labelAction = "restore-hold";
     }
     return;
   }
+  let blockRelease = false;
   for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
     const view = views[viewIndex];
     if (!Object.prototype.hasOwnProperty.call(sticky.held, view.draftId)) {
       view.decision = "open";
       continue;
     }
-    delete sticky.held[view.draftId];
-    sticky.releasedAt[view.draftId] = nowMilliseconds;
-    view.decision = "release";
-    Logger.log("Hold removed. Release clock started. id=%s", view.draftId);
+    const fresh = freshDraftObservation_(view.draftId, labelIds);
+    if (fresh.quota) {
+      passFlags.quota = true;
+      view.decision = "hold";
+      blockRelease = true;
+      continue;
+    }
+    if (!fresh.ok) {
+      passFlags.scanComplete = false;
+      view.decision = "hold";
+      blockRelease = true;
+      continue;
+    }
+    if (fresh.labelState.release) {
+      armReleaseForViews_(views, sticky, nowMilliseconds);
+      for (let releaseIndex = 0; releaseIndex < views.length; releaseIndex++) {
+        views[releaseIndex].labelAction = "clear-release";
+        views[releaseIndex].decision = "release-pending";
+        Logger.log("Release label wins. id=%s", views[releaseIndex].draftId);
+      }
+      return;
+    }
+    if (fresh.labelState.hold) {
+      view.restoreMessageId = fresh.messageId;
+      rememberHold_(sticky, view);
+      sticky.held[view.draftId] = fresh.messageId;
+      continue;
+    }
+    if (fresh.messageId !== view.messageId) {
+      view.restoreMessageId = fresh.messageId;
+      view.decision = "hold";
+      view.labelAction = "restore-hold";
+      blockRelease = true;
+      continue;
+    }
+    view.confirmedRelease = true;
+    view.confirmedMessageId = fresh.messageId;
   }
-}
-
-function keepThreadHeldAfterEdit_(view, sticky, restored) {
-  view.decision = "hold";
-  delete sticky.releasedAt[view.draftId];
-  const tracked = Object.prototype.hasOwnProperty.call(sticky.held, view.draftId);
-  const messageChanged = tracked && sticky.held[view.draftId] !== view.messageId;
-  if (restored) {
-    sticky.held[view.draftId] = view.messageId;
-    if (messageChanged) {
-      Logger.log("Re-applied Hold after an edit dropped it. id=%s", view.draftId);
+  if (passFlags.quota || blockRelease || !passFlags.scanComplete) {
+    for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
+      const view = views[viewIndex];
+      if (view.confirmedRelease) {
+        view.decision = "hold";
+        view.confirmedRelease = false;
+      }
     }
     return;
   }
-  if (messageChanged) {
-    Logger.log("Could not re-apply Hold. Staying held. id=%s", view.draftId);
+  for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
+    const view = views[viewIndex];
+    if (!view.confirmedRelease) {
+      continue;
+    }
+    const messageId = view.confirmedMessageId;
+    if (sticky.releaseSeenOnce[view.draftId] === messageId) {
+      delete sticky.releaseSeenOnce[view.draftId];
+      armReleaseClock_(sticky, view.draftId, nowMilliseconds);
+      view.decision = "release";
+      Logger.log("Hold removed. Release clock started. id=%s", view.draftId);
+    } else {
+      sticky.releaseSeenOnce[view.draftId] = messageId;
+      view.decision = "hold";
+      Logger.log(
+        "Hold removal seen once. Waiting for another pass. id=%s",
+        view.draftId
+      );
+    }
+  }
+}
+
+function holdThreadBecauseScanIsIncomplete_(views, sticky, labelState, passFlags) {
+  let editDroppedHold = false;
+  if (!labelState.hold && !labelState.release) {
+    for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
+      const draftId = views[viewIndex].draftId;
+      if (!Object.prototype.hasOwnProperty.call(sticky.held, draftId)) {
+        continue;
+      }
+      if (sticky.held[draftId] !== views[viewIndex].messageId) {
+        editDroppedHold = true;
+      }
+    }
+  }
+  for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
+    const view = views[viewIndex];
+    const tracked = Object.prototype.hasOwnProperty.call(sticky.held, view.draftId);
+    if (labelState.hold) {
+      rememberHold_(sticky, view);
+      continue;
+    }
+    if (labelState.release || tracked || editDroppedHold) {
+      view.decision = "hold";
+    }
+    if (editDroppedHold && !passFlags.quota && !labelState.release) {
+      view.labelAction = "restore-hold";
+    }
+  }
+}
+
+function rememberHold_(sticky, view) {
+  sticky.held[view.draftId] = view.restoreMessageId || view.messageId;
+  delete sticky.releasedAt[view.draftId];
+  delete sticky.releaseSeenOnce[view.draftId];
+  view.decision = "hold";
+}
+
+function armReleaseForViews_(views, sticky, nowMilliseconds) {
+  for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
+    armReleaseClock_(sticky, views[viewIndex].draftId, nowMilliseconds);
+  }
+}
+
+function armReleaseClock_(sticky, draftId, nowMilliseconds) {
+  const existing = sticky.releasedAt[draftId];
+  if (typeof existing !== "number" || !isFinite(existing) || existing > nowMilliseconds) {
+    sticky.releasedAt[draftId] = nowMilliseconds;
+  }
+  delete sticky.held[draftId];
+  delete sticky.releaseSeenOnce[draftId];
+}
+
+function freshDraftObservation_(draftId, labelIds) {
+  try {
+    const freshDraft = GmailApp.getDraft(draftId);
+    const messageId = freshDraft.getMessageId();
+    const thread = freshDraft.getMessage().getThread();
+    return {
+      ok: true,
+      messageId: messageId,
+      labelState: readThreadLabelState_(thread, labelIds),
+    };
+  } catch (error) {
+    if (isRetryLaterQuotaError_(error)) {
+      return { ok: false, quota: true, error: error };
+    }
+    return { ok: false, missing: isMissingDraftError_(error), error: error };
+  }
+}
+
+function applyStickyLabelMutations_(views, sticky, labelIds, passFlags) {
+  if (passFlags.skipLabelWrites || passFlags.quota) {
     return;
   }
-  if (!tracked) {
+  const viewsByThreadId = {};
+  const threadIds = [];
+  for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
+    const threadId = views[viewIndex].threadId;
+    if (!viewsByThreadId[threadId]) {
+      viewsByThreadId[threadId] = [];
+      threadIds.push(threadId);
+    }
+    viewsByThreadId[threadId].push(views[viewIndex]);
+  }
+  for (let threadIndex = 0; threadIndex < threadIds.length; threadIndex++) {
+    if (passFlags.quota) {
+      return;
+    }
+    const group = viewsByThreadId[threadIds[threadIndex]];
+    let action = null;
+    for (let viewIndex = 0; viewIndex < group.length; viewIndex++) {
+      if (group[viewIndex].labelAction === "clear-release") {
+        action = "clear-release";
+      }
+    }
+    if (!action) {
+      for (let viewIndex = 0; viewIndex < group.length; viewIndex++) {
+        if (group[viewIndex].labelAction === "restore-hold") {
+          action = "restore-hold";
+        }
+      }
+    }
+    if (action === "clear-release") {
+      const removed = removeReleaseAndHoldLabels_(group[0].thread, labelIds);
+      if (removed.quota) {
+        passFlags.quota = true;
+        return;
+      }
+      if (!removed.releaseCleared) {
+        passFlags.releaseStuck = true;
+        for (let viewIndex = 0; viewIndex < group.length; viewIndex++) {
+          group[viewIndex].decision = "hold";
+        }
+      } else {
+        for (let viewIndex = 0; viewIndex < group.length; viewIndex++) {
+          group[viewIndex].decision = "release";
+          group[viewIndex].labelState.hold = false;
+          group[viewIndex].labelState.release = false;
+        }
+      }
+    } else if (action === "restore-hold") {
+      const restored = restoreHoldLabel_(group[0].thread, labelIds, passFlags);
+      if (restored === "quota") {
+        passFlags.quota = true;
+        return;
+      }
+      noteHoldRestoreResult_(group, sticky, restored === "restored", passFlags);
+    }
+  }
+}
+
+function noteHoldRestoreResult_(views, sticky, restored, passFlags) {
+  for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
+    const view = views[viewIndex];
+    view.decision = "hold";
+    delete sticky.releasedAt[view.draftId];
+    delete sticky.releaseSeenOnce[view.draftId];
+    const tracked = Object.prototype.hasOwnProperty.call(sticky.held, view.draftId);
+    const remembered = tracked ? sticky.held[view.draftId] : null;
+    const targetMessageId = view.restoreMessageId || view.messageId;
+    const messageChanged =
+      tracked &&
+      remembered !== targetMessageId &&
+      remembered !== STICKY_HOLD_PENDING_MESSAGE_ID;
+    if (restored) {
+      sticky.held[view.draftId] = targetMessageId;
+      if (messageChanged) {
+        Logger.log("Re-applied Hold after an edit dropped it. id=%s", view.draftId);
+      }
+      continue;
+    }
+    if (messageChanged) {
+      Logger.log("Could not re-apply Hold. Staying held. id=%s", view.draftId);
+      passFlags.restoreFailed = true;
+      continue;
+    }
     sticky.held[view.draftId] = STICKY_HOLD_PENDING_MESSAGE_ID;
     Logger.log("Could not re-apply Hold. Staying held. id=%s", view.draftId);
+    passFlags.restoreFailed = true;
   }
 }
 
@@ -1369,55 +1878,118 @@ function preSendStickySaysHold_(
   freshState,
   thread,
   labelIds,
-  nowMilliseconds
+  nowMilliseconds,
+  passFlags,
+  views,
+  delayMilliseconds
 ) {
   if (!sticky || !sticky.readable) {
     Logger.log("Could not read sticky Hold state. Holding draft. id=%s", draftId);
     return true;
   }
+  if (passFlags && (passFlags.persistFailed || passFlags.quota)) {
+    return true;
+  }
   if (freshState.release) {
-    delete sticky.held[draftId];
-    sticky.releasedAt[draftId] = nowMilliseconds;
-    removeReleaseAndHoldLabels_(thread, labelIds);
+    const draftIds = draftIdsOnThread_(views, thread.getId(), draftId);
+    for (let idIndex = 0; idIndex < draftIds.length; idIndex++) {
+      armReleaseClock_(sticky, draftIds[idIndex], nowMilliseconds);
+      Logger.log("Release label wins. id=%s", draftIds[idIndex]);
+    }
+    const persisted = persistStickyHoldState_(sticky, nowMilliseconds, delayMilliseconds);
+    if (!persisted.ok) {
+      if (passFlags) {
+        passFlags.persistFailed = true;
+      }
+      return true;
+    }
+    const removed = removeReleaseAndHoldLabels_(thread, labelIds);
+    if (removed.quota) {
+      if (passFlags) {
+        passFlags.quota = true;
+      }
+      return true;
+    }
+    if (!removed.releaseCleared) {
+      if (passFlags) {
+        passFlags.releaseStuck = true;
+      }
+      Logger.log("Could not remove Release. Staying held. id=%s", draftId);
+      return true;
+    }
     freshState.hold = false;
     freshState.release = false;
-    Logger.log("Release label wins. id=%s", draftId);
     return false;
   }
-  const tracked = Object.prototype.hasOwnProperty.call(sticky.held, draftId);
-  if (!freshState.hold && !tracked) {
-    return false;
-  }
-  if (!freshState.hold) {
-    const restored = restoreHoldLabel_(thread);
-    if (restored) {
-      sticky.held[draftId] = freshMessageId;
-      Logger.log("Re-applied Hold after an edit dropped it. id=%s", draftId);
-    } else {
-      Logger.log("Could not re-apply Hold. Staying held. id=%s", draftId);
-    }
+  if (freshState.hold) {
+    sticky.held[draftId] = freshMessageId;
     delete sticky.releasedAt[draftId];
+    delete sticky.releaseSeenOnce[draftId];
+    const persisted = persistStickyHoldState_(sticky, nowMilliseconds, delayMilliseconds);
+    if (!persisted.ok && passFlags) {
+      passFlags.persistFailed = true;
+    }
+    Logger.log("Draft gained Hold before send. id=%s", draftId);
     return true;
   }
-  sticky.held[draftId] = freshMessageId;
-  delete sticky.releasedAt[draftId];
-  if (!tracked) {
-    Logger.log("Draft gained Hold before send. id=%s", draftId);
-  } else {
-    Logger.log("Holding draft. id=%s", draftId);
-  }
-  return true;
+  return false;
 }
 
-function restoreHoldLabel_(thread) {
-  try {
-    const holdLabel = getOrCreateLabel_(HOLD_LABEL_NAME);
-    thread.addLabel(holdLabel);
-    return true;
-  } catch (error) {
-    Logger.log("Could not re-apply Hold. error=%s", formatError_(error));
-    return false;
+function draftIdsOnThread_(views, threadId, currentDraftId) {
+  const ids = [];
+  const seen = {};
+  if (views) {
+    for (let viewIndex = 0; viewIndex < views.length; viewIndex++) {
+      const draftId = views[viewIndex].draftId;
+      if (views[viewIndex].threadId === threadId && !seen[draftId]) {
+        seen[draftId] = true;
+        ids.push(draftId);
+      }
+    }
   }
+  if (!seen[currentDraftId]) {
+    ids.push(currentDraftId);
+  }
+  return ids;
+}
+
+function restoreHoldLabel_(thread, labelIds, passFlags) {
+  try {
+    let holdLabel = null;
+    const storedId = labelIds && labelIds.holdId;
+    if (storedId) {
+      const labels = userLabelsForPass_(passFlags);
+      for (let labelIndex = 0; labelIndex < labels.length; labelIndex++) {
+        if (labels[labelIndex].getId() === storedId) {
+          holdLabel = labels[labelIndex];
+          break;
+        }
+      }
+    }
+    if (!holdLabel) {
+      holdLabel = getOrCreateLabel_(HOLD_LABEL_NAME);
+    }
+    thread.addLabel(holdLabel);
+    return "restored";
+  } catch (error) {
+    if (isRetryLaterQuotaError_(error)) {
+      return "quota";
+    }
+    Logger.log("Could not re-apply Hold. error=%s", formatError_(error));
+    return "failed";
+  }
+}
+
+function userLabelsForPass_(passFlags) {
+  if (passFlags && passFlags.userLabelsLoaded) {
+    return passFlags.userLabels;
+  }
+  const labels = GmailApp.getUserLabels();
+  if (passFlags) {
+    passFlags.userLabels = labels;
+    passFlags.userLabelsLoaded = true;
+  }
+  return labels;
 }
 
 function removeReleaseAndHoldLabels_(thread, labelIds) {
@@ -1425,26 +1997,65 @@ function removeReleaseAndHoldLabels_(thread, labelIds) {
   try {
     labelsOnThread = thread.getLabels();
   } catch (error) {
+    if (isRetryLaterQuotaError_(error)) {
+      return { quota: true, holdCleared: false, releaseCleared: false };
+    }
     Logger.log("Could not read labels to clear Release. error=%s", formatError_(error));
-    return;
+    return { quota: false, holdCleared: false, releaseCleared: false };
   }
   const resolvedLabelIds = labelIds || { holdId: null, releaseId: null };
+  let holdFailed = false;
   for (let labelIndex = 0; labelIndex < labelsOnThread.length; labelIndex++) {
     const label = labelsOnThread[labelIndex];
-    const name = label.getName();
-    const labelId = label.getId();
-    const shouldRemove =
-      labelMatches_(name, labelId, RELEASE_LABEL_NAME, resolvedLabelIds.releaseId) ||
-      labelMatches_(name, labelId, HOLD_LABEL_NAME, resolvedLabelIds.holdId);
-    if (!shouldRemove) {
+    if (
+      !labelMatches_(
+        label.getName(),
+        label.getId(),
+        HOLD_LABEL_NAME,
+        resolvedLabelIds.holdId,
+        true
+      )
+    ) {
       continue;
     }
     try {
       thread.removeLabel(label);
     } catch (error) {
-      Logger.log("Could not remove %s. error=%s", name, formatError_(error));
+      if (isRetryLaterQuotaError_(error)) {
+        return { quota: true, holdCleared: false, releaseCleared: false };
+      }
+      holdFailed = true;
+      Logger.log("Could not remove %s. error=%s", label.getName(), formatError_(error));
     }
   }
+  if (holdFailed) {
+    return { quota: false, holdCleared: false, releaseCleared: false };
+  }
+  let releaseFailed = false;
+  for (let labelIndex = 0; labelIndex < labelsOnThread.length; labelIndex++) {
+    const label = labelsOnThread[labelIndex];
+    if (
+      !labelMatches_(
+        label.getName(),
+        label.getId(),
+        RELEASE_LABEL_NAME,
+        resolvedLabelIds.releaseId,
+        false
+      )
+    ) {
+      continue;
+    }
+    try {
+      thread.removeLabel(label);
+    } catch (error) {
+      if (isRetryLaterQuotaError_(error)) {
+        return { quota: true, holdCleared: true, releaseCleared: false };
+      }
+      releaseFailed = true;
+      Logger.log("Could not remove %s. error=%s", label.getName(), formatError_(error));
+    }
+  }
+  return { quota: false, holdCleared: true, releaseCleared: !releaseFailed };
 }
 
 function draftClocksAllowSend_(
@@ -1474,101 +2085,144 @@ function listedAgeWaitsOnReleaseClock_(
 }
 
 function releaseDelayElapsed_(sticky, draftId, nowMilliseconds, delayMilliseconds) {
-  if (!sticky || !sticky.readable) {
+  if (!sticky || !sticky.readable || sticky.overflowLatch) {
     return false;
   }
   if (!Object.prototype.hasOwnProperty.call(sticky.releasedAt, draftId)) {
     return true;
   }
-  const releasedAt = sticky.releasedAt[draftId];
+  let releasedAt = sticky.releasedAt[draftId];
   if (typeof releasedAt !== "number" || !isFinite(releasedAt)) {
     return false;
+  }
+  if (releasedAt > nowMilliseconds) {
+    releasedAt = nowMilliseconds;
   }
   return nowMilliseconds - releasedAt >= delayMilliseconds;
 }
 
-function readStickyHoldState_() {
-  const state = {
+function unreadableStickyHoldState_() {
+  return {
     held: {},
     releasedAt: {},
-    readable: true,
-    originalHeldJson: null,
-    originalReleasedJson: null,
+    releaseSeenOnce: {},
+    absentPasses: {},
+    readable: false,
+    overflowLatch: false,
+    originalSignature: null,
+    needsRewrite: false,
+    shardKeys: { held: [], releasedAt: [], releaseSeenOnce: [], absentPasses: [] },
   };
-  try {
-    const properties = PropertiesService.getScriptProperties();
-    state.originalHeldJson = properties.getProperty(HELD_DRAFTS_PROPERTY);
-    state.originalReleasedJson = properties.getProperty(RELEASED_AT_PROPERTY);
-  } catch (error) {
+}
+
+function readStickyHoldState_(snapshot, nowMilliseconds) {
+  const state = unreadableStickyHoldState_();
+  state.readable = true;
+  if (!snapshot) {
     state.readable = false;
-    Logger.log(
-      "Could not read sticky Hold state. Holding every draft this pass. error=%s",
-      formatError_(error)
-    );
     return state;
   }
-  const held = parseStickyHoldMap_(state.originalHeldJson, HELD_DRAFTS_PROPERTY);
-  const releasedAt = parseStickyReleaseMap_(state.originalReleasedJson, RELEASED_AT_PROPERTY);
-  if (!held || !releasedAt) {
+  state.overflowLatch = snapshot[STICKY_OVERFLOW_PROPERTY] === "1";
+  const held = readShardedStickyMap_(snapshot, HELD_DRAFTS_PROPERTY, "hold");
+  const releasedAt = readShardedStickyMap_(snapshot, RELEASED_AT_PROPERTY, "release");
+  const releaseSeenOnce = readShardedStickyMap_(
+    snapshot,
+    RELEASE_SEEN_ONCE_PROPERTY,
+    "seen"
+  );
+  const absentPasses = readShardedStickyMap_(snapshot, STICKY_ABSENT_PASSES_PROPERTY, "absent");
+  if (!held || !releasedAt || !releaseSeenOnce || !absentPasses) {
     state.readable = false;
     state.held = {};
     state.releasedAt = {};
+    state.releaseSeenOnce = {};
+    state.absentPasses = {};
     return state;
   }
-  state.held = held;
-  state.releasedAt = releasedAt;
+  state.held = held.map;
+  state.releasedAt = releasedAt.map;
+  state.releaseSeenOnce = releaseSeenOnce.map;
+  state.absentPasses = absentPasses.map;
+  state.shardKeys = {
+    held: held.keys,
+    releasedAt: releasedAt.keys,
+    releaseSeenOnce: releaseSeenOnce.keys,
+    absentPasses: absentPasses.keys,
+  };
+  state.originalSignature = stickyCanonicalSignature_(state);
+  state.needsRewrite = shardValuesExceedCap_(snapshot, state.shardKeys);
+  normalizeReleasedAt_(state, nowMilliseconds);
   return state;
 }
 
-function parseStickyHoldMap_(raw, propertyName) {
-  const parsed = parseStickyObject_(raw, propertyName);
-  if (!parsed) {
-    return parsed;
-  }
-  const held = {};
-  for (const draftId in parsed) {
-    if (!Object.prototype.hasOwnProperty.call(parsed, draftId)) {
-      continue;
+function shardValuesExceedCap_(snapshot, shardKeys) {
+  const groups = ["held", "releasedAt", "releaseSeenOnce", "absentPasses"];
+  for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+    const keys = shardKeys[groups[groupIndex]] || [];
+    for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+      const raw = snapshot[keys[keyIndex]];
+      if (typeof raw === "string" && raw.length > STICKY_PROPERTY_CHAR_CAP) {
+        return true;
+      }
     }
-    if (typeof parsed[draftId] !== "string") {
-      Logger.log(
-        "Could not parse sticky Hold state. Holding every draft this pass. property=%s",
-        propertyName
-      );
-      return null;
-    }
-    held[draftId] = parsed[draftId];
   }
-  return held;
+  return false;
 }
 
-function parseStickyReleaseMap_(raw, propertyName) {
-  const parsed = parseStickyObject_(raw, propertyName);
-  if (!parsed) {
-    return parsed;
-  }
-  const releasedAt = {};
-  for (const draftId in parsed) {
-    if (!Object.prototype.hasOwnProperty.call(parsed, draftId)) {
-      continue;
-    }
-    const timestamp = parsed[draftId];
-    if (typeof timestamp !== "number" || !isFinite(timestamp)) {
-      Logger.log(
-        "Could not parse sticky Hold state. Holding every draft this pass. property=%s",
-        propertyName
-      );
+function readShardedStickyMap_(snapshot, baseName, valueKind) {
+  const keys = previousShardKeys_(snapshot, baseName);
+  const map = {};
+  for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+    const parsed = parseStickyObject_(snapshot[keys[keyIndex]], keys[keyIndex]);
+    if (!parsed) {
       return null;
     }
-    releasedAt[draftId] = timestamp;
+    for (const draftId in parsed) {
+      if (!Object.prototype.hasOwnProperty.call(parsed, draftId)) {
+        continue;
+      }
+      if (!stickyValueOk_(parsed[draftId], valueKind)) {
+        Logger.log(
+          "Could not parse sticky Hold state. Holding every draft this pass. property=%s",
+          keys[keyIndex]
+        );
+        return null;
+      }
+      map[draftId] = parsed[draftId];
+    }
   }
-  return releasedAt;
+  return { map: map, keys: keys };
+}
+
+function stickyValueOk_(value, valueKind) {
+  if (valueKind === "release" || valueKind === "absent") {
+    return typeof value === "number" && isFinite(value);
+  }
+  return typeof value === "string";
+}
+
+function previousShardKeys_(snapshot, baseName) {
+  const keys = [];
+  if (!snapshot) {
+    return keys;
+  }
+  if (Object.prototype.hasOwnProperty.call(snapshot, baseName)) {
+    keys.push(baseName);
+  }
+  for (let shardNumber = 2; shardNumber <= STICKY_MAX_SHARDS; shardNumber++) {
+    const key = baseName + "Shard" + String(shardNumber);
+    if (!Object.prototype.hasOwnProperty.call(snapshot, key)) {
+      break;
+    }
+    keys.push(key);
+  }
+  return keys;
 }
 
 // Empty and missing values are an empty map. A bad value is null, which
 // means do not send and do not overwrite the stored property.
 function parseStickyObject_(raw, propertyName) {
-  if (raw === null || raw === "") {
+  if (raw === null || raw === undefined || raw === "") {
     return {};
   }
   try {
@@ -1591,114 +2245,250 @@ function parseStickyObject_(raw, propertyName) {
   }
 }
 
-function liveDraftIdsFromList_(drafts) {
-  const ids = {};
-  let complete = true;
-  for (let draftIndex = 0; draftIndex < drafts.length; draftIndex++) {
-    try {
-      ids[drafts[draftIndex].getId()] = true;
-    } catch (error) {
-      if (isMissingDraftError_(error)) {
-        continue;
-      }
-      complete = false;
-      Logger.log(
-        "Could not read a draft id. Sticky Hold entries were not pruned. error=%s",
-        formatError_(error)
-      );
-      break;
-    }
-  }
-  return { ids: ids, complete: complete };
-}
-
-function finishStickyHoldPass_(sticky, liveDraftIds) {
-  if (!sticky.readable) {
-    return;
-  }
-  if (liveDraftIds.complete) {
-    pruneStickyMap_(sticky.held, liveDraftIds.ids);
-    pruneStickyMap_(sticky.releasedAt, liveDraftIds.ids);
-  }
-  capStickyMap_(sticky.releasedAt, RELEASED_AT_PROPERTY);
-  capStickyMap_(sticky.held, HELD_DRAFTS_PROPERTY);
-  writeStickyMapIfChanged_(HELD_DRAFTS_PROPERTY, sticky.held, sticky.originalHeldJson);
-  writeStickyMapIfChanged_(RELEASED_AT_PROPERTY, sticky.releasedAt, sticky.originalReleasedJson);
-}
-
-function pruneStickyMap_(map, liveIds) {
-  const staleIds = [];
-  for (const draftId in map) {
-    if (!Object.prototype.hasOwnProperty.call(map, draftId)) {
+function normalizeReleasedAt_(sticky, nowMilliseconds) {
+  for (const draftId in sticky.releasedAt) {
+    if (!Object.prototype.hasOwnProperty.call(sticky.releasedAt, draftId)) {
       continue;
     }
-    if (!liveIds[draftId]) {
+    if (sticky.releasedAt[draftId] > nowMilliseconds) {
+      sticky.releasedAt[draftId] = nowMilliseconds;
+    }
+  }
+}
+
+function pruneElapsedReleases_(sticky, nowMilliseconds, delayMilliseconds) {
+  const staleIds = [];
+  for (const draftId in sticky.releasedAt) {
+    if (!Object.prototype.hasOwnProperty.call(sticky.releasedAt, draftId)) {
+      continue;
+    }
+    const releasedAt = sticky.releasedAt[draftId];
+    if (typeof releasedAt !== "number" || !isFinite(releasedAt)) {
+      continue;
+    }
+    if (
+      nowMilliseconds - releasedAt >=
+      delayMilliseconds + RELEASED_AT_PRUNE_MARGIN_MILLISECONDS
+    ) {
       staleIds.push(draftId);
     }
   }
   for (let staleIndex = 0; staleIndex < staleIds.length; staleIndex++) {
-    delete map[staleIds[staleIndex]];
+    delete sticky.releasedAt[staleIds[staleIndex]];
   }
 }
 
-function capStickyMap_(map, propertyName) {
-  let encoded = canonicalStickyJson_(map);
-  while (encoded !== null && encoded.length > STICKY_PROPERTY_CHAR_CAP) {
-    const keys = sortedMapKeys_(map);
-    if (keys.length === 0) {
+function pruneStickyDrafts_(sticky, liveIds, listComplete, passFlags) {
+  if (!sticky.readable || !listComplete || (passFlags && passFlags.quota)) {
+    return;
+  }
+  const candidateIds = [];
+  collectMissingIds_(sticky.held, liveIds, candidateIds);
+  collectMissingIds_(sticky.releasedAt, liveIds, candidateIds);
+  collectMissingIds_(sticky.releaseSeenOnce, liveIds, candidateIds);
+  collectMissingIds_(sticky.absentPasses, liveIds, candidateIds);
+  for (let candidateIndex = 0; candidateIndex < candidateIds.length; candidateIndex++) {
+    if (passFlags && passFlags.quota) {
       return;
     }
-    const droppedId = keys[keys.length - 1];
-    delete map[droppedId];
-    Logger.log(
-      "Dropped sticky Hold entry over the property cap. property=%s id=%s",
-      propertyName,
-      droppedId
-    );
-    encoded = canonicalStickyJson_(map);
+    const draftId = candidateIds[candidateIndex];
+    let confirmedMissing = false;
+    const absentPasses = sticky.absentPasses[draftId] || 0;
+    if (absentPasses + 1 >= STICKY_ABSENT_PASSES_BEFORE_PRUNE) {
+      confirmedMissing = true;
+    } else {
+      try {
+        GmailApp.getDraft(draftId);
+        delete sticky.absentPasses[draftId];
+      } catch (error) {
+        if (isRetryLaterQuotaError_(error)) {
+          if (passFlags) {
+            passFlags.quota = true;
+          }
+          return;
+        }
+        if (isMissingDraftError_(error)) {
+          confirmedMissing = true;
+        } else {
+          sticky.absentPasses[draftId] = absentPasses + 1;
+          if (sticky.absentPasses[draftId] >= STICKY_ABSENT_PASSES_BEFORE_PRUNE) {
+            confirmedMissing = true;
+          }
+        }
+      }
+    }
+    if (confirmedMissing) {
+      delete sticky.held[draftId];
+      delete sticky.releasedAt[draftId];
+      delete sticky.releaseSeenOnce[draftId];
+      delete sticky.absentPasses[draftId];
+    }
+  }
+  const livePresent = [];
+  for (const draftId in sticky.absentPasses) {
+    if (Object.prototype.hasOwnProperty.call(sticky.absentPasses, draftId) && liveIds[draftId]) {
+      livePresent.push(draftId);
+    }
+  }
+  for (let liveIndex = 0; liveIndex < livePresent.length; liveIndex++) {
+    delete sticky.absentPasses[livePresent[liveIndex]];
   }
 }
 
-function writeStickyMapIfChanged_(propertyName, map, originalJson) {
-  const canonical = canonicalStickyJson_(map);
-  if (sameStickyJson_(originalJson, canonical)) {
-    return;
+function collectMissingIds_(map, liveIds, candidateIds) {
+  for (const draftId in map) {
+    if (!Object.prototype.hasOwnProperty.call(map, draftId)) {
+      continue;
+    }
+    if (!liveIds[draftId] && candidateIds.indexOf(draftId) === -1) {
+      candidateIds.push(draftId);
+    }
+  }
+}
+
+function persistStickyHoldState_(sticky, nowMilliseconds, delayMilliseconds) {
+  if (!sticky || !sticky.readable) {
+    return { ok: false, skipped: true };
+  }
+  pruneElapsedReleases_(sticky, nowMilliseconds, delayMilliseconds);
+  normalizeReleasedAt_(sticky, nowMilliseconds);
+  const heldChunks = chunkStickyMap_(sticky.held);
+  const releasedChunks = chunkStickyMap_(sticky.releasedAt);
+  const seenChunks = chunkStickyMap_(sticky.releaseSeenOnce);
+  const absentChunks = chunkStickyMap_(sticky.absentPasses);
+  if (!heldChunks || !releasedChunks || !seenChunks || !absentChunks) {
+    return markStickyOverflow_(sticky);
+  }
+  const batch = {};
+  const usedKeys = {};
+  const totalChars =
+    assignStickyChunks_(batch, usedKeys, HELD_DRAFTS_PROPERTY, heldChunks) +
+    assignStickyChunks_(batch, usedKeys, RELEASED_AT_PROPERTY, releasedChunks) +
+    assignStickyChunks_(batch, usedKeys, RELEASE_SEEN_ONCE_PROPERTY, seenChunks) +
+    assignStickyChunks_(batch, usedKeys, STICKY_ABSENT_PASSES_PROPERTY, absentChunks);
+  if (totalChars > STICKY_TOTAL_CHAR_CAP) {
+    return markStickyOverflow_(sticky);
+  }
+  const signature = stickyCanonicalSignature_(sticky);
+  if (
+    signature === sticky.originalSignature &&
+    !sticky.overflowLatch &&
+    !sticky.needsRewrite
+  ) {
+    return { ok: true, unchanged: true };
   }
   try {
     const properties = PropertiesService.getScriptProperties();
-    if (canonical === null) {
-      if (properties.getProperty(propertyName) !== null) {
-        properties.deleteProperty(propertyName);
-      }
-      return;
+    if (mapHasAnyKey_(batch)) {
+      properties.setProperties(batch, false);
     }
-    properties.setProperty(propertyName, canonical);
+    deleteUnusedStickyKeys_(properties, sticky.shardKeys, usedKeys);
+    if (sticky.overflowLatch) {
+      properties.deleteProperty(STICKY_OVERFLOW_PROPERTY);
+    }
+    sticky.originalSignature = signature;
+    sticky.overflowLatch = false;
+    sticky.needsRewrite = false;
+    sticky.shardKeys = shardKeysFromUsed_(usedKeys);
+    return { ok: true };
   } catch (error) {
-    Logger.log(
-      "Could not store sticky Hold state. property=%s error=%s",
-      propertyName,
-      formatError_(error)
-    );
+    Logger.log("Could not store sticky Hold state. error=%s", formatError_(error));
+    return { ok: false, error: error };
   }
 }
 
-function sameStickyJson_(originalJson, canonical) {
-  if (canonical === null) {
-    return originalJson === null || originalJson === "" || originalJson === "{}";
-  }
-  if (originalJson === null || originalJson === "") {
-    return false;
-  }
+function markStickyOverflow_(sticky) {
   try {
-    return canonicalStickyJson_(JSON.parse(originalJson)) === canonical;
+    PropertiesService.getScriptProperties().setProperty(STICKY_OVERFLOW_PROPERTY, "1");
+    sticky.overflowLatch = true;
   } catch (error) {
-    return false;
+    Logger.log("Could not store sticky Hold overflow latch. error=%s", formatError_(error));
+    return { ok: false, overflow: true, error: error };
   }
+  return { ok: false, overflow: true };
+}
+
+function assignStickyChunks_(batch, usedKeys, baseName, chunks) {
+  let totalChars = 0;
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const key = chunkIndex === 0 ? baseName : baseName + "Shard" + String(chunkIndex + 1);
+    const encoded = JSON.stringify(chunks[chunkIndex]);
+    batch[key] = encoded;
+    usedKeys[key] = baseName;
+    totalChars += encoded.length;
+  }
+  return totalChars;
+}
+
+function deleteUnusedStickyKeys_(properties, previousKeys, usedKeys) {
+  const groups = ["held", "releasedAt", "releaseSeenOnce", "absentPasses"];
+  for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+    const keys = previousKeys[groups[groupIndex]] || [];
+    for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+      if (!Object.prototype.hasOwnProperty.call(usedKeys, keys[keyIndex])) {
+        properties.deleteProperty(keys[keyIndex]);
+      }
+    }
+  }
+}
+
+function shardKeysFromUsed_(usedKeys) {
+  const shardKeys = { held: [], releasedAt: [], releaseSeenOnce: [], absentPasses: [] };
+  const baseToGroup = {};
+  baseToGroup[HELD_DRAFTS_PROPERTY] = "held";
+  baseToGroup[RELEASED_AT_PROPERTY] = "releasedAt";
+  baseToGroup[RELEASE_SEEN_ONCE_PROPERTY] = "releaseSeenOnce";
+  baseToGroup[STICKY_ABSENT_PASSES_PROPERTY] = "absentPasses";
+  for (const key in usedKeys) {
+    if (!Object.prototype.hasOwnProperty.call(usedKeys, key)) {
+      continue;
+    }
+    const group = baseToGroup[usedKeys[key]];
+    if (group) {
+      shardKeys[group].push(key);
+    }
+  }
+  return shardKeys;
+}
+
+function chunkStickyMap_(map) {
+  const keys = sortedMapKeys_(map);
+  const chunks = [];
+  let current = {};
+  for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+    current[keys[keyIndex]] = map[keys[keyIndex]];
+    if (JSON.stringify(current).length <= STICKY_PROPERTY_CHAR_CAP) {
+      continue;
+    }
+    delete current[keys[keyIndex]];
+    if (!mapHasAnyKey_(current)) {
+      return null;
+    }
+    chunks.push(current);
+    current = {};
+    current[keys[keyIndex]] = map[keys[keyIndex]];
+    if (JSON.stringify(current).length > STICKY_PROPERTY_CHAR_CAP) {
+      return null;
+    }
+  }
+  if (mapHasAnyKey_(current)) {
+    chunks.push(current);
+  }
+  return chunks;
+}
+
+function stickyCanonicalSignature_(sticky) {
+  return [
+    canonicalStickyJson_(sticky.held),
+    canonicalStickyJson_(sticky.releasedAt),
+    canonicalStickyJson_(sticky.releaseSeenOnce),
+    canonicalStickyJson_(sticky.absentPasses),
+  ].join("\n");
 }
 
 function canonicalStickyJson_(map) {
   if (!map || !mapHasAnyKey_(map)) {
-    return null;
+    return "";
   }
   const keys = sortedMapKeys_(map);
   const ordered = {};
@@ -1725,6 +2515,8 @@ function clearStickyDraft_(sticky, draftId) {
   }
   delete sticky.held[draftId];
   delete sticky.releasedAt[draftId];
+  delete sticky.releaseSeenOnce[draftId];
+  delete sticky.absentPasses[draftId];
 }
 
 // The send error is the failure to log. A subject read must not replace it.

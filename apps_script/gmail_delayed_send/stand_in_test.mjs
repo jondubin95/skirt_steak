@@ -64,12 +64,22 @@ function createWorld(options) {
         if (thread.getLabelsError) {
           throw new Error(thread.getLabelsError);
         }
-        return thread.labelNames.map((name) => ensureLabel(name, thread.labelIdsByName[name]));
+        const names = thread.perMessage ? unionMessageLabels_(thread) : thread.labelNames;
+        return names.map((name) => ensureLabel(name, thread.labelIdsByName[name]));
       },
       addLabel(label) {
         labelOps.push("add:" + label.getName());
         if (thread.addLabelError) {
           throw new Error(thread.addLabelError);
+        }
+        if (thread.perMessage) {
+          Object.keys(thread.messageLabels).forEach((messageId) => {
+            if (thread.messageLabels[messageId].indexOf(label.getName()) === -1) {
+              thread.messageLabels[messageId].push(label.getName());
+            }
+          });
+          syncUnionLabelNames_(thread);
+          return;
         }
         if (thread.labelNames.indexOf(label.getName()) === -1) {
           thread.labelNames.push(label.getName());
@@ -77,16 +87,33 @@ function createWorld(options) {
       },
       removeLabel(label) {
         labelOps.push("remove:" + label.getName());
+        const namedError =
+          thread.removeLabelErrorsByName && thread.removeLabelErrorsByName[label.getName()];
+        if (namedError) {
+          throw new Error(namedError);
+        }
         if (thread.removeLabelError) {
           throw new Error(thread.removeLabelError);
+        }
+        if (thread.perMessage) {
+          Object.keys(thread.messageLabels).forEach((messageId) => {
+            thread.messageLabels[messageId] = thread.messageLabels[messageId].filter(
+              (name) => name !== label.getName()
+            );
+          });
+          syncUnionLabelNames_(thread);
+          return;
         }
         thread.labelNames = thread.labelNames.filter((name) => name !== label.getName());
       },
       labelNames: [],
       labelIdsByName: {},
+      messageLabels: {},
+      perMessage: false,
       getLabelsError: null,
       addLabelError: null,
       removeLabelError: null,
+      removeLabelErrorsByName: null,
     };
     threads[threadId] = thread;
     return thread;
@@ -94,6 +121,22 @@ function createWorld(options) {
 
   function threadFor(threadId) {
     return threads[threadId] || makeThread(threadId);
+  }
+
+  function unionMessageLabels_(thread) {
+    const names = [];
+    Object.keys(thread.messageLabels).forEach((messageId) => {
+      thread.messageLabels[messageId].forEach((name) => {
+        if (names.indexOf(name) === -1) {
+          names.push(name);
+        }
+      });
+    });
+    return names;
+  }
+
+  function syncUnionLabelNames_(thread) {
+    thread.labelNames = unionMessageLabels_(thread);
   }
 
   const OriginalDate = Date;
@@ -154,15 +197,27 @@ function createWorld(options) {
     return message;
   }
 
-  function makeDraft(spec) {
+  function makeDraft(spec, useListedSnapshot) {
     let consumed = false;
     let message = null;
+    function viewMessageId() {
+      if (useListedSnapshot && spec.listedMessageId) {
+        return spec.listedMessageId;
+      }
+      return spec.messageId;
+    }
+    function viewDateMilliseconds() {
+      if (useListedSnapshot && spec.listedDateMilliseconds !== undefined) {
+        return spec.listedDateMilliseconds;
+      }
+      return spec.dateMilliseconds;
+    }
     return {
       getId() {
         return spec.id;
       },
       getMessageId() {
-        return spec.messageId;
+        return viewMessageId();
       },
       getMessage() {
         serviceCalls.push("getMessage:" + spec.id);
@@ -173,7 +228,13 @@ function createWorld(options) {
           throw new Error(spec.messageError);
         }
         if (!message) {
-          message = makeMessage(spec, false);
+          message = makeMessage(
+            Object.assign({}, spec, {
+              messageId: viewMessageId(),
+              dateMilliseconds: viewDateMilliseconds(),
+            }),
+            false
+          );
         }
         return message;
       },
@@ -216,6 +277,21 @@ function createWorld(options) {
     if (spec.getLabelsError) {
       thread.getLabelsError = spec.getLabelsError;
     }
+    if (spec.removeLabelErrorsByName) {
+      thread.removeLabelErrorsByName = Object.assign(
+        {},
+        thread.removeLabelErrorsByName,
+        spec.removeLabelErrorsByName
+      );
+    }
+    if (spec.messageLabels) {
+      thread.perMessage = true;
+      thread.messageLabels[spec.messageId] = spec.messageLabels.slice();
+      spec.messageLabels.forEach((name) => {
+        ensureLabel(name, thread.labelIdsByName[name]);
+      });
+      syncUnionLabelNames_(thread);
+    }
   }
 
   (settings.drafts || []).forEach(addDraft);
@@ -255,6 +331,24 @@ function createWorld(options) {
               throw new Error(settings.propertiesSetError);
             }
             properties[key] = String(value);
+          },
+          setProperties(values) {
+            if (settings.propertiesSetError) {
+              throw new Error(settings.propertiesSetError);
+            }
+            Object.keys(values).forEach((key) => {
+              properties[key] = String(values[key]);
+            });
+          },
+          getProperties() {
+            if (settings.propertiesGetError) {
+              throw new Error(settings.propertiesGetError);
+            }
+            const copy = {};
+            Object.keys(properties).forEach((key) => {
+              copy[key] = properties[key];
+            });
+            return copy;
           },
           deleteProperty(key) {
             delete properties[key];
@@ -332,6 +426,13 @@ function createWorld(options) {
         serviceCalls.push("createLabel:" + name);
         return ensureLabel(name);
       },
+      getUserLabels() {
+        serviceCalls.push("getUserLabels");
+        if (settings.getUserLabelsError) {
+          throw new Error(settings.getUserLabelsError);
+        }
+        return Object.keys(labelsById).map((id) => labelsById[id]);
+      },
       getDrafts() {
         serviceCalls.push("getDrafts");
         if (settings.getDraftsError) {
@@ -339,13 +440,19 @@ function createWorld(options) {
         }
         return Object.keys(draftSpecs)
           .filter((id) => !draftSpecs[id].gone && !draftSpecs[id].hiddenFromList)
-          .map((id) => makeDraft(draftSpecs[id]));
+          .map((id) => makeDraft(draftSpecs[id], true));
       },
       getDraft(id) {
         serviceCalls.push("getDraft:" + id);
         const spec = draftSpecs[id];
+        if (settings.confirmMissingError && (!spec || spec.gone)) {
+          throw new Error(settings.confirmMissingError);
+        }
         if (!spec || spec.gone || spec.missingOnReread) {
           throw new Error("No draft with the given ID can be found");
+        }
+        if (spec.rereadError) {
+          throw new Error(spec.rereadError);
         }
         if (spec.dropLabelOnReread) {
           const droppedLabelName =
@@ -362,9 +469,9 @@ function createWorld(options) {
         }
         if (spec.rereadDateMilliseconds !== undefined) {
           const reread = Object.assign({}, spec, { dateMilliseconds: spec.rereadDateMilliseconds });
-          return makeDraft(reread);
+          return makeDraft(reread, false);
         }
-        return makeDraft(spec);
+        return makeDraft(spec, false);
       },
     },
   };
@@ -383,7 +490,11 @@ function createWorld(options) {
     threads,
     nowHolder,
     labelsByName,
+    labelsById,
     draftSpecs,
+    ensureLabel,
+    addDraft,
+    settings,
   };
 }
 
@@ -567,7 +678,7 @@ test("install creates Hold, Release, and Send failed and one one-minute trigger"
   });
   world.context.installDelayedGmailSend();
   assert.ok(world.labelsByName["Hold"]);
-  assert.ok(world.labelsByName["Release"]);
+  assert.ok(world.labelsByName["Release now"]);
   assert.ok(world.labelsByName["Send failed"]);
   assert.equal(world.labelsByName["Send in 5"], undefined);
   assert.equal(world.triggers.length, 1);
@@ -576,11 +687,11 @@ test("install creates Hold, Release, and Send failed and one one-minute trigger"
   world.context.installDelayedGmailSend();
   assert.equal(world.triggers.length, 1);
   assert.equal(world.serviceCalls.filter((call) => call === "createLabel:Hold").length, 1);
-  assert.equal(world.serviceCalls.filter((call) => call === "createLabel:Release").length, 1);
+  assert.equal(world.serviceCalls.filter((call) => call === "createLabel:Release now").length, 1);
   assert.equal(world.serviceCalls.filter((call) => call === "createLabel:Send failed").length, 1);
   assert.equal(world.serviceCalls.filter((call) => call === "createLabel:Send in 5").length, 0);
   assert.equal(world.properties.delayedSendHoldLabelId, "id:Hold");
-  assert.equal(world.properties.delayedSendReleaseLabelId, "id:Release");
+  assert.equal(world.properties.delayedSendReleaseLabelId, "id:Release now");
   assert.equal(world.properties.delayedSendSendFailedLabelId, "id:Send failed");
 });
 
@@ -1140,6 +1251,19 @@ test("removing Hold on an unchanged draft starts a 5 minute release clock", () =
   );
   oldEnough.context.sendDraftsAfterDelay();
   assert.deepEqual(oldEnough.sendCalls, []);
+  assert.equal(JSON.parse(oldEnough.properties.delayedSendHeldDrafts)["draft-1"], "message-1");
+  assert.equal(oldEnough.properties.delayedSendReleasedAt, undefined);
+  assert.equal(
+    JSON.parse(oldEnough.properties.delayedSendReleaseSeenOnce)["draft-1"],
+    "message-1"
+  );
+  assert.ok(
+    oldEnough.logs.some(
+      (line) => line === "Hold removal seen once. Waiting for another pass. id=draft-1"
+    )
+  );
+  oldEnough.context.sendDraftsAfterDelay();
+  assert.deepEqual(oldEnough.sendCalls, []);
   assert.equal(oldEnough.properties.delayedSendHeldDrafts, undefined);
   assert.equal(JSON.parse(oldEnough.properties.delayedSendReleasedAt)["draft-1"], now);
   assert.ok(
@@ -1677,11 +1801,13 @@ test("a Release label wins over Hold and starts the release clock", () => {
     drafts: [
       draft({
         dateMilliseconds: now - FIVE_MINUTES_MS,
-        labels: ["Hold", "Release"],
+        labels: ["Hold", "Release now"],
+        labelIdsByName: { "Release now": "id:Release now" },
       }),
     ],
   });
   world.properties.delayedSendHeldDrafts = JSON.stringify({ "draft-1": "message-old" });
+  world.properties.delayedSendReleaseLabelId = "id:Release now";
   world.context.sendDraftsAfterDelay();
   assert.deepEqual(world.sendCalls, []);
   assert.deepEqual(labelNames(world, "thread-1"), []);
@@ -1706,13 +1832,15 @@ test("Release added before send starts the release clock", () => {
     drafts: [
       draft({
         dateMilliseconds: now - FIVE_MINUTES_MS,
-        gainLabelOnReread: "Release",
+        gainLabelOnReread: "Release now",
+        labelIdsByName: { "Release now": "id:Release now" },
       }),
     ],
   });
+  world.properties.delayedSendReleaseLabelId = "id:Release now";
   world.context.sendDraftsAfterDelay();
   assert.deepEqual(world.sendCalls, []);
-  assert.equal(labelNames(world, "thread-1").indexOf("Release"), -1);
+  assert.equal(labelNames(world, "thread-1").indexOf("Release now"), -1);
   assert.equal(JSON.parse(world.properties.delayedSendReleasedAt)["draft-1"], now);
   assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
 });
@@ -1787,7 +1915,10 @@ test("a failed Hold re-apply stays held and is retried without Send failed", () 
   world.draftSpecs["draft-1"].messageId = "message-2";
   world.threads["thread-1"].labelNames = [];
   world.threads["thread-1"].addLabelError = "label backend down";
-  world.context.sendDraftsAfterDelay();
+  assertThrows(
+    () => world.context.sendDraftsAfterDelay(),
+    /Could not re-apply Hold/
+  );
   assert.deepEqual(world.sendCalls, []);
   assert.deepEqual(labelNames(world, "thread-1"), []);
   assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
@@ -1804,85 +1935,42 @@ test("a failed Hold re-apply stays held and is retried without Send failed", () 
   assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
 });
 
-test("pre-send recheck holds a sticky draft after Hold is gone", () => {
+test("pre-send recheck holds a draft that gains Hold and retries a read error", () => {
   const now = 1_700_000_000_000;
   const world = createWorld({
     nowMilliseconds: now,
     drafts: [
       draft({
-        messageId: "message-2",
+        messageId: "message-1",
         dateMilliseconds: now - FIVE_MINUTES_MS,
-        labels: [],
+        gainLabelOnReread: "Hold",
       }),
     ],
   });
-  const listed = world.context.GmailApp.getDrafts()[0];
-  const sticky = {
-    held: { "draft-1": "message-1" },
-    releasedAt: {},
-    readable: true,
-    originalHeldJson: null,
-    originalReleasedJson: null,
-  };
-  const result = world.context.sendDraftIfOldEnough_(
-    {
-      draft: listed,
-      draftId: "draft-1",
-      message: listed.getMessage(),
-      threadId: "thread-1",
-      outcome: "pending",
-      sentMessage: null,
-    },
-    FIVE_MINUTES_MS,
-    now,
-    { holdId: null, sendFailedId: null, releaseId: null },
-    sticky
-  );
-  assert.equal(result.outcome, "held");
+  world.context.sendDraftsAfterDelay();
   assert.deepEqual(world.sendCalls, []);
-  assert.deepEqual(labelNames(world, "thread-1"), ["Hold"]);
-  assert.equal(sticky.held["draft-1"], "message-2");
+  assert.equal(JSON.parse(world.properties.delayedSendHeldDrafts)["draft-1"], "message-1");
+  assert.ok(world.logs.some((line) => line.indexOf("Draft gained Hold before send") !== -1));
   assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
 
-  const sameMessage = createWorld({
+  const retry = createWorld({
     nowMilliseconds: now,
     drafts: [
       draft({
         messageId: "message-1",
         dateMilliseconds: now - FIVE_MINUTES_MS,
-        labels: [],
+        rereadError: "Service error: Gmail",
       }),
     ],
   });
-  const sameListed = sameMessage.context.GmailApp.getDrafts()[0];
-  const sameSticky = {
-    held: { "draft-1": "message-1" },
-    releasedAt: {},
-    readable: true,
-    originalHeldJson: null,
-    originalReleasedJson: null,
-  };
-  const sameResult = sameMessage.context.sendDraftIfOldEnough_(
-    {
-      draft: sameListed,
-      draftId: "draft-1",
-      message: sameListed.getMessage(),
-      threadId: "thread-1",
-      outcome: "pending",
-      sentMessage: null,
-    },
-    FIVE_MINUTES_MS,
-    now,
-    { holdId: null, sendFailedId: null, releaseId: null },
-    sameSticky
-  );
-  assert.equal(sameResult.outcome, "held");
-  assert.deepEqual(sameMessage.sendCalls, []);
-  assert.equal(sameSticky.releasedAt["draft-1"], undefined);
-  assert.deepEqual(labelNames(sameMessage, "thread-1"), ["Hold"]);
+  retry.context.sendDraftsAfterDelay();
+  assert.deepEqual(retry.sendCalls, []);
+  assert.equal(retry.labelOps.indexOf("add:Send failed"), -1);
+  assert.equal(retry.properties.delayedSendHeldDrafts, undefined);
+  assert.ok(retry.logs.some((line) => line.indexOf("will retry") !== -1));
 });
 
-test("a sticky map over the property cap drops extras and logs", () => {
+test("a sticky map over one property shards instead of dropping a live hold", () => {
   const now = 1_700_000_000_000;
   const held = {};
   const drafts = [];
@@ -1904,11 +1992,554 @@ test("a sticky map over the property cap drops extras and logs", () => {
   world.context.sendDraftsAfterDelay();
   assert.deepEqual(world.sendCalls, []);
   assert.ok(world.properties.delayedSendHeldDrafts.length <= 7000);
-  assert.ok(
-    world.logs.some((line) => line.indexOf("Dropped sticky Hold entry over the property cap") !== -1)
+  assert.equal(
+    world.logs.some((line) => line.indexOf("Dropped sticky Hold entry") !== -1),
+    false
   );
+  const storedHeld = {};
+  Object.keys(world.properties).forEach((key) => {
+    if (key === "delayedSendHeldDrafts" || key.indexOf("delayedSendHeldDraftsShard") === 0) {
+      Object.assign(storedHeld, JSON.parse(world.properties[key]));
+    }
+  });
+  assert.equal(Object.keys(storedHeld).length, 200);
+  assert.equal(storedHeld["draft-199"], held["draft-199"]);
+  world.draftSpecs["draft-199"].messageId = "message-edited";
+  world.threads["thread-draft-199"].labelNames = [];
+  world.nowHolder.milliseconds = now + 60_000;
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
   assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
-  assert.ok(world.properties.delayedSendHeldDrafts.indexOf("draft-000") !== -1);
+  const afterEdit = {};
+  Object.keys(world.properties).forEach((key) => {
+    if (key === "delayedSendHeldDrafts" || key.indexOf("delayedSendHeldDraftsShard") === 0) {
+      Object.assign(afterEdit, JSON.parse(world.properties[key]));
+    }
+  });
+  assert.equal(afterEdit["draft-199"], "message-edited");
+});
+
+function storedHeldMap(world) {
+  const storedHeld = {};
+  Object.keys(world.properties).forEach((key) => {
+    if (key === "delayedSendHeldDrafts" || key.indexOf("delayedSendHeldDraftsShard") === 0) {
+      Object.assign(storedHeld, JSON.parse(world.properties[key]));
+    }
+  });
+  return storedHeld;
+}
+
+test("a stale draft list does not treat an edit as a Hold removal", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        messageId: "message-2",
+        listedMessageId: "message-1",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        labels: [],
+      }),
+    ],
+  });
+  world.properties.delayedSendHeldDrafts = JSON.stringify({ "draft-1": "message-1" });
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  assert.deepEqual(labelNames(world, "thread-1"), ["Hold"]);
+  assert.equal(storedHeldMap(world)["draft-1"], "message-2");
+  assert.equal(world.properties.delayedSendReleasedAt, undefined);
+  assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
+});
+
+test("a missing-draft error during the scan does not forget a held draft", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        id: "draft-held",
+        threadId: "thread-shared",
+        messageId: "message-held",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        labels: [],
+        messageError: "Requested entity was not found.",
+      }),
+      draft({
+        id: "draft-sibling",
+        threadId: "thread-shared",
+        messageId: "message-sibling",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        labels: [],
+      }),
+    ],
+  });
+  world.properties.delayedSendHeldDrafts = JSON.stringify({
+    "draft-held": "message-held",
+    "draft-sibling": "message-sibling",
+  });
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(storedHeldMap(world)["draft-held"], "message-held");
+  assert.equal(storedHeldMap(world)["draft-sibling"], "message-sibling");
+  assert.equal(world.properties.delayedSendReleasedAt, undefined);
+  assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
+});
+
+test("a partial scan does not start a release clock", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        id: "draft-kept",
+        threadId: "thread-shared",
+        messageId: "message-kept",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        labels: [],
+      }),
+      draft({
+        id: "draft-quota",
+        threadId: "thread-other",
+        messageId: "message-quota",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        messageError: "Service invoked too many times for one day: gmail",
+      }),
+    ],
+  });
+  world.properties.delayedSendHeldDrafts = JSON.stringify({
+    "draft-kept": "message-kept",
+  });
+  assertThrows(() => world.context.sendDraftsAfterDelay(), /Gmail quota reached/);
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(storedHeldMap(world)["draft-kept"], "message-kept");
+  assert.equal(world.properties.delayedSendReleasedAt, undefined);
+  assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
+  assert.equal(world.labelOps.indexOf("add:Hold"), -1);
+});
+
+test("a kill after Hold is seen keeps the held entry", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        id: "draft-held",
+        threadId: "thread-held",
+        messageId: "message-held",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        labels: ["Hold"],
+      }),
+      draft({
+        id: "draft-open",
+        threadId: "thread-open",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+      }),
+    ],
+  });
+  const originalLog = world.context.Logger.log;
+  world.context.Logger.log = function logUntilHold(template, ...values) {
+    originalLog(template, ...values);
+    const line = values.length === 0 ? String(template) : formatLog(template, values);
+    if (line.indexOf("Holding draft. id=draft-held") !== -1) {
+      throw new Error("execution killed");
+    }
+  };
+  assertThrows(() => world.context.sendDraftsAfterDelay(), /execution killed/);
+  assert.equal(storedHeldMap(world)["draft-held"], "message-held");
+  world.context.Logger.log = originalLog;
+  world.draftSpecs["draft-held"].messageId = "message-held-2";
+  world.threads["thread-held"].labelNames = [];
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, ["draft-open"]);
+  assert.equal(storedHeldMap(world)["draft-held"], "message-held-2");
+  assert.deepEqual(labelNames(world, "thread-held"), ["Hold"]);
+});
+
+test("a failed sticky write does not send and leaves Hold in place", () => {
+  const now = 1_700_000_000_000;
+  const options = {
+    nowMilliseconds: now,
+    propertiesSetError: "properties down",
+    drafts: [
+      draft({
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        labels: ["Hold"],
+      }),
+    ],
+  };
+  const world = createWorld(options);
+  assertThrows(() => world.context.sendDraftsAfterDelay(), /Could not store sticky Hold state/);
+  assert.deepEqual(world.sendCalls, []);
+  assert.deepEqual(labelNames(world, "thread-1"), ["Hold"]);
+  assert.equal(world.properties.delayedSendHeldDrafts, undefined);
+  options.propertiesSetError = null;
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(storedHeldMap(world)["draft-1"], "message-1");
+});
+
+test("sticky overflow holds every draft and an edit does not send", () => {
+  const now = 1_700_000_000_000;
+  const drafts = [
+    draft({
+      id: "draft-open",
+      threadId: "thread-open",
+      messageId: "message-open",
+      dateMilliseconds: now - FIVE_MINUTES_MS,
+      labels: [],
+    }),
+  ];
+  for (let index = 0; index < 260; index += 1) {
+    const draftId = "d" + String(index).padStart(4, "0");
+    drafts.push(
+      draft({
+        id: draftId,
+        threadId: "thread-" + draftId,
+        messageId: "m" + "x".repeat(900),
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        labels: ["Hold"],
+      })
+    );
+  }
+  const world = createWorld({ nowMilliseconds: now, drafts: drafts });
+  assertThrows(
+    () => world.context.sendDraftsAfterDelay(),
+    /Sticky Hold state does not fit/
+  );
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(world.properties.delayedSendStickyOverflow, "1");
+  world.draftSpecs["d0000"].messageId = "m-edited";
+  world.threads["thread-d0000"].labelNames = [];
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
+});
+
+test("Release on a multi-draft thread starts the clock for every draft", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        id: "draft-a",
+        threadId: "thread-shared",
+        messageId: "message-a",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        labels: ["Hold", "Release now"],
+        labelIdsByName: { "Release now": "id:Release now" },
+      }),
+      draft({
+        id: "draft-b",
+        threadId: "thread-shared",
+        messageId: "message-b",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+      }),
+    ],
+  });
+  world.properties.delayedSendReleaseLabelId = "id:Release now";
+  world.properties.delayedSendHeldDrafts = JSON.stringify({
+    "draft-a": "message-old-a",
+    "draft-b": "message-old-b",
+  });
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  const releasedAt = JSON.parse(world.properties.delayedSendReleasedAt);
+  assert.equal(releasedAt["draft-a"], now);
+  assert.equal(releasedAt["draft-b"], now);
+  assert.equal(world.properties.delayedSendHeldDrafts, undefined);
+  world.nowHolder.milliseconds = now + FIVE_MINUTES_MS;
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, ["draft-a", "draft-b"]);
+});
+
+test("Release added before send on a multi-draft thread does not send the sibling", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        id: "draft-a",
+        threadId: "thread-shared",
+        messageId: "message-a",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        gainLabelOnReread: "Release now",
+        labelIdsByName: { "Release now": "id:Release now" },
+      }),
+      draft({
+        id: "draft-b",
+        threadId: "thread-shared",
+        messageId: "message-b",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+      }),
+    ],
+  });
+  world.properties.delayedSendReleaseLabelId = "id:Release now";
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  const releasedAt = JSON.parse(world.properties.delayedSendReleasedAt);
+  assert.equal(releasedAt["draft-a"], now);
+  assert.equal(releasedAt["draft-b"], now);
+  assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
+});
+
+test("install after a rename keeps the stored label ids", () => {
+  const world = createWorld({ sendLabelExists: false });
+  world.ensureLabel("Kept", "Label_1");
+  world.ensureLabel("Parked", "Label_failed");
+  world.ensureLabel("Go", "Label_release");
+  world.properties.delayedSendHoldLabelId = "Label_1";
+  world.properties.delayedSendSendFailedLabelId = "Label_failed";
+  world.properties.delayedSendReleaseLabelId = "Label_release";
+  world.context.installDelayedGmailSend();
+  assert.equal(world.properties.delayedSendHoldLabelId, "Label_1");
+  assert.equal(world.properties.delayedSendSendFailedLabelId, "Label_failed");
+  assert.equal(world.properties.delayedSendReleaseLabelId, "Label_release");
+  assert.equal(world.labelsByName["Hold"], undefined);
+  assert.equal(world.labelsByName["Release now"], undefined);
+  assert.equal(world.serviceCalls.filter((call) => call.indexOf("createLabel:") === 0).length, 0);
+});
+
+test("re-applying Hold after a rename uses the stored label", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        messageId: "message-1",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        labels: ["Kept"],
+        labelIdsByName: { Kept: "Label_1" },
+      }),
+    ],
+  });
+  world.ensureLabel("Kept", "Label_1");
+  world.properties.delayedSendHoldLabelId = "Label_1";
+  world.context.sendDraftsAfterDelay();
+  world.draftSpecs["draft-1"].messageId = "message-2";
+  world.threads["thread-1"].labelNames = [];
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  assert.deepEqual(labelNames(world, "thread-1"), ["Kept"]);
+  assert.equal(world.labelsByName["Hold"], undefined);
+  assert.equal(storedHeldMap(world)["draft-1"], "message-2");
+  assert.equal(world.serviceCalls.filter((call) => call === "createLabel:Hold").length, 0);
+});
+
+test("install does not adopt a pre-existing Release now label", () => {
+  const world = createWorld({ sendLabelExists: false });
+  world.ensureLabel("Release now", "user-release");
+  world.context.installDelayedGmailSend();
+  assert.notEqual(world.properties.delayedSendReleaseLabelId, "user-release");
+  assert.equal(
+    world.properties.delayedSendReleaseLabelId,
+    "id:Release now (delayed send)"
+  );
+  assert.equal(world.labelsById["user-release"].getName(), "Release now");
+  assert.ok(world.labelsByName["Release now (delayed send)"]);
+});
+
+test("corrupt sticky state throws and does not send", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [draft({ dateMilliseconds: now - FIVE_MINUTES_MS })],
+  });
+  world.properties.delayedSendHeldDrafts = "{not json";
+  assertThrows(() => world.context.sendDraftsAfterDelay(), /Could not read sticky Hold state/);
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(world.properties.delayedSendHeldDrafts, "{not json");
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  assert.ok(world.logs.some((line) => line.indexOf("Not throwing again this hour") !== -1));
+  assert.equal(world.properties.delayedSendHeldDrafts, "{not json");
+});
+
+test("a Release label that cannot be removed does not send or reset the clock", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        dateMilliseconds: now - HOUR_MS,
+        labels: ["Hold", "Release now"],
+        labelIdsByName: { "Release now": "id:Release now" },
+        removeLabelErrorsByName: { "Release now": "cannot remove release" },
+      }),
+    ],
+  });
+  world.properties.delayedSendReleaseLabelId = "id:Release now";
+  assertThrows(() => world.context.sendDraftsAfterDelay(), /Could not remove Release now/);
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(JSON.parse(world.properties.delayedSendReleasedAt)["draft-1"], now);
+  assert.ok(labelNames(world, "thread-1").indexOf("Release now") !== -1);
+  assert.equal(labelNames(world, "thread-1").indexOf("Hold"), -1);
+  world.nowHolder.milliseconds = now + 60_000;
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(JSON.parse(world.properties.delayedSendReleasedAt)["draft-1"], now);
+  assert.ok(world.logs.some((line) => line.indexOf("Not throwing again this hour") !== -1));
+});
+
+test("a quota error while putting Hold back stops the pass", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        id: "draft-held",
+        threadId: "thread-held",
+        messageId: "message-1",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        labels: ["Hold"],
+      }),
+    ],
+  });
+  world.context.sendDraftsAfterDelay();
+  world.draftSpecs["draft-held"].messageId = "message-2";
+  world.threads["thread-held"].labelNames = [];
+  world.threads["thread-held"].addLabelError =
+    "Service invoked too many times for one day: gmail";
+  assertThrows(() => world.context.sendDraftsAfterDelay(), /Gmail quota reached/);
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
+  assert.equal(storedHeldMap(world)["draft-held"], "message-1");
+});
+
+test("a missing Hold label is looked up once per hour", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [draft({ dateMilliseconds: now + HOUR_MS })],
+  });
+  world.context.sendDraftsAfterDelay();
+  world.context.sendDraftsAfterDelay();
+  assert.equal(
+    world.serviceCalls.filter((call) => call === "getUserLabelByName:Hold").length,
+    1
+  );
+  assert.equal(
+    world.serviceCalls.filter((call) => call === "getUserLabelByName:Release now").length,
+    0
+  );
+  world.nowHolder.milliseconds = now + HOUR_MS;
+  world.context.sendDraftsAfterDelay();
+  assert.equal(
+    world.serviceCalls.filter((call) => call === "getUserLabelByName:Hold").length,
+    2
+  );
+  assert.deepEqual(world.sendCalls, []);
+});
+
+test("a future release time is clamped to the pass", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [draft({ dateMilliseconds: now - HOUR_MS })],
+  });
+  world.properties.delayedSendReleasedAt = JSON.stringify({ "draft-1": now + HOUR_MS });
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(JSON.parse(world.properties.delayedSendReleasedAt)["draft-1"], now);
+  world.nowHolder.milliseconds = now + FIVE_MINUTES_MS;
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, ["draft-1"]);
+});
+
+test("a reply draft stays held while an older message still has Hold", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        id: "draft-reply",
+        threadId: "thread-existing",
+        messageId: "message-reply",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        messageLabels: [],
+        labelIdsByName: { Hold: "id:Hold" },
+      }),
+    ],
+  });
+  world.ensureLabel("Hold", "id:Hold");
+  world.threads["thread-existing"].messageLabels["message-old"] = ["Hold"];
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(storedHeldMap(world)["draft-reply"], "message-reply");
+  world.draftSpecs["draft-reply"].messageId = "message-reply-2";
+  world.threads["thread-existing"].messageLabels["message-reply-2"] = [];
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(storedHeldMap(world)["draft-reply"], "message-reply-2");
+  assert.ok(world.threads["thread-existing"].messageLabels["message-old"].indexOf("Hold") !== -1);
+});
+
+test("a failed Hold restore marks an unchanged sibling pending", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        id: "draft-edited",
+        threadId: "thread-shared",
+        messageId: "message-edited",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        labels: ["Hold"],
+      }),
+      draft({
+        id: "draft-sibling",
+        threadId: "thread-shared",
+        messageId: "message-sibling",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+      }),
+    ],
+  });
+  world.context.sendDraftsAfterDelay();
+  world.draftSpecs["draft-edited"].messageId = "message-edited-2";
+  world.threads["thread-shared"].labelNames = [];
+  world.threads["thread-shared"].addLabelError = "label backend down";
+  assertThrows(() => world.context.sendDraftsAfterDelay(), /Could not re-apply Hold/);
+  assert.equal(storedHeldMap(world)["draft-edited"], "message-edited");
+  assert.equal(storedHeldMap(world)["draft-sibling"], "pending-hold-restore");
+  assert.deepEqual(world.sendCalls, []);
+  world.draftSpecs["draft-edited"].gone = true;
+  world.threads["thread-shared"].addLabelError = null;
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(storedHeldMap(world)["draft-sibling"], "message-sibling");
+  assert.deepEqual(labelNames(world, "thread-shared"), ["Hold"]);
+  assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
+});
+
+test("a draft missing from the list but still in getDraft is not pruned", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        id: "draft-live",
+        threadId: "thread-live",
+        messageId: "message-live",
+        dateMilliseconds: now - 1000,
+        labels: ["Hold"],
+      }),
+      draft({
+        id: "draft-hidden",
+        threadId: "thread-hidden",
+        messageId: "message-hidden",
+        dateMilliseconds: now - 1000,
+        labels: ["Hold"],
+        hiddenFromList: true,
+      }),
+    ],
+  });
+  world.properties.delayedSendHeldDrafts = JSON.stringify({
+    "draft-live": "message-live",
+    "draft-hidden": "message-hidden",
+  });
+  world.context.sendDraftsAfterDelay();
+  assert.equal(storedHeldMap(world)["draft-hidden"], "message-hidden");
+  assert.equal(storedHeldMap(world)["draft-live"], "message-live");
+  assert.deepEqual(world.sendCalls, []);
 });
 
 test("the old handler name still runs one pass", () => {
@@ -1923,6 +2554,7 @@ test("the old handler name still runs one pass", () => {
 
 let failed = 0;
 for (const entry of tests) {
+
   try {
     entry.fn();
     process.stdout.write("ok " + entry.name + "\n");
