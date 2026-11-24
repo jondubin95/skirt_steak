@@ -49,6 +49,13 @@ From this folder, on your own machine:
 
 `clasp create --type standalone --title "Gmail delayed send" --rootDir .` from this folder also writes that local `.clasp.json`. Do not commit it.
 
+Only one Apps Script project may run this trigger. The lock is per project. Two installed copies can send the same draft twice. Run `uninstallDelayedGmailSend` in the old project before installing another copy.
+
+Before the first real use, check the mechanism against your own mailbox:
+
+1. Compose a draft to yourself, apply `Send in 5`, and run `sendLabeledDraftsAfterDelay` from the editor after the draft is at least 5 minutes old. The execution log should say `Sent draft`, and `Send in 5` should be gone from the thread.
+2. Label a second draft `Send in 5`, delete that draft, and run the function again. It should not send, and it should not apply `Send failed`.
+
 ## Use the label
 
 Run `installDelayedGmailSend` before the first use so `Send in 5` and `Send failed` exist. You can also create those labels yourself with those exact names.
@@ -62,8 +69,10 @@ Desktop, including Edge and any other browser:
 Phone, in the Gmail app:
 
 1. Compose, then leave the draft so it saves.
-2. Open it from Drafts and apply the label `Send in 5` the same way you label any conversation.
+2. In the Drafts list, touch and hold the draft, then choose Labels (some phones say Label as). Applying the label from inside the open compose window is not available in the Gmail app.
 3. Leave the draft alone.
+
+Do not use Gmail's own Schedule send on a draft whose thread has `Send in 5`. The script cannot see that scheduled state. Remove `Send in 5` first, or the script can send the draft on its own clock.
 
 An open compose window that keeps autosaving keeps the message young, so the send waits until 5 minutes after the last save.
 
@@ -89,24 +98,29 @@ Running `installDelayedGmailSend` again is safe. It reuses both labels and leave
 Consumer Google accounts, not Workspace:
 
 - Trigger runtime is about 90 minutes per day. A one-minute trigger runs up to 1,440 times per day, so the average budget is about 3.7 seconds per run. This script returns as soon as there are no drafts, and it only sends drafts whose thread has the label.
-- A mailbox with a very large draft list can make `GmailApp.getDrafts()` plus a label check on each draft slow enough to spend that 90 minutes. Triggers then stop until the next day.
-- `GmailDraft.send()` counts toward the Gmail Apps Script send quota, about 100 recipients per day on a consumer account. When a send fails with a daily recipient-quota error, `Send in 5` stays on the thread, `Send failed` is not applied, the rest of that run does not send, and the run fails so the execution list shows it. A later run tries again. Remove `Send in 5` or delete the draft to stop the retries. `MailApp.getRemainingDailyQuota()` is not used: it needs the extra `script.send_mail` scope.
+- A mailbox with a very large draft list can make `GmailApp.getDrafts()` plus a label check on each draft slow enough to spend that 90 minutes. Triggers then stop until the next day. One execution is also capped at about 6 minutes. A run killed at that cap writes nothing, so `Send in 5` can remain on a thread that was already sent.
+- Gmail read and write, excluding send, is about 20,000 operations a day on a consumer account. This script reads every draft once a minute, so the budget can run out without a huge mailbox. A Gmail service-quota error (`for one day: gmail` or `in a short time: gmail`) is treated like the send quota below: `Send in 5` stays, `Send failed` is not applied, and the rest of that pass does not send.
+- `GmailDraft.send()` counts toward the Gmail Apps Script send quota, about 100 recipients per day on a consumer account. When a send fails with a daily recipient-quota error, or with a short-time email rate limit, `Send in 5` stays on the thread, `Send failed` is not applied, the rest of that run does not send, and the run fails so the execution list shows it. A later run tries again. Quotas reset 24 hours after the first request, not at midnight. Remove `Send in 5` or delete the draft to stop the retries. `MailApp.getRemainingDailyQuota()` is not used: it needs the extra `script.send_mail` scope.
 - Minute triggers can overlap if a run is slow. The script takes `LockService.getScriptLock()` and skips the pass when another run holds it, so two passes cannot send the same draft. The wait is 0 milliseconds so a blocked pass does not sit on the daily trigger-time budget.
 - Minute triggers drift. Delivery is about 5 to 7 minutes after the last save, not exactly 5:00.
 
 ## If a send fails
 
-A non-quota failure is logged, then the thread is labeled `Send failed` and `Send in 5` is removed. The draft stays in Drafts. The next minute does not send it again. The idea of parking a failed draft on its own label comes from [GmailSendLater](https://github.com/devietti/GmailSendLater). That repository has no license, so this script does not copy its code. `Send failed` is this script's label, created by `installDelayedGmailSend`, and it is applied only after a non-quota failure.
+A non-quota failure is logged. `Send in 5` is removed first, then `Send failed` is applied. The draft stays in Drafts. The next minute does not send it again. If another labeled draft is still queued on that same thread, `Send in 5` stays so the other draft can send, and `Send failed` is still applied. The idea of parking a failed draft on its own label comes from [GmailSendLater](https://github.com/devietti/GmailSendLater). That repository has no license, so this script does not copy its code. `Send failed` is this script's label, created by `installDelayedGmailSend`, and it is applied only after a non-quota failure.
 
 To spot one: open the `Send failed` label in Gmail, or read the execution log. The log has the draft id, the subject, and the error. It does not include the body or the recipients.
 
 To retry: fix the draft, remove `Send failed`, and apply `Send in 5` again. The clock is still the draft's last save. An old draft sends on the next run. Touch the draft if you want another 5 minutes.
 
-A daily quota failure does not do this. Those threads keep `Send in 5` and are tried on a later run.
+A daily send-quota failure, a short-time email rate limit, and a Gmail read-quota failure do not do this. Those threads keep `Send in 5` and are tried on a later run.
+
+A draft that disappears before `send()` (you deleted it, or you sent it yourself) is not parked on `Send failed`.
 
 ## If a run fails
 
-A non-quota draft failure is logged and the run still finishes, so the other labeled drafts in that pass are still sent. A missing `Send in 5` label, or a daily email quota error, fails the run.
+A non-quota draft failure is logged and the run still finishes, so the other labeled drafts in that pass are still sent. A missing `Send in 5` label, or a service quota error, fails the run. The same persistent failure is thrown at most once an hour. Later passes log it and return, so a minute trigger does not stack a long streak of failed executions. Repeated failures are reported to disable time triggers; that limit is not in the official quota table.
+
+If labeled drafts stop sending, open the script's Triggers page. A trigger that turned itself off is listed there and can be turned back on after the cause is fixed.
 
 To get an email when a run fails: in the Apps Script editor open Triggers, open this minute trigger, and set failure notifications. "Once daily" is the setting that matches a one-minute trigger. The script does not send its own error mail. That would spend the same send quota and, on a one-minute trigger, repeat until you removed the label.
 
@@ -128,7 +142,7 @@ Consequences:
 
 The Gmail API says a draft message cannot have any label except the `DRAFT` system label. `GmailDraft` has no label method. The way to see the label you applied in Gmail is `draft.getMessage().getThread().getLabels()`.
 
-That is a thread label. Every draft on that thread is eligible. `label.getThreads()` is not used, because draft-only threads are often missing from thread lists. `GmailApp.search` has the same hole. `getDrafts()` is the list, filtered by the thread label.
+That is a thread label. Every draft on that thread is eligible. The script removes `Send in 5` only when that pass has no remaining queued draft on the thread, so a younger draft on the same thread still waits its own 5 minutes. `label.getThreads()` is not used, because draft-only threads are often missing from thread lists. `GmailApp.search` has the same hole. `getDrafts()` is the list, filtered by the thread label.
 
 `GmailDraft.send()` deletes the draft message and creates a new sent message. New messages do not inherit thread labels. The script still calls `removeLabel` on the sent thread so a conversation that already had other labeled messages does not keep `Send in 5`. If the mail was sent and label removal throws, the error is logged and the draft is not sent again.
 

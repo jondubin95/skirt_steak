@@ -50,3 +50,10 @@ What failed or was risky, what changed, the evidence, and the date. Record only 
 - What changed: That failure logs the error, applies `Send failed`, and removes `Send in 5`. A daily recipient-quota error still keeps `Send in 5`. The parking idea is from GmailSendLater and the code is new. `installDelayedGmailSend` creates both labels.
 - Evidence: `apps_script/gmail_delayed_send/Code.gs` and `apps_script/gmail_delayed_send/README.md`.
 - Date: 2026-11-24
+
+## Gmail delayed-send quota and thread label
+
+- What failed or was risky: A Gmail read-quota error did not match the send-quota text, so a healthy draft could be parked on `Send failed`. A quota or missing-label failure every minute can turn a time trigger off. Removing `Send in 5` after the first send left any other draft on that thread unlabeled. Applying `Send failed` before removing `Send in 5` could keep both labels if the remove failed.
+- What changed: Gmail service-quota errors keep `Send in 5` and stop the pass. The same persistent failure throws at most once an hour. `Send in 5` stays while another queued draft remains on the thread, and it is removed before `Send failed` is applied. A draft that is already gone is not parked. The subject is read before `send()`.
+- Evidence: `apps_script/gmail_delayed_send/Code.gs` and `apps_script/gmail_delayed_send/README.md`.
+- Date: 2026-11-24
