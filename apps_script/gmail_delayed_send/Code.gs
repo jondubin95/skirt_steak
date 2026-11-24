@@ -104,7 +104,8 @@ const RELEASE_SEEN_ONCE_PROPERTY = "delayedSendReleaseSeenOnce";
 // Consecutive getDraft not-found results. A generic read error does not count.
 const STICKY_ABSENT_PASSES_PROPERTY = "delayedSendStickyAbsentPasses";
 // How many passes getDraft found a draft that getDrafts did not list.
-// A value above 1e11 is the next epoch ms when that lookup may run again.
+// A value at or above UNLISTED_COOLDOWN_SENTINEL (1e12) is the next epoch ms
+// when that lookup may run again. Counts stay below that.
 const STICKY_UNLISTED_FOUND_PROPERTY = "delayedSendStickyUnlistedFound";
 // Consecutive passes a listed draft could not be read.
 const STICKY_UNREAD_PASSES_PROPERTY = "delayedSendStickyUnreadPasses";
@@ -126,6 +127,8 @@ const UNREADABLE_PASSES_BEFORE_EXCLUDE = 3;
 const UNLISTED_FOUND_PASSES_BEFORE_COOLDOWN = 60;
 const UNLISTED_RECHECK_MILLISECONDS = 60 * 60 * 1000;
 const UNLISTED_COOLDOWN_SENTINEL = 1000000000000;
+const DELAYED_SEND_ARMED_PROPERTY = "delayedSendArmedVersion";
+const DELAYED_SEND_ARMED_VERSION = "2";
 // Stored when Hold must be restored and this pass has no prior message id.
 // It matches no Gmail message id, so the next pass tries the restore again.
 const STICKY_HOLD_PENDING_MESSAGE_ID = "pending-hold-restore";
@@ -186,6 +189,7 @@ function installDelayedGmailSend() {
     .timeBased()
     .everyMinutes(TRIGGER_INTERVAL_MINUTES)
     .create();
+  properties.setProperty(DELAYED_SEND_ARMED_PROPERTY, DELAYED_SEND_ARMED_VERSION);
   Logger.log(
     "Installed delayed send. holdLabel=%s releaseLabel=%s failedLabel=%s removedTriggers=%s intervalMinutes=%s handler=%s",
     holdLabel.getName(),
@@ -214,8 +218,25 @@ function uninstallDelayedGmailSend() {
  * Returns immediately when there are no drafts, or when another run holds
  * the script lock.
  */
+function delayedSendIsArmed_() {
+  try {
+    const stored = PropertiesService.getScriptProperties().getProperty(DELAYED_SEND_ARMED_PROPERTY);
+    return stored === DELAYED_SEND_ARMED_VERSION;
+  } catch (error) {
+    Logger.log(
+      "Could not read the delayed-send armed marker. Nothing was sent. error=%s",
+      formatError_(error)
+    );
+    return false;
+  }
+}
+
 function sendDraftsAfterDelay() {
   assertDelayedSendConfigured_();
+  if (!delayedSendIsArmed_()) {
+    Logger.log("Delayed send is not armed. Run installDelayedGmailSend. Nothing was sent.");
+    return;
+  }
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(LOCK_WAIT_MILLISECONDS)) {
     Logger.log("Delayed send skipped. Another run holds the script lock.");
@@ -302,6 +323,7 @@ function sendDraftsWithLockHeld_() {
     const threadLabelStateByThreadId = {};
     const skippedSendFailedDraftIds = [];
     const liveIds = {};
+    let sawUnavailableDraftId = false;
     let eligibleCount = 0;
     let sentCount = 0;
     let waitingCount = 0;
@@ -321,6 +343,9 @@ function sendDraftsWithLockHeld_() {
         // A not-found error during an edit must not forget Hold. Pruning
         // confirms a draft that is actually gone.
         logDraftProblem_("Delayed send will retry this draft. id=%s error=%s", draftId, error);
+        if (draftId === "unavailable") {
+          sawUnavailableDraftId = true;
+        }
         if (isRetryLaterQuotaError_(error)) {
           failedCount++;
           passFlags.quota = true;
@@ -335,6 +360,9 @@ function sendDraftsWithLockHeld_() {
         }
         noteUnreadDraft_(sticky, draftId, threadId, passFlags);
       }
+    }
+    if (!sawUnavailableDraftId) {
+      delete sticky.unreadPasses["unavailable-draft"];
     }
     const startedWithOverflowLatch = sticky.overflowLatch;
     applyStickyHoldForPass_(
@@ -577,6 +605,18 @@ function threadIdForUnreadDraft_(draftId, passFlags) {
       passFlags.quota = true;
     }
     return null;
+  }
+}
+
+function freshReadFailureKey_(draftId) {
+  return "fresh:" + draftId;
+}
+
+function noteFreshReadFailure_(sticky, draftId, passFlags) {
+  const key = freshReadFailureKey_(draftId);
+  sticky.unreadPasses[key] = (sticky.unreadPasses[key] || 0) + 1;
+  if (sticky.unreadPasses[key] > UNREADABLE_PASSES_BEFORE_EXCLUDE) {
+    passFlags.alertUnreadable = true;
   }
 }
 
@@ -836,7 +876,10 @@ function sendDraftIfOldEnough_(
       return { outcome: "waiting" };
     }
   }
-  writeInFlight_(draftId, freshMessageId);
+  if (!writeInFlight_(draftId, freshMessageId)) {
+    logDraftProblem_("Delayed send will retry this draft. id=%s error=%s", draftId, "in-flight record was not stored");
+    return { outcome: "retry" };
+  }
   let sentMessage;
   try {
     sentMessage = freshDraft.send();
@@ -1331,12 +1374,16 @@ function throwPersistentFailureAtMostOncePerHour_(message) {
       );
     }
   }
-  const minuteOfHour = Math.floor(nowMilliseconds / 60000) % 60;
-  if (minuteOfHour !== 0) {
+  if (!minuteFallsInPersistentFailureWindow_(nowMilliseconds, TRIGGER_INTERVAL_MINUTES)) {
     Logger.log("Persistent delayed-send failure. Not throwing again this hour. %s", message);
     return;
   }
   throw new Error(message);
+}
+
+function minuteFallsInPersistentFailureWindow_(nowMilliseconds, intervalMinutes) {
+  const minuteOfHour = Math.floor(nowMilliseconds / 60000) % 60;
+  return minuteOfHour < intervalMinutes;
 }
 
 function clearPersistentFailureLatch_() {
@@ -1577,12 +1624,14 @@ function writeInFlight_(draftId, messageId) {
         startedAt: Date.now(),
       })
     );
+    return true;
   } catch (error) {
     Logger.log(
       "Could not store the in-flight send record. id=%s error=%s",
       draftId,
       formatError_(error)
     );
+    return false;
   }
 }
 
@@ -1852,12 +1901,13 @@ function applyStickyHoldForThread_(views, sticky, labelIds, nowMilliseconds, pas
     if (!fresh.ok) {
       if (!fresh.quota) {
         passFlags.incompleteThreadIds[view.threadId] = true;
-        noteUnreadDraft_(sticky, view.draftId, view.threadId, passFlags);
+        noteFreshReadFailure_(sticky, view.draftId, passFlags);
       }
       view.decision = "hold";
       blockRelease = true;
       continue;
     }
+    delete sticky.unreadPasses[freshReadFailureKey_(view.draftId)];
     if (fresh.labelState.release) {
       if (threadScanIsIncomplete_(views, passFlags)) {
         holdEntireThread_(views);
@@ -2373,6 +2423,7 @@ function unreadableStickyHoldState_() {
     shardGeneration: "",
     originalSignature: null,
     needsRewrite: false,
+    orphanShardKeys: [],
     shardKeys: {
       held: [],
       releasedAt: [],
@@ -2393,6 +2444,7 @@ function readStickyHoldState_(snapshot, nowMilliseconds) {
   }
   state.overflowLatch = snapshot[STICKY_OVERFLOW_PROPERTY] === "1";
   state.shardGeneration = snapshot[STICKY_SHARD_GENERATION_PROPERTY] || "";
+  state.orphanShardKeys = collectOrphanShardKeys_(snapshot);
   const held = readShardedStickyMap_(snapshot, HELD_DRAFTS_PROPERTY, "hold");
   const releasedAt = readShardedStickyMap_(snapshot, RELEASED_AT_PROPERTY, "release");
   const releaseSeenOnce = readShardedStickyMap_(
@@ -2498,6 +2550,57 @@ function stickyValueOk_(value, valueKind) {
     return typeof value === "number" && isFinite(value);
   }
   return typeof value === "string";
+}
+
+function collectOrphanShardKeys_(snapshot) {
+  const bases = [
+    HELD_DRAFTS_PROPERTY,
+    RELEASED_AT_PROPERTY,
+    RELEASE_SEEN_ONCE_PROPERTY,
+    STICKY_ABSENT_PASSES_PROPERTY,
+    STICKY_UNLISTED_FOUND_PROPERTY,
+    STICKY_UNREAD_PASSES_PROPERTY,
+  ];
+  const generation = snapshot[STICKY_SHARD_GENERATION_PROPERTY] || "";
+  const orphans = [];
+  const seen = {};
+  for (const key in snapshot) {
+    if (!Object.prototype.hasOwnProperty.call(snapshot, key)) {
+      continue;
+    }
+    for (let baseIndex = 0; baseIndex < bases.length; baseIndex++) {
+      const parsed = parseStickyShardKey_(bases[baseIndex], key);
+      if (!parsed || parsed.shardNumber === 1) {
+        continue;
+      }
+      const active = generation ? parsed.generation === generation : parsed.generation === "";
+      if (!active && !seen[key]) {
+        seen[key] = true;
+        orphans.push(key);
+      }
+    }
+  }
+  return orphans;
+}
+
+function deleteRememberedOrphanShards_(sticky) {
+  const orphanKeys = sticky.orphanShardKeys || [];
+  if (orphanKeys.length === 0) {
+    return;
+  }
+  const ordered = orphanKeys.slice();
+  ordered.sort(function sortDescending(left, right) {
+    return stickyShardSortNumber_(right) - stickyShardSortNumber_(left);
+  });
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    for (let keyIndex = 0; keyIndex < ordered.length; keyIndex++) {
+      properties.deleteProperty(ordered[keyIndex]);
+    }
+    sticky.orphanShardKeys = [];
+  } catch (error) {
+    Logger.log("Could not delete an old sticky shard. error=%s", formatError_(error));
+  }
 }
 
 function parseStickyShardKey_(baseName, key) {
@@ -2705,6 +2808,15 @@ function pruneStickyDrafts_(sticky, liveIds, listComplete, passFlags, nowMillise
     delete sticky.absentPasses[livePresent[liveIndex]];
     delete sticky.unlistedFound[livePresent[liveIndex]];
   }
+  const listedAgain = [];
+  for (const draftId in sticky.unlistedFound) {
+    if (Object.prototype.hasOwnProperty.call(sticky.unlistedFound, draftId) && liveIds[draftId]) {
+      listedAgain.push(draftId);
+    }
+  }
+  for (let listedIndex = 0; listedIndex < listedAgain.length; listedIndex++) {
+    delete sticky.unlistedFound[listedAgain[listedIndex]];
+  }
 }
 
 function collectMissingIds_(map, liveIds, candidateIds) {
@@ -2744,35 +2856,53 @@ function persistStickyHoldState_(sticky, nowMilliseconds, delayMilliseconds) {
   const batch = {};
   const usedKeys = {};
   const totalChars =
-    assignStickyChunks_(batch, usedKeys, HELD_DRAFTS_PROPERTY, heldChunks, nextGeneration) +
-    assignStickyChunks_(batch, usedKeys, RELEASED_AT_PROPERTY, releasedChunks, nextGeneration) +
+    assignStickyChunks_(
+      batch,
+      usedKeys,
+      HELD_DRAFTS_PROPERTY,
+      heldChunks,
+      nextGeneration,
+      sticky.shardKeys.held
+    ) +
+    assignStickyChunks_(
+      batch,
+      usedKeys,
+      RELEASED_AT_PROPERTY,
+      releasedChunks,
+      nextGeneration,
+      sticky.shardKeys.releasedAt
+    ) +
     assignStickyChunks_(
       batch,
       usedKeys,
       RELEASE_SEEN_ONCE_PROPERTY,
       seenChunks,
-      nextGeneration
+      nextGeneration,
+      sticky.shardKeys.releaseSeenOnce
     ) +
     assignStickyChunks_(
       batch,
       usedKeys,
       STICKY_ABSENT_PASSES_PROPERTY,
       absentChunks,
-      nextGeneration
+      nextGeneration,
+      sticky.shardKeys.absentPasses
     ) +
     assignStickyChunks_(
       batch,
       usedKeys,
       STICKY_UNLISTED_FOUND_PROPERTY,
       unlistedChunks,
-      nextGeneration
+      nextGeneration,
+      sticky.shardKeys.unlistedFound
     ) +
     assignStickyChunks_(
       batch,
       usedKeys,
       STICKY_UNREAD_PASSES_PROPERTY,
       unreadChunks,
-      nextGeneration
+      nextGeneration,
+      sticky.shardKeys.unreadPasses
     );
   if (mapHasAnyKey_(batch) || sticky.shardGeneration) {
     batch[STICKY_SHARD_GENERATION_PROPERTY] = nextGeneration;
@@ -2786,6 +2916,7 @@ function persistStickyHoldState_(sticky, nowMilliseconds, delayMilliseconds) {
     !sticky.overflowLatch &&
     !sticky.needsRewrite
   ) {
+    deleteRememberedOrphanShards_(sticky);
     return { ok: true, unchanged: true };
   }
   try {
@@ -2794,6 +2925,7 @@ function persistStickyHoldState_(sticky, nowMilliseconds, delayMilliseconds) {
       properties.setProperties(batch, false);
     }
     deleteUnusedStickyKeys_(properties, sticky.shardKeys, usedKeys);
+    deleteRememberedOrphanShards_(sticky);
     if (sticky.overflowLatch) {
       properties.deleteProperty(STICKY_OVERFLOW_PROPERTY);
     }
@@ -2820,7 +2952,22 @@ function markStickyOverflow_(sticky) {
   return { ok: false, overflow: true };
 }
 
-function assignStickyChunks_(batch, usedKeys, baseName, chunks, generation) {
+function assignStickyChunks_(batch, usedKeys, baseName, chunks, generation, previousKeys) {
+  if (!chunks || chunks.length === 0) {
+    const keys = previousKeys || [];
+    let hadBase = false;
+    for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+      if (keys[keyIndex] === baseName) {
+        hadBase = true;
+      }
+    }
+    if (!hadBase) {
+      return 0;
+    }
+    batch[baseName] = "{}";
+    usedKeys[baseName] = baseName;
+    return 2;
+  }
   let totalChars = 0;
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
     const key =

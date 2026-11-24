@@ -28,6 +28,9 @@ function createWorld(options) {
   const sendCalls = [];
   const serviceCalls = [];
   const properties = {};
+  if (settings.leaveUnarmed !== true) {
+    properties.delayedSendArmedVersion = "2";
+  }
   const cacheStore = {};
   const triggers = settings.triggers ? settings.triggers.slice() : [];
   let nextTriggerId = 1;
@@ -215,6 +218,9 @@ function createWorld(options) {
     }
     return {
       getId() {
+        if (spec.getIdError) {
+          throw new Error(spec.getIdError);
+        }
         return spec.id;
       },
       getMessageId() {
@@ -331,6 +337,9 @@ function createWorld(options) {
             if (settings.propertiesSetError) {
               throw new Error(settings.propertiesSetError);
             }
+            if (settings.failSetPropertyKeys && settings.failSetPropertyKeys[key]) {
+              throw new Error("set failed " + key);
+            }
             properties[key] = String(value);
           },
           setProperties(values) {
@@ -375,6 +384,9 @@ function createWorld(options) {
     },
     CacheService: {
       getScriptCache() {
+        if (settings.cacheDisabled) {
+          throw new Error("cache down");
+        }
         return {
           get(key) {
             const entry = cacheStore[key];
@@ -909,7 +921,7 @@ test("a repeated quota error throws at most once per hour", () => {
   assert.equal(recovered.properties.delayedSendPersistentFailureLatchedAt, undefined);
 });
 
-test("a properties failure still throws the quota error", () => {
+test("a properties failure before send does not call send", () => {
   const now = 1_700_000_000_000;
   const world = createWorld({
     nowMilliseconds: now,
@@ -921,9 +933,10 @@ test("a properties failure still throws the quota error", () => {
       }),
     ],
   });
-  assertThrows(() => world.context.sendDraftsAfterDelay(), /Gmail quota reached/);
   world.context.sendDraftsAfterDelay();
-  assert.ok(world.logs.some((line) => line.indexOf("Not throwing again this hour") !== -1));
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
+  assert.ok(world.logs.some((line) => line.indexOf("in-flight record was not stored") !== -1));
 });
 
 test("two old drafts on one thread both send and the label comes off once", () => {
@@ -1308,7 +1321,7 @@ test("removing Hold on an unchanged draft starts a 5 minute release clock", () =
   );
   oldEnough.context.sendDraftsAfterDelay();
   assert.deepEqual(oldEnough.sendCalls, []);
-  assert.equal(oldEnough.properties.delayedSendHeldDrafts, undefined);
+  assert.equal(oldEnough.properties.delayedSendHeldDrafts, "{}");
   assert.equal(JSON.parse(oldEnough.properties.delayedSendReleasedAt)["draft-1"], now);
   assert.ok(
     oldEnough.logs.some((line) => line === "Hold removed. Release clock started. id=draft-1")
@@ -1320,8 +1333,8 @@ test("removing Hold on an unchanged draft starts a 5 minute release clock", () =
   oldEnough.nowHolder.milliseconds = now + FIVE_MINUTES_MS;
   oldEnough.context.sendDraftsAfterDelay();
   assert.deepEqual(oldEnough.sendCalls, ["draft-1"]);
-  assert.equal(oldEnough.properties.delayedSendReleasedAt, undefined);
-  assert.equal(oldEnough.properties.delayedSendHeldDrafts, undefined);
+  assert.equal(oldEnough.properties.delayedSendReleasedAt, "{}");
+  assert.equal(oldEnough.properties.delayedSendHeldDrafts, "{}");
 
   const recent = createWorld({
     nowMilliseconds: now,
@@ -1855,7 +1868,7 @@ test("a Release label wins over Hold and starts the release clock", () => {
   world.context.sendDraftsAfterDelay();
   assert.deepEqual(world.sendCalls, []);
   assert.deepEqual(labelNames(world, "thread-1"), []);
-  assert.equal(world.properties.delayedSendHeldDrafts, undefined);
+  assert.equal(world.properties.delayedSendHeldDrafts, "{}");
   assert.equal(JSON.parse(world.properties.delayedSendReleasedAt)["draft-1"], now);
   assert.ok(world.logs.some((line) => line === "Release label wins. id=draft-1"));
   assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
@@ -1866,7 +1879,7 @@ test("a Release label wins over Hold and starts the release clock", () => {
   world.nowHolder.milliseconds = now + FIVE_MINUTES_MS;
   world.context.sendDraftsAfterDelay();
   assert.deepEqual(world.sendCalls, ["draft-1"]);
-  assert.equal(world.properties.delayedSendReleasedAt, undefined);
+  assert.equal(world.properties.delayedSendReleasedAt, "{}");
 });
 
 test("Release added before send starts the release clock", () => {
@@ -1914,7 +1927,7 @@ test("deleted draft ids are pruned from sticky Hold", () => {
   assert.deepEqual(JSON.parse(world.properties.delayedSendHeldDrafts), {
     "draft-1": "message-1",
   });
-  assert.equal(world.properties.delayedSendReleasedAt, undefined);
+  assert.equal(world.properties.delayedSendReleasedAt, "{}");
   assert.deepEqual(world.sendCalls, []);
 
   const empty = createWorld({ drafts: [] });
@@ -1923,8 +1936,8 @@ test("deleted draft ids are pruned from sticky Hold", () => {
   empty.context.sendDraftsAfterDelay();
   assert.equal(JSON.parse(empty.properties.delayedSendHeldDrafts)["draft-gone"], "message-gone");
   empty.context.sendDraftsAfterDelay();
-  assert.equal(empty.properties.delayedSendHeldDrafts, undefined);
-  assert.equal(empty.properties.delayedSendReleasedAt, undefined);
+  assert.equal(empty.properties.delayedSendHeldDrafts, "{}");
+  assert.equal(empty.properties.delayedSendReleasedAt, "{}");
   assert.deepEqual(empty.logs, []);
 });
 
@@ -1943,7 +1956,7 @@ test("the release clock blocks an old draft until 5 minutes after release", () =
   world.nowHolder.milliseconds = now + 1;
   world.context.sendDraftsAfterDelay();
   assert.deepEqual(world.sendCalls, ["draft-1"]);
-  assert.equal(world.properties.delayedSendReleasedAt, undefined);
+  assert.equal(world.properties.delayedSendReleasedAt, "{}");
   assert.equal(world.properties.delayedSendHeldDrafts, undefined);
 });
 
@@ -2295,7 +2308,7 @@ test("Release on a multi-draft thread starts the clock for every draft", () => {
   const releasedAt = JSON.parse(world.properties.delayedSendReleasedAt);
   assert.equal(releasedAt["draft-a"], now);
   assert.equal(releasedAt["draft-b"], now);
-  assert.equal(world.properties.delayedSendHeldDrafts, undefined);
+  assert.equal(world.properties.delayedSendHeldDrafts, "{}");
   world.nowHolder.milliseconds = now + FIVE_MINUTES_MS;
   world.context.sendDraftsAfterDelay();
   assert.deepEqual(world.sendCalls, ["draft-a", "draft-b"]);
@@ -2980,6 +2993,211 @@ test("more shards than the maximum fail closed", () => {
   );
   assert.deepEqual(world.sendCalls, []);
 });
+
+test("nothing sends until install arms this version", () => {
+  const now = 1_700_000_000_000;
+  const unarmed = createWorld({
+    leaveUnarmed: true,
+    nowMilliseconds: now,
+    triggers: [{ id: "old", handlerName: "sendLabeledDraftsAfterDelay" }],
+    drafts: [draft({ dateMilliseconds: now - FIVE_MINUTES_MS })],
+  });
+  unarmed.context.sendDraftsAfterDelay();
+  unarmed.context.sendLabeledDraftsAfterDelay();
+  assert.deepEqual(unarmed.sendCalls, []);
+  assert.ok(unarmed.logs.some((line) => line.indexOf("not armed") !== -1));
+  assert.equal(unarmed.serviceCalls.indexOf("getDrafts"), -1);
+
+  const stale = createWorld({
+    nowMilliseconds: now,
+    drafts: [draft({ dateMilliseconds: now - FIVE_MINUTES_MS })],
+  });
+  stale.properties.delayedSendArmedVersion = "1";
+  stale.context.sendDraftsAfterDelay();
+  assert.deepEqual(stale.sendCalls, []);
+
+  const upgrading = createWorld({
+    leaveUnarmed: true,
+    sendLabelExists: false,
+    triggers: [
+      { id: "legacy", handlerName: "sendLabeledDraftsAfterDelay" },
+      { id: "current", handlerName: "sendDraftsAfterDelay" },
+    ],
+  });
+  upgrading.context.installDelayedGmailSend();
+  assert.equal(upgrading.properties.delayedSendArmedVersion, "2");
+  assert.equal(upgrading.triggers.length, 1);
+  assert.equal(upgrading.triggers[0].handlerName, "sendDraftsAfterDelay");
+  upgrading.context.installDelayedGmailSend();
+  assert.equal(upgrading.triggers.length, 1);
+});
+
+test("a persistent fresh read failure alerts and keeps the thread held", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        id: "draft-tracked",
+        threadId: "thread-shared",
+        messageId: "message-tracked",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+        rereadError: "Service error: Gmail",
+      }),
+      draft({
+        id: "draft-sibling",
+        threadId: "thread-shared",
+        messageId: "message-sibling",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+      }),
+    ],
+  });
+  world.properties.delayedSendHeldDrafts = JSON.stringify({
+    "draft-tracked": "message-tracked",
+  });
+  world.context.sendDraftsAfterDelay();
+  world.context.sendDraftsAfterDelay();
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  assertThrows(() => world.context.sendDraftsAfterDelay(), /stayed unreadable/);
+  assert.deepEqual(world.sendCalls, []);
+  assert.ok(JSON.parse(world.properties.delayedSendStickyUnreadPasses)["fresh:draft-tracked"] > 3);
+});
+
+test("an empty sticky map is stored as an empty object", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [draft({ dateMilliseconds: now - 1000, labels: ["Hold"] })],
+  });
+  world.properties.delayedSendReleasedAt = JSON.stringify({ "draft-ghost": now - 1000 });
+  world.context.sendDraftsAfterDelay();
+  world.context.sendDraftsAfterDelay();
+  assert.equal(world.properties.delayedSendReleasedAt, "{}");
+  assert.equal(JSON.parse(world.properties.delayedSendHeldDrafts)["draft-1"], "message-1");
+});
+
+test("an old-generation shard is deleted", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        messageId: "message-1",
+        dateMilliseconds: now - 1000,
+        labels: ["Hold"],
+      }),
+    ],
+  });
+  world.properties.delayedSendStickyShardGeneration = "2";
+  world.properties.delayedSendHeldDrafts = JSON.stringify({ "draft-1": "message-1" });
+  world.properties.delayedSendHeldDraftsShard2Gen1 = JSON.stringify({
+    "draft-old": "message-old",
+  });
+  world.context.sendDraftsAfterDelay();
+  assert.equal(world.properties.delayedSendHeldDraftsShard2Gen1, undefined);
+  assert.equal(storedHeldMap(world)["draft-old"], undefined);
+  assert.equal(storedHeldMap(world)["draft-1"], "message-1");
+  assert.deepEqual(world.sendCalls, []);
+});
+
+test("a failed in-flight write does not send", () => {
+  const now = 1_700_000_000_000;
+  const options = {
+    nowMilliseconds: now,
+    failSetPropertyKeys: { delayedSendInFlightSend: true },
+    drafts: [draft({ dateMilliseconds: now - FIVE_MINUTES_MS })],
+  };
+  const world = createWorld(options);
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  assert.equal(world.labelOps.indexOf("add:Send failed"), -1);
+  assert.ok(world.logs.some((line) => line.indexOf("in-flight record was not stored") !== -1));
+  options.failSetPropertyKeys = null;
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, ["draft-1"]);
+});
+
+test("a successful scan resets the unavailable-draft counter", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [
+      draft({
+        id: "draft-bad",
+        threadId: "thread-bad",
+        dateMilliseconds: now - 1000,
+        getIdError: "Invalid argument: id",
+      }),
+      draft({
+        id: "draft-open",
+        threadId: "thread-open",
+        dateMilliseconds: now - FIVE_MINUTES_MS,
+      }),
+    ],
+  });
+  world.context.sendDraftsAfterDelay();
+  world.context.sendDraftsAfterDelay();
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, []);
+  world.draftSpecs["draft-bad"].getIdError = null;
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, ["draft-open"]);
+  assert.equal(JSON.parse(world.properties.delayedSendStickyUnreadPasses || "{}")["unavailable-draft"], undefined);
+  world.draftSpecs["draft-bad"].getIdError = "Invalid argument: id";
+  world.context.sendDraftsAfterDelay();
+  assert.deepEqual(world.sendCalls, ["draft-open"]);
+  assert.equal(JSON.parse(world.properties.delayedSendStickyUnreadPasses)["unavailable-draft"], 1);
+});
+
+test("a listed draft clears its unlisted cooldown", () => {
+  const now = 1_700_000_000_000;
+  const world = createWorld({
+    nowMilliseconds: now,
+    drafts: [draft({ dateMilliseconds: now - 1000, labels: ["Hold"] })],
+  });
+  world.properties.delayedSendStickyUnlistedFound = JSON.stringify({
+    "draft-1": now + HOUR_MS,
+  });
+  world.context.sendDraftsAfterDelay();
+  assert.equal(world.properties.delayedSendStickyUnlistedFound, "{}");
+});
+
+test("the cache-down alert window covers a longer trigger", () => {
+  assert.equal(worldMinuteWindow(0, 1), true);
+  assert.equal(worldMinuteWindow(2, 1), false);
+  assert.equal(worldMinuteWindow(2, 5), true);
+  assert.equal(worldMinuteWindow(7, 5), false);
+  assert.equal(worldMinuteWindow(29, 30), true);
+  assert.equal(worldMinuteWindow(40, 30), false);
+
+  const minuteMs = 60 * 1000;
+  const base = 1_700_000_000_000;
+  const minuteOfHour = Math.floor(base / minuteMs) % 60;
+  const minuteZero = base - minuteOfHour * minuteMs;
+  const inside = createWorld({
+    cacheDisabled: true,
+    nowMilliseconds: minuteZero,
+    getDraftsError: "Service invoked too many times for one day: gmail",
+    drafts: [draft()],
+  });
+  assertThrows(() => inside.context.sendDraftsAfterDelay(), /Gmail quota reached/);
+  const outside = createWorld({
+    cacheDisabled: true,
+    nowMilliseconds: minuteZero + 2 * minuteMs,
+    getDraftsError: "Service invoked too many times for one day: gmail",
+    drafts: [draft()],
+  });
+  outside.context.sendDraftsAfterDelay();
+  assert.ok(outside.logs.some((line) => line.indexOf("Not throwing again this hour") !== -1));
+  assert.deepEqual(outside.sendCalls, []);
+});
+
+function worldMinuteWindow(minuteOfHour, intervalMinutes) {
+  const now = minuteOfHour * 60 * 1000;
+  const world = createWorld({ leaveUnarmed: true, nowMilliseconds: now });
+  return world.context.minuteFallsInPersistentFailureWindow_(now, intervalMinutes);
+}
 
 test("the old handler name still runs one pass", () => {
   const now = 1_700_000_000_000;
