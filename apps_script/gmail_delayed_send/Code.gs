@@ -19,6 +19,8 @@
 
 const DELAY_MINUTES = 5;
 const SEND_LABEL_NAME = "Send in 5";
+// Do not wait. A queued run would sit on the consumer trigger-time quota.
+const LOCK_WAIT_MILLISECONDS = 0;
 
 /**
  * Creates the label when missing and installs one every-minute trigger.
@@ -50,13 +52,28 @@ function uninstallDelayedGmailSend() {
 }
 
 /**
- * Time-driven entry point. Lists drafts, keeps those whose thread has
- * the send label, and sends each one that is old enough. One draft's
- * error is logged and does not stop the rest. Returns immediately when
- * there are no drafts.
+ * Time-driven entry point. One run at a time. Lists drafts, keeps those
+ * whose thread has the send label, and sends each one that is old enough.
+ * One draft's error is logged and does not stop the rest, except a daily
+ * email-quota error, which leaves the remaining drafts for a later run.
+ * Returns immediately when there are no drafts, or when another run holds
+ * the script lock.
  */
 function sendLabeledDraftsAfterDelay() {
   assertDelayedSendConfigured_();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MILLISECONDS)) {
+    Logger.log("Delayed send skipped. Another run holds the script lock.");
+    return;
+  }
+  try {
+    sendLabeledDraftsWithLockHeld_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function sendLabeledDraftsWithLockHeld_() {
   const delayMilliseconds = delayMilliseconds_();
   const label = GmailApp.getUserLabelByName(SEND_LABEL_NAME);
   if (!label) {
@@ -76,6 +93,7 @@ function sendLabeledDraftsAfterDelay() {
   let sentCount = 0;
   let waitingCount = 0;
   let failedCount = 0;
+  let dailyEmailQuotaReached = false;
 
   for (let draftIndex = 0; draftIndex < drafts.length; draftIndex++) {
     const draft = drafts[draftIndex];
@@ -101,6 +119,13 @@ function sendLabeledDraftsAfterDelay() {
         draftId,
         formatError_(error)
       );
+      if (isDailyEmailQuotaError_(error)) {
+        dailyEmailQuotaReached = true;
+        Logger.log(
+          "Daily email quota reached. Remaining labeled drafts stay labeled for a later run."
+        );
+        break;
+      }
     }
   }
 
@@ -114,6 +139,11 @@ function sendLabeledDraftsAfterDelay() {
     waitingCount,
     failedCount
   );
+  if (dailyEmailQuotaReached) {
+    throw new Error(
+      "Daily email quota reached. Labeled drafts left unsent stay labeled and are tried on a later run."
+    );
+  }
 }
 
 function sendLabeledDraftIfOldEnough_(draft, label, delayMilliseconds) {
@@ -251,6 +281,20 @@ function logWaitingDraft_(draftId, subject, ageMilliseconds, stage) {
     draftId,
     subject,
     Math.round(ageMilliseconds / 1000)
+  );
+}
+
+function isDailyEmailQuotaError_(error) {
+  const parts = [];
+  if (error && error.message) {
+    parts.push(String(error.message));
+  }
+  parts.push(formatError_(error));
+  const text = parts.join("\n").toLowerCase();
+  return (
+    text.indexOf("email recipients per day") !== -1 ||
+    text.indexOf("too many times for one day: email") !== -1 ||
+    text.indexOf("too many times: email") !== -1
   );
 }
 

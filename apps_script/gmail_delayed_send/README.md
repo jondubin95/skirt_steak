@@ -89,8 +89,15 @@ Consumer Google accounts, not Workspace:
 
 - Trigger runtime is about 90 minutes per day. A one-minute trigger runs up to 1,440 times per day, so the average budget is about 3.7 seconds per run. This script returns as soon as there are no drafts, and it only sends drafts whose thread has the label.
 - A mailbox with a very large draft list can make `GmailApp.getDrafts()` plus a label check on each draft slow enough to spend that 90 minutes. Triggers then stop until the next day.
-- `GmailDraft.send()` counts toward the Gmail Apps Script send quota, about 100 recipients per day on a consumer account. Over that, the send throws, the draft stays labeled, and a later run tries again. Remove the label or delete the draft to stop the retries.
+- `GmailDraft.send()` counts toward the Gmail Apps Script send quota, about 100 recipients per day on a consumer account. When a send fails with a daily recipient-quota error, that draft stays labeled, the rest of the run does not send, and the run fails so the execution list shows it. A later run tries again. Remove the label or delete the draft to stop the retries. `MailApp.getRemainingDailyQuota()` is not used: it needs the extra `script.send_mail` scope.
+- Minute triggers can overlap if a run is slow. The script takes `LockService.getScriptLock()` and skips the pass when another run holds it, so two passes cannot send the same draft. The wait is 0 milliseconds so a blocked pass does not sit on the daily trigger-time budget.
 - Minute triggers drift. Delivery is about 5 to 7 minutes after the last save, not exactly 5:00.
+
+## If a run fails
+
+Per-draft problems are written to the execution log and the run still finishes, so one bad draft does not page you every minute. A missing label, or a daily email quota error, fails the run.
+
+To get an email when a run fails: in the Apps Script editor open Triggers, open this minute trigger, and set failure notifications. "Once daily" is the setting that matches a one-minute trigger. The script does not send its own error mail. That would spend the same send quota and, on a one-minute trigger, repeat until you removed the label.
 
 ## How draft age is decided
 
@@ -126,3 +133,17 @@ That is a thread label. Every draft on that thread is eligible. `label.getThread
 `Logger` writes to the Apps Script execution log for this project. A pass with nothing labeled writes nothing. Waiting, sending, label-removal failure, and per-draft errors are logged with the draft id and subject, not the body and not the recipients. One bad draft does not stop the others. A missing label fails the run so the execution list shows it.
 
 Logs stay in the Google account. They are not written to this repo.
+
+## Prior art
+
+Nothing below was copied. The lock and the quota stop were written for this script from Apps Script's [LockService](https://developers.google.com/apps-script/reference/lock/lock-service) and the documented daily recipient-quota errors.
+
+- [devietti/GmailSendLater](https://github.com/devietti/GmailSendLater) — no license. A label such as "send at 9am tomorrow" schedules a clock time, on about a 15-minute trigger, and an error label is applied when the time cannot be parsed. Rejected: no license, and the product is a clock time rather than a fixed delay from the last save.
+- [google-code-export/gmail-delay-send](https://github.com/google-code-export/gmail-delay-send) — the old Google Code project page listed MIT. This export has no `LICENSE` file. It is a spreadsheet of settings, a 5-minute trigger, retries that sleep, and an optional error email. Rejected: no license file in the export, and sleep-retries would spend the consumer trigger-time quota.
+- [labnol/email-studio-gmail-addon](https://github.com/labnol/email-studio-gmail-addon) — MIT, Amit Agarwal. A Gmail add-on that stores scheduler rules. An older public write-up sends a reconstructed copy with `GmailApp.sendEmail` and trashes the draft. Rejected: different product. `GmailDraft.send()` keeps the draft's recipients, attachments, and thread.
+- [hadasfester/81bfc5668cb7b666b4fd6eeb6db804c3](https://gist.github.com/hadasfester/81bfc5668cb7b666b4fd6eeb6db804c3) — no license. Searches `in:draft label:` and throws if a send fails, which stops the rest of the drafts. Rejected: no license, search misses some drafts, and one failure blocks the others.
+- [jiehan1029/snooze-outbox-gmail-addon](https://github.com/jiehan1029/snooze-outbox-gmail-addon) — no `LICENSE` file. A label-based schedule-send add-on. Rejected: no license, and it schedules a clock time.
+
+Gmail's own Undo Send stops at 30 seconds. Gmail's Schedule send picks a clock time. Neither is this label-plus-delay flow.
+
+A stored "label applied" time was rejected. Gmail does not provide one, and waiting 5 minutes from the first time this script sees the label would change the clock. The clock stays the draft message date.

@@ -36,3 +36,10 @@ What failed or was risky, what changed, the evidence, and the date. Record only 
 - What changed: Age is `GmailMessage.getDate()` on the draft's current message. A save replaces that message, so an edit resets the clock. The send label is matched on the draft's thread, then removed from the sent thread.
 - Evidence: `apps_script/gmail_delayed_send/Code.gs` and `apps_script/gmail_delayed_send/README.md`.
 - Date: 2026-11-24
+
+## Gmail delayed-send prior art
+
+- What failed or was risky: Open send-later scripts schedule a clock time, retry with sleep, reconstruct the message, or stop the whole run on one draft. Several have no license. A stored label-applied time would change the 5-minute message-date clock. `MailApp.getRemainingDailyQuota()` needs an extra scope.
+- What changed: No third-party code was copied. Overlapping runs take `LockService.getScriptLock()` and skip if it is held. A daily recipient-quota error stops the rest of that run and fails the execution. Other per-draft errors still do not stop the rest.
+- Evidence: `apps_script/gmail_delayed_send/Code.gs` and the Prior art section of `apps_script/gmail_delayed_send/README.md`.
+- Date: 2026-11-24
