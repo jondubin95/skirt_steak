@@ -29,3 +29,10 @@ What failed or was risky, what changed, the evidence, and the date. Record only 
 - What changed: CI matches `Sensitive/` without regard to case. The allowlist stays the exact path `Sensitive/README.md`.
 - Evidence: Commit `290611e`. `.github/workflows/guardrails.yml`.
 - Date: 2026-10-25
+
+## Gmail delayed-send draft age
+
+- What failed or was risky: `GmailDraft` has no last-updated field, and a draft message cannot hold a user label. Using the label time is impossible from GmailApp. Using a message label id would never match. Either mistake sends during an edit, or never sends.
+- What changed: Age is `GmailMessage.getDate()` on the draft's current message. A save replaces that message, so an edit resets the clock. The send label is matched on the draft's thread, then removed from the sent thread.
+- Evidence: `apps_script/gmail_delayed_send/Code.gs` and `apps_script/gmail_delayed_send/README.md`.
+- Date: 2026-11-24
