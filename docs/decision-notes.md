@@ -65,6 +65,13 @@ What failed or was risky, what changed, the evidence, and the date. Record only 
 - Evidence: `apps_script/gmail_delayed_send/Code.gs`, `apps_script/gmail_delayed_send/README.md`, and `apps_script/gmail_delayed_send/stand_in_test.mjs`.
 - Date: 2026-11-24
 
+## Gmail delayed-send sticky Hold
+
+- What failed or was risky: `drafts.update` replaces the draft message with one that carries no user labels. Gmail returns 400 if a caller tries to set labels on a draft. A standalone draft therefore loses `Hold` on an API edit and would send 5 minutes later. The draft id stays; the message id changes.
+- What changed: The script remembers `delayedSendHeldDrafts` (draft id to message id) and `delayedSendReleasedAt` (draft id to epoch ms). A changed message id with no `Hold` puts `Hold` back and does not send. The same message id means a person removed `Hold`, and the draft sends 5 minutes after that pass. `Release` wins, clears `Hold` and `Release`, and uses the same clock. A failed label write stays remembered and is not `Send failed`. Ids that are no longer drafts are pruned. Each property is capped under 9KB. Scopes are unchanged. This is not live-deployed.
+- Evidence: `apps_script/gmail_delayed_send/Code.gs`, `apps_script/gmail_delayed_send/README.md`, and `apps_script/gmail_delayed_send/stand_in_test.mjs`.
+- Date: 2026-11-24
+
 ## Gmail delayed-send adversarial review
 
 - What failed or was risky: Hold matched only the exact name, so a rename, a nest, or a recase released the draft. A one-time Gmail read error or the daily computer-time cap parked the thread on `Send failed`. A failed `send()` was retried every minute while a sibling draft was still young, so the label was never applied. A kill inside `send()` could send the same message twice. Repeating hold and wait logs included the subject. The README treated `getDate()` as proven by a weak doc citation, and it said scheduled mail was still a draft this clock would send.
