@@ -44,16 +44,16 @@ What failed or was risky, what changed, the evidence, and the date. Record only 
 - Evidence: `apps_script/gmail_delayed_send/Code.gs` and the Prior art section of `apps_script/gmail_delayed_send/README.md`.
 - Date: 2026-11-24
 
+## Gmail delayed-send review follow-up
+
+- What failed or was risky: A Gmail read/write quota error (`for one day: gmail`, `in a short time: gmail`) was parked on `Send failed`, so a healthy draft never retried. The same missing label or quota error could fail every minute. Sending one draft removed the thread label and stranded any other draft on that thread. `Send failed` was applied before `Send in 5` was removed. A draft deleted mid-run was parked. The success log read the subject after `send()`.
+- What changed: Those quota errors keep `Send in 5` and stop the pass. A missing label or a quota error throws at most once per hour, using a script-property timestamp. The thread label stays while another labeled draft still needs it. `Send in 5` is removed before `Send failed`, in separate tries. A missing draft is a cancel. The subject is read before `send()`. The trigger stays at one minute because `everyMinutes(2)` is not a legal interval. `label.getThreads()` stays unused because it misses draft-only threads.
+- Evidence: `apps_script/gmail_delayed_send/Code.gs`, `apps_script/gmail_delayed_send/README.md`, and `apps_script/gmail_delayed_send/stand_in_test.mjs`.
+- Date: 2026-11-24
+
 ## Gmail delayed-send failure label
 
 - What failed or was risky: A non-quota send error left `Send in 5` on the thread, so the minute trigger retried it until someone noticed the log.
 - What changed: That failure logs the error, applies `Send failed`, and removes `Send in 5`. A daily recipient-quota error still keeps `Send in 5`. The parking idea is from GmailSendLater and the code is new. `installDelayedGmailSend` creates both labels.
-- Evidence: `apps_script/gmail_delayed_send/Code.gs` and `apps_script/gmail_delayed_send/README.md`.
-- Date: 2026-11-24
-
-## Gmail delayed-send quota and thread label
-
-- What failed or was risky: A Gmail read-quota error did not match the send-quota text, so a healthy draft could be parked on `Send failed`. A quota or missing-label failure every minute can turn a time trigger off. Removing `Send in 5` after the first send left any other draft on that thread unlabeled. Applying `Send failed` before removing `Send in 5` could keep both labels if the remove failed.
-- What changed: Gmail service-quota errors keep `Send in 5` and stop the pass. The same persistent failure throws at most once an hour. `Send in 5` stays while another queued draft remains on the thread, and it is removed before `Send failed` is applied. A draft that is already gone is not parked. The subject is read before `send()`.
 - Evidence: `apps_script/gmail_delayed_send/Code.gs` and `apps_script/gmail_delayed_send/README.md`.
 - Date: 2026-11-24
