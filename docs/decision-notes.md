@@ -57,3 +57,10 @@ What failed or was risky, what changed, the evidence, and the date. Record only 
 - What changed: That failure logs the error, applies `Send failed`, and removes `Send in 5`. A daily recipient-quota error still keeps `Send in 5`. The parking idea is from GmailSendLater and the code is new. `installDelayedGmailSend` creates both labels.
 - Evidence: `apps_script/gmail_delayed_send/Code.gs` and `apps_script/gmail_delayed_send/README.md`.
 - Date: 2026-11-24
+
+## Gmail delayed-send is opt-out
+
+- What failed or was risky: The 5-minute send ran only when the thread had `Send in 5`. A draft with no recipient, or a draft already marked `Send failed`, could not be expressed once every draft was eligible. The first run after install will send every draft whose last save is already 5 minutes old.
+- What changed: Every draft sends after 5 quiet minutes. `Hold` opts a thread out and is created by `installDelayedGmailSend`. `Send failed` still parks a non-quota failure, and a thread that already has it is skipped. Quota errors stay eligible and still throw at most once an hour. `Send in 5` is not a gate. It is removed after a finished send, or after `Send failed` is applied, when no draft on that thread is still waiting or held for quota. A draft with no To, Cc, or Bcc is parked instead of calling `send()`. Empty To with a Cc or Bcc still sends. Reply drafts use `GmailDraft.send()`.
+- Evidence: `apps_script/gmail_delayed_send/Code.gs`, `apps_script/gmail_delayed_send/README.md`, and `apps_script/gmail_delayed_send/stand_in_test.mjs`.
+- Date: 2026-11-24
