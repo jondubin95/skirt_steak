@@ -310,19 +310,14 @@ function createWorld(options) {
         if (!spec || spec.gone || spec.missingOnReread) {
           throw new Error("No draft with the given ID can be found");
         }
-        if (spec.rereadDateMilliseconds !== undefined) {
-          const reread = Object.assign({}, spec, { dateMilliseconds: spec.rereadDateMilliseconds });
-          if (spec.dropLabelOnReread) {
-            threadFor(spec.threadId).labelNames = threadFor(spec.threadId).labelNames.filter(
-              (name) => name !== "Send in 5"
-            );
-          }
-          return makeDraft(reread);
-        }
         if (spec.dropLabelOnReread) {
           threadFor(spec.threadId).labelNames = threadFor(spec.threadId).labelNames.filter(
             (name) => name !== "Send in 5"
           );
+        }
+        if (spec.rereadDateMilliseconds !== undefined) {
+          const reread = Object.assign({}, spec, { dateMilliseconds: spec.rereadDateMilliseconds });
+          return makeDraft(reread);
         }
         return makeDraft(spec);
       },

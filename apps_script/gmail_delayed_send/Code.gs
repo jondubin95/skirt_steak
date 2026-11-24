@@ -39,6 +39,11 @@ const LOCK_WAIT_MILLISECONDS = 0;
 // Timestamp of the last thrown persistent failure. Not a draft id.
 const PERSISTENT_FAILURE_LATCH_PROPERTY = "delayedSendPersistentFailureLatchedAt";
 const PERSISTENT_FAILURE_THROW_INTERVAL_MILLISECONDS = 60 * 60 * 1000;
+const QUOTA_REMAINING_LABELED_DRAFTS_LOG_MESSAGE =
+  "Gmail quota reached. Remaining labeled drafts stay labeled for a later run.";
+const QUOTA_LABELED_DRAFTS_LEFT_UNSENT_THROW_MESSAGE =
+  "Gmail quota reached. Labeled drafts left unsent stay labeled and are tried on a later run.";
+const DRAFT_DELETED_BEFORE_SEND_LOG_TEMPLATE = "Draft deleted before send. id=%s";
 
 /**
  * Creates the send and failure labels when missing and installs one
@@ -144,7 +149,7 @@ function sendLabeledDraftsWithLockHeld_() {
     let draftId = "unavailable";
     try {
       draftId = draft.getId();
-      const snapshot = snapshotLabeledDraft_(draft, threadHasSendLabelByThreadId);
+      const snapshot = snapshotLabeledDraft_(draft, draftId, threadHasSendLabelByThreadId);
       if (!snapshot) {
         continue;
       }
@@ -152,20 +157,14 @@ function sendLabeledDraftsWithLockHeld_() {
     } catch (error) {
       if (isMissingDraftError_(error)) {
         canceledCount++;
-        Logger.log("Draft deleted before send. id=%s", draftId);
+        Logger.log(DRAFT_DELETED_BEFORE_SEND_LOG_TEMPLATE, draftId);
         continue;
       }
       failedCount++;
-      Logger.log(
-        "Delayed send failed for one draft. id=%s error=%s",
-        draftId,
-        formatError_(error)
-      );
+      logDraftProblem_("Delayed send failed for one draft. id=%s error=%s", draftId, error);
       if (isRetryLaterQuotaError_(error)) {
         retryLaterQuotaReached = true;
-        Logger.log(
-          "Gmail quota reached. Remaining labeled drafts stay labeled for a later run."
-        );
+        Logger.log(QUOTA_REMAINING_LABELED_DRAFTS_LOG_MESSAGE);
         break;
       }
       markDraftSendFailed_(draft, label, draftId);
@@ -199,23 +198,21 @@ function sendLabeledDraftsWithLockHeld_() {
         snapshot.outcome = "canceled";
         labeledCount++;
         canceledCount++;
-        Logger.log("Draft deleted before send. id=%s", snapshot.draftId);
+        Logger.log(DRAFT_DELETED_BEFORE_SEND_LOG_TEMPLATE, snapshot.draftId);
         continue;
       }
       snapshot.outcome = "failed";
       labeledCount++;
       failedCount++;
-      Logger.log(
+      logDraftProblem_(
         "Delayed send failed for one draft. id=%s error=%s",
         snapshot.draftId,
-        formatError_(error)
+        error
       );
       if (isRetryLaterQuotaError_(error)) {
         snapshot.outcome = "quota";
         retryLaterQuotaReached = true;
-        Logger.log(
-          "Gmail quota reached. Remaining labeled drafts stay labeled for a later run."
-        );
+        Logger.log(QUOTA_REMAINING_LABELED_DRAFTS_LOG_MESSAGE);
         break;
       }
     }
@@ -238,9 +235,7 @@ function sendLabeledDraftsWithLockHeld_() {
     Date.now() - passStartedAtMilliseconds
   );
   if (retryLaterQuotaReached) {
-    throwPersistentFailureAtMostOncePerHour_(
-      "Gmail quota reached. Labeled drafts left unsent stay labeled and are tried on a later run."
-    );
+    throwPersistentFailureAtMostOncePerHour_(QUOTA_LABELED_DRAFTS_LEFT_UNSENT_THROW_MESSAGE);
     return;
   }
   clearPersistentFailureLatch_();
@@ -248,13 +243,10 @@ function sendLabeledDraftsWithLockHeld_() {
 
 function finishRetryLaterQuota_(error) {
   Logger.log("Gmail quota reached before any draft was sent. error=%s", formatError_(error));
-  throwPersistentFailureAtMostOncePerHour_(
-    "Gmail quota reached. Labeled drafts left unsent stay labeled and are tried on a later run."
-  );
+  throwPersistentFailureAtMostOncePerHour_(QUOTA_LABELED_DRAFTS_LEFT_UNSENT_THROW_MESSAGE);
 }
 
-function snapshotLabeledDraft_(draft, threadHasSendLabelByThreadId) {
-  const draftId = draft.getId();
+function snapshotLabeledDraft_(draft, draftId, threadHasSendLabelByThreadId) {
   const message = draft.getMessage();
   const thread = message.getThread();
   const threadId = thread.getId();
@@ -270,7 +262,6 @@ function snapshotLabeledDraft_(draft, threadHasSendLabelByThreadId) {
     draft: draft,
     draftId: draftId,
     message: message,
-    thread: thread,
     threadId: threadId,
     outcome: "pending",
     sentMessage: null,
@@ -294,7 +285,7 @@ function sendLabeledDraftIfOldEnough_(snapshot, delayMilliseconds) {
     freshDraft = GmailApp.getDraft(draftId);
   } catch (error) {
     if (isMissingDraftError_(error)) {
-      Logger.log("Draft deleted before send. id=%s", draftId);
+      Logger.log(DRAFT_DELETED_BEFORE_SEND_LOG_TEMPLATE, draftId);
       return { outcome: "canceled" };
     }
     throw error;
@@ -346,7 +337,8 @@ function settleOneThreadLabel_(labeledDrafts, threadId, label) {
   if (keepsSendLabel) {
     if (threadHasOutcome_(records, "sent") || threadHasOutcome_(records, "failed")) {
       Logger.log(
-        "Left Send in 5 on the thread. Another labeled draft still needs it. threadId=%s",
+        "Left %s on the thread. Another labeled draft still needs it. threadId=%s",
+        SEND_LABEL_NAME,
         threadId
       );
     }
@@ -394,11 +386,7 @@ function markDraftSendFailed_(draft, sendLabel, draftId) {
   try {
     thread = draft.getMessage().getThread();
   } catch (error) {
-    Logger.log(
-      "Could not mark draft send failed. id=%s error=%s",
-      draftId,
-      formatError_(error)
-    );
+    logDraftProblem_("Could not mark draft send failed. id=%s error=%s", draftId, error);
     return;
   }
   if (!threadHasLabelName_(thread, SEND_LABEL_NAME)) {
@@ -410,10 +398,10 @@ function markDraftSendFailed_(draft, sendLabel, draftId) {
   try {
     thread.removeLabel(sendLabel);
   } catch (error) {
-    Logger.log(
+    logDraftProblem_(
       "Could not remove the send label after a failed send. id=%s error=%s",
       draftId,
-      formatError_(error)
+      error
     );
     return;
   }
@@ -427,10 +415,10 @@ function markDraftSendFailed_(draft, sendLabel, draftId) {
       SEND_LABEL_NAME
     );
   } catch (error) {
-    Logger.log(
+    logDraftProblem_(
       "Removed the send label but could not apply the failure label. id=%s error=%s",
       draftId,
-      formatError_(error)
+      error
     );
   }
 }
@@ -495,14 +483,8 @@ function delayMilliseconds_() {
 }
 
 function assertTriggerIntervalMinutes_(intervalMinutes) {
-  for (
-    let intervalIndex = 0;
-    intervalIndex < ALLOWED_TRIGGER_INTERVAL_MINUTES.length;
-    intervalIndex++
-  ) {
-    if (ALLOWED_TRIGGER_INTERVAL_MINUTES[intervalIndex] === intervalMinutes) {
-      return;
-    }
+  if (ALLOWED_TRIGGER_INTERVAL_MINUTES.indexOf(intervalMinutes) !== -1) {
+    return;
   }
   throw new Error(
     "TRIGGER_INTERVAL_MINUTES must be 1, 5, 10, 15, or 30. ClockTriggerBuilder.everyMinutes rejects any other value."
@@ -526,12 +508,12 @@ function removeSendLabelFromSentThread_(sentMessage, label, draftId) {
   } catch (error) {
     // The message is already sent. Do not rethrow: a retry would not
     // find the draft, and the log is the signal to remove the label by hand.
-    Logger.log(
-      "Sent draft, but removing the label failed. id=%s error=%s",
-      draftId,
-      formatError_(error)
-    );
+    logDraftProblem_("Sent draft, but removing the label failed. id=%s error=%s", draftId, error);
   }
+}
+
+function logDraftProblem_(template, draftId, error) {
+  Logger.log(template, draftId, formatError_(error));
 }
 
 function logWaitingDraft_(draftId, subject, ageMilliseconds, stage) {
@@ -586,6 +568,13 @@ function isMissingDraftError_(error) {
   );
 }
 
+function logPersistentFailureLatchProblem_(action, error) {
+  Logger.log(
+    "Could not " + action + " the persistent-failure latch. error=%s",
+    formatError_(error)
+  );
+}
+
 function throwPersistentFailureAtMostOncePerHour_(message) {
   let alreadyLatchedThisHour = false;
   try {
@@ -602,10 +591,7 @@ function throwPersistentFailureAtMostOncePerHour_(message) {
       properties.setProperty(PERSISTENT_FAILURE_LATCH_PROPERTY, String(nowMilliseconds));
     }
   } catch (error) {
-    Logger.log(
-      "Could not update the persistent-failure latch. error=%s",
-      formatError_(error)
-    );
+    logPersistentFailureLatchProblem_("update", error);
   }
   if (alreadyLatchedThisHour) {
     Logger.log("Persistent delayed-send failure. Not throwing again this hour. %s", message);
@@ -622,10 +608,7 @@ function clearPersistentFailureLatch_() {
     }
     properties.deleteProperty(PERSISTENT_FAILURE_LATCH_PROPERTY);
   } catch (error) {
-    Logger.log(
-      "Could not clear the persistent-failure latch. error=%s",
-      formatError_(error)
-    );
+    logPersistentFailureLatchProblem_("clear", error);
   }
 }
 
