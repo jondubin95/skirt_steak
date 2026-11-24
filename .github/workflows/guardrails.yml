@@ -108,6 +108,9 @@ jobs:
             if git check-ignore -q --no-index "$pkg/$path"; then echo "::error::$pkg/$path should be tracked"; exit 1; fi
           done
 
+      - name: Gmail delayed-send stand-in
+        run: node apps_script/gmail_delayed_send/stand_in_test.mjs
+
       - name: ruff fail-fast and naming
         run: python -m ruff check python
 

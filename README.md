@@ -13,6 +13,7 @@ This repo is intentionally iterative, so structure and workflows will continue t
 - `python/` - Python projects and scripts.
 - `sql/` - SQL scripts and data work.
 - `tools/` - Utility scripts, including workflow guardrail helpers.
+- `apps_script/` - Google Apps Script projects, pasted or pushed with clasp.
 - `Sensitive/` - Local-only credentials/tokens (never stage this path).
 
 ### Key Projects
@@ -21,6 +22,8 @@ This repo is intentionally iterative, so structure and workflows will continue t
 - Gem authoring and sync workflows, including `Jons_Gems/clarity-concision-editor/`.
 - `python/Project/Google_Maps_Linker/`
 - Utilities that enrich Google Sheets rows with Google Maps links and place metadata.
+- `apps_script/gmail_delayed_send/`
+- Sends a labeled Gmail draft after a short delay on a consumer Gmail account.
 
 ## Project Index
 
@@ -35,6 +38,7 @@ This repo is intentionally iterative, so structure and workflows will continue t
 - Decision notes (what failed, what changed, evidence): [docs/decision-notes.md](docs/decision-notes.md)
 - Guardrail scripts reference: [tools/workflow_guardrails/README.md](tools/workflow_guardrails/README.md)
 - Google Maps Linker guide: [python/Project/Google_Maps_Linker/README.md](python/Project/Google_Maps_Linker/README.md)
+- Gmail delayed send: [apps_script/gmail_delayed_send/README.md](apps_script/gmail_delayed_send/README.md)
 - Clarity & Concision Editor gem: [python/Project/Gem_Factory/Jons_Gems/clarity-concision-editor/README.md](python/Project/Gem_Factory/Jons_Gems/clarity-concision-editor/README.md)
 - MSJC Board Secretary minutes writer: [python/msjc_board_secretary/README.md](python/msjc_board_secretary/README.md)
 - Market-analyst decision log: [python/decision_log/README.md](python/decision_log/README.md)
