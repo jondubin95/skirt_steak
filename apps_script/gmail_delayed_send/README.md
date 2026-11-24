@@ -12,6 +12,8 @@ Write the email in Drafts and leave it. About 5 to 6 minutes after the last save
 
 Add the label `Hold` to keep a draft. The script never auto-sends a thread with that label. Take `Hold` off and the draft is eligible again. The clock is the draft's last save, not the moment you removed the label. A draft you just saved still waits about 5 minutes. A draft last saved more than 5 minutes ago sends on the next run.
 
+Live check on 2026-11-24: editing a draft through the Gmail API (`drafts.update`, including a connector `update_draft`) creates a new message that does not carry `Hold`. The thread loses `Hold`, and the draft is eligible again. It sends about 5 minutes after that edit. Put `Hold` back on after any API edit.
+
 No label is required for a send. `Send in 5` is the old opt-in label. This version does not look at it when deciding whether to send. If it is still on a thread, the script takes it off after a successful send, or after it applies `Send failed`, and only when no other draft on that thread is still waiting or held back by a quota error. Leaving `Send in 5` on a draft does not queue it and does not block it.
 
 Before the first install, look through Drafts. Anything already older than 5 minutes sends on the next run unless the thread has `Hold` or `Send failed`. Put `Hold` on every draft you want to keep, then run `installDelayedGmailSend`.
