@@ -13,8 +13,9 @@ This folder is in a public repo. Do not put a mailbox address, token, script id,
 3. A trigger runs every minute, loads drafts with `GmailApp.getDrafts()`, and keeps the ones whose thread has that label.
 4. If that draft's current message date is at least 5 minutes old, the script calls `GmailDraft.send()` and then removes the label from the sent thread.
 5. If the message date is newer than that, the script waits. Saving the draft again resets the clock.
+6. If the send fails for a reason other than the daily recipient quota, the script logs the error, applies `Send failed` to the thread, and removes `Send in 5`. That draft is not retried. A quota failure keeps `Send in 5`.
 
-Change the wait and the label name with `DELAY_MINUTES` and `SEND_LABEL_NAME` at the top of `Code.gs`. The label name must match exactly, including spaces and the digit.
+Change the wait and the label names with `DELAY_MINUTES`, `SEND_LABEL_NAME`, and `SEND_FAILED_LABEL_NAME` at the top of `Code.gs`. Each label name must match exactly.
 
 ## Deploy
 
@@ -50,7 +51,7 @@ From this folder, on your own machine:
 
 ## Use the label
 
-Run `installDelayedGmailSend` before the first use so the label exists. You can also create a label with the exact name `Send in 5` yourself.
+Run `installDelayedGmailSend` before the first use so `Send in 5` and `Send failed` exist. You can also create those labels yourself with those exact names.
 
 Desktop, including Edge and any other browser:
 
@@ -79,9 +80,9 @@ The clock is the draft's last save, not the moment you applied the label. Gmail 
 
 ## Uninstall
 
-Run `uninstallDelayedGmailSend` in the Apps Script editor. That removes this project's minute trigger, including duplicates of the same handler. The Gmail label stays. Delete `Send in 5` in Gmail if you no longer want it.
+Run `uninstallDelayedGmailSend` in the Apps Script editor. That removes this project's minute trigger, including duplicates of the same handler. The Gmail labels stay. Delete `Send in 5` and `Send failed` in Gmail if you no longer want them.
 
-Running `installDelayedGmailSend` again is safe. It reuses the label and leaves exactly one minute trigger.
+Running `installDelayedGmailSend` again is safe. It reuses both labels and leaves exactly one minute trigger.
 
 ## Quotas
 
@@ -89,13 +90,23 @@ Consumer Google accounts, not Workspace:
 
 - Trigger runtime is about 90 minutes per day. A one-minute trigger runs up to 1,440 times per day, so the average budget is about 3.7 seconds per run. This script returns as soon as there are no drafts, and it only sends drafts whose thread has the label.
 - A mailbox with a very large draft list can make `GmailApp.getDrafts()` plus a label check on each draft slow enough to spend that 90 minutes. Triggers then stop until the next day.
-- `GmailDraft.send()` counts toward the Gmail Apps Script send quota, about 100 recipients per day on a consumer account. When a send fails with a daily recipient-quota error, that draft stays labeled, the rest of the run does not send, and the run fails so the execution list shows it. A later run tries again. Remove the label or delete the draft to stop the retries. `MailApp.getRemainingDailyQuota()` is not used: it needs the extra `script.send_mail` scope.
+- `GmailDraft.send()` counts toward the Gmail Apps Script send quota, about 100 recipients per day on a consumer account. When a send fails with a daily recipient-quota error, `Send in 5` stays on the thread, `Send failed` is not applied, the rest of that run does not send, and the run fails so the execution list shows it. A later run tries again. Remove `Send in 5` or delete the draft to stop the retries. `MailApp.getRemainingDailyQuota()` is not used: it needs the extra `script.send_mail` scope.
 - Minute triggers can overlap if a run is slow. The script takes `LockService.getScriptLock()` and skips the pass when another run holds it, so two passes cannot send the same draft. The wait is 0 milliseconds so a blocked pass does not sit on the daily trigger-time budget.
 - Minute triggers drift. Delivery is about 5 to 7 minutes after the last save, not exactly 5:00.
 
+## If a send fails
+
+A non-quota failure is logged, then the thread is labeled `Send failed` and `Send in 5` is removed. The draft stays in Drafts. The next minute does not send it again. The idea of parking a failed draft on its own label comes from [GmailSendLater](https://github.com/devietti/GmailSendLater). That repository has no license, so this script does not copy its code. `Send failed` is this script's label, created by `installDelayedGmailSend`, and it is applied only after a non-quota failure.
+
+To spot one: open the `Send failed` label in Gmail, or read the execution log. The log has the draft id, the subject, and the error. It does not include the body or the recipients.
+
+To retry: fix the draft, remove `Send failed`, and apply `Send in 5` again. The clock is still the draft's last save. An old draft sends on the next run. Touch the draft if you want another 5 minutes.
+
+A daily quota failure does not do this. Those threads keep `Send in 5` and are tried on a later run.
+
 ## If a run fails
 
-Per-draft problems are written to the execution log and the run still finishes, so one bad draft does not page you every minute. A missing label, or a daily email quota error, fails the run.
+A non-quota draft failure is logged and the run still finishes, so the other labeled drafts in that pass are still sent. A missing `Send in 5` label, or a daily email quota error, fails the run.
 
 To get an email when a run fails: in the Apps Script editor open Triggers, open this minute trigger, and set failure notifications. "Once daily" is the setting that matches a one-minute trigger. The script does not send its own error mail. That would spend the same send quota and, on a one-minute trigger, repeat until you removed the label.
 
@@ -138,7 +149,7 @@ Logs stay in the Google account. They are not written to this repo.
 
 Nothing below was copied. The lock and the quota stop were written for this script from Apps Script's [LockService](https://developers.google.com/apps-script/reference/lock/lock-service) and the documented daily recipient-quota errors.
 
-- [devietti/GmailSendLater](https://github.com/devietti/GmailSendLater) — no license. A label such as "send at 9am tomorrow" schedules a clock time, on about a 15-minute trigger, and an error label is applied when the time cannot be parsed. Rejected: no license, and the product is a clock time rather than a fixed delay from the last save.
+- [devietti/GmailSendLater](https://github.com/devietti/GmailSendLater) — no license. A label such as "send at 9am tomorrow" schedules a clock time, on about a 15-minute trigger. It also parks a draft it could not handle by applying an error label. Adopted: that parking idea only, reimplemented here as `Send failed` after a non-quota send failure. No code was copied. The clock-time schedule was not adopted.
 - [google-code-export/gmail-delay-send](https://github.com/google-code-export/gmail-delay-send) — the old Google Code project page listed MIT. This export has no `LICENSE` file. It is a spreadsheet of settings, a 5-minute trigger, retries that sleep, and an optional error email. Rejected: no license file in the export, and sleep-retries would spend the consumer trigger-time quota.
 - [labnol/email-studio-gmail-addon](https://github.com/labnol/email-studio-gmail-addon) — MIT, Amit Agarwal. A Gmail add-on that stores scheduler rules. An older public write-up sends a reconstructed copy with `GmailApp.sendEmail` and trashes the draft. Rejected: different product. `GmailDraft.send()` keeps the draft's recipients, attachments, and thread.
 - [hadasfester/81bfc5668cb7b666b4fd6eeb6db804c3](https://gist.github.com/hadasfester/81bfc5668cb7b666b4fd6eeb6db804c3) — no license. Searches `in:draft label:` and throws if a send fails, which stops the rest of the drafts. Rejected: no license, search misses some drafts, and one failure blocks the others.

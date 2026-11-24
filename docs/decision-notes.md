@@ -43,3 +43,10 @@ What failed or was risky, what changed, the evidence, and the date. Record only 
 - What changed: No third-party code was copied. Overlapping runs take `LockService.getScriptLock()` and skip if it is held. A daily recipient-quota error stops the rest of that run and fails the execution. Other per-draft errors still do not stop the rest.
 - Evidence: `apps_script/gmail_delayed_send/Code.gs` and the Prior art section of `apps_script/gmail_delayed_send/README.md`.
 - Date: 2026-11-24
+
+## Gmail delayed-send failure label
+
+- What failed or was risky: A non-quota send error left `Send in 5` on the thread, so the minute trigger retried it until someone noticed the log.
+- What changed: That failure logs the error, applies `Send failed`, and removes `Send in 5`. A daily recipient-quota error still keeps `Send in 5`. The parking idea is from GmailSendLater and the code is new. `installDelayedGmailSend` creates both labels.
+- Evidence: `apps_script/gmail_delayed_send/Code.gs` and `apps_script/gmail_delayed_send/README.md`.
+- Date: 2026-11-24

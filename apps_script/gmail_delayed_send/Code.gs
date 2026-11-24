@@ -19,24 +19,28 @@
 
 const DELAY_MINUTES = 5;
 const SEND_LABEL_NAME = "Send in 5";
+const SEND_FAILED_LABEL_NAME = "Send failed";
 // Do not wait. A queued run would sit on the consumer trigger-time quota.
 const LOCK_WAIT_MILLISECONDS = 0;
 
 /**
- * Creates the label when missing and installs one every-minute trigger.
- * Running this again deletes duplicate triggers for the handler first.
+ * Creates the send and failure labels when missing and installs one
+ * every-minute trigger. Running this again deletes duplicate triggers
+ * for the handler first.
  */
 function installDelayedGmailSend() {
   assertDelayedSendConfigured_();
-  const label = getOrCreateSendLabel_();
+  const sendLabel = getOrCreateLabel_(SEND_LABEL_NAME);
+  const failedLabel = getOrCreateLabel_(SEND_FAILED_LABEL_NAME);
   const removedTriggerCount = deleteDelayedSendTriggers_();
   ScriptApp.newTrigger(sendLabeledDraftsAfterDelay.name)
     .timeBased()
     .everyMinutes(1)
     .create();
   Logger.log(
-    "Installed delayed send. label=%s removedTriggers=%s minuteTrigger=1 handler=%s",
-    label.getName(),
+    "Installed delayed send. sendLabel=%s failedLabel=%s removedTriggers=%s minuteTrigger=1 handler=%s",
+    sendLabel.getName(),
+    failedLabel.getName(),
     removedTriggerCount,
     sendLabeledDraftsAfterDelay.name
   );
@@ -126,6 +130,7 @@ function sendLabeledDraftsWithLockHeld_() {
         );
         break;
       }
+      markDraftSendFailed_(draft, label, draftId);
     }
   }
 
@@ -186,12 +191,56 @@ function sendLabeledDraftIfOldEnough_(draft, label, delayMilliseconds) {
   return "sent";
 }
 
-function getOrCreateSendLabel_() {
-  const existingLabel = GmailApp.getUserLabelByName(SEND_LABEL_NAME);
+function getOrCreateLabel_(labelName) {
+  const existingLabel = GmailApp.getUserLabelByName(labelName);
   if (existingLabel) {
     return existingLabel;
   }
-  return GmailApp.createLabel(SEND_LABEL_NAME);
+  return GmailApp.createLabel(labelName);
+}
+
+function markDraftSendFailed_(draft, sendLabel, draftId) {
+  let thread;
+  try {
+    thread = draft.getMessage().getThread();
+  } catch (error) {
+    Logger.log(
+      "Could not mark draft send failed. id=%s error=%s",
+      draftId,
+      formatError_(error)
+    );
+    return;
+  }
+  if (!threadHasLabelName_(thread, SEND_LABEL_NAME)) {
+    return;
+  }
+  try {
+    const failedLabel = getOrCreateLabel_(SEND_FAILED_LABEL_NAME);
+    thread.addLabel(failedLabel);
+    thread.removeLabel(sendLabel);
+    Logger.log(
+      "Marked draft send failed. id=%s appliedLabel=%s removedLabel=%s",
+      draftId,
+      SEND_FAILED_LABEL_NAME,
+      SEND_LABEL_NAME
+    );
+  } catch (error) {
+    Logger.log(
+      "Could not mark draft send failed. id=%s error=%s",
+      draftId,
+      formatError_(error)
+    );
+  }
+}
+
+function threadHasLabelName_(thread, labelName) {
+  const labelsOnThread = thread.getLabels();
+  for (let labelIndex = 0; labelIndex < labelsOnThread.length; labelIndex++) {
+    if (labelsOnThread[labelIndex].getName() === labelName) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function deleteDelayedSendTriggers_() {
@@ -209,13 +258,7 @@ function deleteDelayedSendTriggers_() {
 }
 
 function draftThreadHasSendLabel_(draft) {
-  const labelsOnThread = draft.getMessage().getThread().getLabels();
-  for (let labelIndex = 0; labelIndex < labelsOnThread.length; labelIndex++) {
-    if (labelsOnThread[labelIndex].getName() === SEND_LABEL_NAME) {
-      return true;
-    }
-  }
-  return false;
+  return threadHasLabelName_(draft.getMessage().getThread(), SEND_LABEL_NAME);
 }
 
 function messageAgeMilliseconds_(messageDate, nowMilliseconds) {
@@ -257,6 +300,9 @@ function assertDelayedSendConfigured_() {
   delayMilliseconds_();
   if (typeof SEND_LABEL_NAME !== "string" || SEND_LABEL_NAME.trim() === "") {
     throw new Error("SEND_LABEL_NAME must be a non-empty string");
+  }
+  if (typeof SEND_FAILED_LABEL_NAME !== "string" || SEND_FAILED_LABEL_NAME.trim() === "") {
+    throw new Error("SEND_FAILED_LABEL_NAME must be a non-empty string");
   }
 }
 
