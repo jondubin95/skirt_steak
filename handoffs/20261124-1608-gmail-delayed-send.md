@@ -14,7 +14,7 @@ Make the 5-minute delay the default. A draft sends after 5 quiet minutes. `Hold`
 
 ## Current State
 
-- On branch `cursor/gmail-delayed-send-opt-out-dea1`, commit `c4540e9`. Not merged. Not deployed.
+- On branch `cursor/gmail-delayed-send-opt-out-dea1`, pull request 27. Behavior commit `c4540e9`. Not merged. Not deployed.
 - `main` still has the opt-in script at `0fecd28` until this merges.
 - `node apps_script/gmail_delayed_send/stand_in_test.mjs`: 41 tests, `all assertions passed`.
 - Local checks on this VM: `py_compile`, board-secretary unittest (65), decision-log unittest (25), fanfic pytest (145), the gitignore check, and `ruff check python` passed. Preflight still exits 1 here because the local Docs client file and token directory are absent.
@@ -58,7 +58,7 @@ Make the 5-minute delay the default. A draft sends after 5 quiet minutes. `Hold`
 - `apps_script/gmail_delayed_send/README.md`
 - `apps_script/gmail_delayed_send/stand_in_test.mjs`
 - `docs/decision-notes.md` section "Gmail delayed-send is opt-out"
-- Commit `c4540e9` on `cursor/gmail-delayed-send-opt-out-dea1`
+- Pull request 27, branch `cursor/gmail-delayed-send-opt-out-dea1`, behavior commit `c4540e9`
 
 ## Next Best Actions
 
@@ -76,4 +76,4 @@ Make the 5-minute delay the default. A draft sends after 5 quiet minutes. `Hold`
 
 ## Prompt to Resume
 
-Continue from this note on branch `cursor/gmail-delayed-send-opt-out-dea1`, commit `c4540e9`. The 5-minute send is the default, `Hold` is the opt-out, and `Send in 5` is not a gate. Focus on Guardrails if it is not green, and otherwise leave the script undeployed until drafts that must stay have `Hold`. Avoid putting `Send in 5` back into eligibility, dropping the quota latch, `tryLock(0)`, or the `Send failed` skip, and avoid any mailbox address, token, script id, or OAuth client. Validate with `node apps_script/gmail_delayed_send/stand_in_test.mjs`: an unlabeled draft sends after 5 minutes, a `Hold` draft does not, removing `Hold` uses the last save, a `Send failed` draft is skipped, and a draft with no recipient is parked.
+Continue from this note on pull request 27, branch `cursor/gmail-delayed-send-opt-out-dea1`, behavior commit `c4540e9`. The 5-minute send is the default, `Hold` is the opt-out, and `Send in 5` is not a gate. Focus on Guardrails if it is not green, and otherwise leave the script undeployed until drafts that must stay have `Hold`. Avoid putting `Send in 5` back into eligibility, dropping the quota latch, `tryLock(0)`, or the `Send failed` skip, and avoid any mailbox address, token, script id, or OAuth client. Validate with `node apps_script/gmail_delayed_send/stand_in_test.mjs`: an unlabeled draft sends after 5 minutes, a `Hold` draft does not, removing `Hold` uses the last save, a `Send failed` draft is skipped, and a draft with no recipient is parked.
