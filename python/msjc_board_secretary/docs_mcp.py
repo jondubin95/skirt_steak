@@ -16,11 +16,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT / "python") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "python"))
 
+from msjc_board_secretary.auth import load_credentials  # noqa: E402
 from msjc_board_secretary.write_tab import (  # noqa: E402
     DEFAULT_CREDS,
     DEFAULT_TOKEN,
+    REAUTH_MESSAGE,
+    SCOPES,
     build_docs_service,
-    load_credentials,
 )
 
 PROTOCOL_VERSION = "2025-06-18"
@@ -69,7 +71,12 @@ def tool_text(payload: Any, is_error: bool = False) -> dict[str, Any]:
 
 
 def docs_service() -> Any:
-    creds = load_credentials(DEFAULT_CREDS, DEFAULT_TOKEN)
+    creds = load_credentials(
+        DEFAULT_CREDS,
+        DEFAULT_TOKEN,
+        SCOPES,
+        refresh_failure_message=REAUTH_MESSAGE,
+    )
     return build_docs_service(creds)
 
 
