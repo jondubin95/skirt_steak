@@ -23,8 +23,6 @@ A pushed branch on a public repo is immediately visible. Treat a push as publica
 handoffs/
   README.md
   INDEX.md                          # live status; links relative to this directory
-  fanfic-story-doctor-spec-v0.4.3.md
-  fanfic-story-doctor-spec-v0.4.4.md  # v0.4.4 amends v0.4.3; both stay here
   YYYYMMDD-HHMM-<thread>.md         # active heads
   archive/<thread>/...              # superseded heads and done heads
 ```

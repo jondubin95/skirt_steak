@@ -16,8 +16,8 @@ Keep pull request 28 reviewable on `feature/msjc-port-revisions`. Jon merges. Do
 ## Current State
 
 - Tip is `d4062bf`. Pull request 28 is open. Guardrails on that pull request is green: branch naming and blocking lint both passed.
-- `d4062bf` archives done handoff heads and teaches the skill to close a thread when its `pull_request` is merged. `INDEX.md` is the live status. The top of `handoffs/` holds this active head, the index, the readme, and the two fanfic specs.
-- `gmail-delayed-send` is `done` because pull request 27 is merged. The fanfic head is archived as a manual `done`. `handoffs/fanfic-story-doctor-spec-v0.4.3.md` and `v0.4.4.md` are not thread heads. v0.4.4 still amends v0.4.3, so both stay at the top of `handoffs/`.
+- `d4062bf` archives done handoff heads and teaches the skill to close a thread when its `pull_request` is merged. `INDEX.md` is the live status. The top of `handoffs/` holds this active head, the index, and the readme.
+- `gmail-delayed-send` is `done` because pull request 27 is merged. The fanfic head is archived as a manual `done`. The Fanfic Story Doctor specs live in `python/fanfic_story_doctor/spec/`. v0.4.4 still amends v0.4.3.
 - Reconcile on this checkpoint: the only `active` row was this thread, `pull_request: 28`, state `OPEN`. It stays active. The head was about half an hour old.
 - Do not pop the stash `board secretary handoff checkpoint` on `feature/close-stale-handoffs`.
 

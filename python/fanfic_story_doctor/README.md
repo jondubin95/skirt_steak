@@ -12,7 +12,7 @@ Key finding: the objective name-spelling check worked. Single-line voice judging
 
 Full wrap-up, results table, and ideas for resuming: [PROJECT_STATUS.md](PROJECT_STATUS.md).
 
-Spec: [handoffs/fanfic-story-doctor-spec-v0.4.4.md](../../handoffs/fanfic-story-doctor-spec-v0.4.4.md). v0.4.3 remains in force where the amendment is silent.
+Spec: [spec/fanfic-story-doctor-spec-v0.4.4.md](spec/fanfic-story-doctor-spec-v0.4.4.md). v0.4.3 remains in force where the amendment is silent.
 
 ## Run
 

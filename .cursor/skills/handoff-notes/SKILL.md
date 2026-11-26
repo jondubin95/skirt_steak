@@ -60,7 +60,7 @@ private_detail: null  # or Sensitive/handoffs/YYYYMMDD-HHMM-<thread-slug>.md
 ---
 ```
 
-`handoffs/INDEX.md` is the live status for each thread. The top of `handoffs/` holds active heads, `INDEX.md`, `README.md`, and the two fanfic spec files. Superseded heads and `done` heads live in `handoffs/archive/<thread-slug>/`. The index points at that archived path. Do not add a `branch` field. `gh pr view` returns the branch.
+`handoffs/INDEX.md` is the live status for each thread. The top of `handoffs/` holds active heads, `INDEX.md`, and `README.md`. Superseded heads and `done` heads live in `handoffs/archive/<thread-slug>/`. The index points at that archived path. Do not add a `branch` field. `gh pr view` returns the branch.
 
 A link to another note is relative to the file that contains it. GitHub resolves a markdown link from that file's directory. `INDEX.md` links stay relative to `handoffs/`, including `archive/<thread>/<file>.md` after a move. When a head is archived, rewrite links inside that file so they still resolve from `archive/<thread>/`. After that move, do not edit the file again. Do not scan older files in `archive/` for this.
 
