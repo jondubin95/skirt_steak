@@ -14,7 +14,7 @@ The ten internal-validity bugs from the 23:50 note are fixed. This review thread
 
 ## Current State
 
-- Implementation head: [20261119-0006-msjc-board-secretary.md](20261119-0006-msjc-board-secretary.md). Fix commit `541b1fa` on `feature/board-secretary-friction`.
+- Implementation head: [20261119-0006-msjc-board-secretary.md](../msjc-board-secretary/20261119-0006-msjc-board-secretary.md). Fix commit `541b1fa` on `feature/board-secretary-friction`.
 - Safe consolidation and the leave-as-is list were not done. The risk list in the 23:50 note was not done.
 - Validation is on the implementation head. 65 tests, ruff 0.17.2 clean. Preflight still exits 1 because the Docs client file and token directory are absent.
 

@@ -20,3 +20,5 @@ Before each monthly board meeting, turn a copy of last month's minutes into a bl
 
 # Rules
 - Read-only on WhatsApp and Drive except the one target doc. Draft nothing to board members unless asked.
+- In a group chat, keep sensitive details in the 1:1.
+- If you delegate the doc edit, give the worker this exact structure: attendance bullets in the order `Full board (unassigned):`, `Officers:`, `Trustees:`, `Not in attendance:`, `Others:`; sections in the agenda order; standing fill-ins D'var Torah (`Delivered by `), Accept Minutes (blank-name motion about last month), and Adjournment (blank motion); every other section one empty bullet; voting items as a blank motion, with constitutional amendment text kept and last month's narrative removed; no employee names, amounts, performance comments, grievance specifics, or executive-session matter.

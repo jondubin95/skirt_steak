@@ -47,6 +47,7 @@ This repo is intentionally iterative, so structure and workflows will continue t
 ## Handoff Convention
 
 - Say "checkpoint" to write a handoff; say "pickup" to resume from one.
+- A checkpoint on a `feature/*` or `cursor/*` branch commits the new handoff files and pushes that branch.
 - A private handoff supplement is optional, and only for detail that must stay out of git. See `.cursor/skills/handoff-notes/SKILL.md`.
 - Name handoffs `YYYYMMDD-HHMM-<thread>.md` and keep one thread per line of work.
 - Include objective, current state, decisions, constraints, next actions, and a short resume prompt.

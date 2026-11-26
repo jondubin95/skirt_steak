@@ -18,8 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT / "python") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "python"))
 
-from google_auth_oauthlib.flow import InstalledAppFlow, WSGITimeoutError  # noqa: E402
-
+from msjc_board_secretary.auth import load_credentials  # noqa: E402
 from msjc_board_secretary.write_tab import (  # noqa: E402
     DEFAULT_CREDS,
     DEFAULT_TOKEN,
@@ -27,6 +26,12 @@ from msjc_board_secretary.write_tab import (  # noqa: E402
 )
 
 WAIT_SECONDS = 300
+
+
+def _sign_in_timeout_type() -> type[BaseException]:
+    from google_auth_oauthlib.flow import WSGITimeoutError
+
+    return WSGITimeoutError
 
 
 def delete_leftover_bad_token(token_path: Path) -> None:
@@ -41,20 +46,19 @@ def main() -> None:
     if not creds_path.is_file():
         raise SystemExit(f"Missing OAuth client file: {creds_path}")
     logging.getLogger("google_auth_oauthlib").setLevel(logging.WARNING)
-    flow = InstalledAppFlow.from_client_secrets_file(str(creds_path), SCOPES)
     try:
-        creds = flow.run_local_server(
-            port=0,
+        load_credentials(
+            creds_path,
+            token_path,
+            SCOPES,
+            interactive=True,
+            force_consent=True,
             timeout_seconds=WAIT_SECONDS,
-            access_type="offline",
-            prompt="consent",
         )
-    except WSGITimeoutError as exc:
+    except _sign_in_timeout_type() as exc:
         raise SystemExit(
             "No sign-in arrived. Run this script again and approve the prompt."
         ) from exc
-    token_path.parent.mkdir(parents=True, exist_ok=True)
-    token_path.write_text(creds.to_json(), encoding="utf-8")
     delete_leftover_bad_token(token_path)
     print("token saved")
 

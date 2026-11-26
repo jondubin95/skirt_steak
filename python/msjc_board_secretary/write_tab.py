@@ -168,29 +168,14 @@ def tab_end_index(tab: dict[str, Any]) -> int:
 
 def load_credentials(creds_path: Path, token_path: Path) -> Any:
     """Load or refresh OAuth credentials. Does not invent a client from the environment."""
-    from google.auth.transport.requests import Request
-    from google.oauth2.credentials import Credentials
-    from google_auth_oauthlib.flow import InstalledAppFlow
+    from msjc_board_secretary.auth import load_credentials as load_oauth_credentials
 
-    creds = None
-    if token_path.exists():
-        creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            from google.auth.exceptions import RefreshError
-
-            try:
-                creds.refresh(Request())
-            except RefreshError as exc:
-                raise SystemExit(REAUTH_MESSAGE) from exc
-        else:
-            if not creds_path.is_file():
-                raise SystemExit(f"Missing OAuth client file: {creds_path}")
-            flow = InstalledAppFlow.from_client_secrets_file(str(creds_path), SCOPES)
-            creds = flow.run_local_server(port=0)
-        token_path.parent.mkdir(parents=True, exist_ok=True)
-        token_path.write_text(creds.to_json(), encoding="utf-8")
-    return creds
+    return load_oauth_credentials(
+        creds_path,
+        token_path,
+        SCOPES,
+        refresh_failure_message=REAUTH_MESSAGE,
+    )
 
 
 def build_docs_service(creds: Any) -> Any:

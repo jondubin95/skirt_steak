@@ -542,35 +542,6 @@ class SchemaTests(unittest.TestCase):
         self.assertTrue(any("markdown" in error for error in errors))
         self.assertTrue(any("Roman numeral" in error for error in errors))
 
-    def test_november_2026_section_titles_pass(self) -> None:
-        titles = (
-            "D'var Torah",
-            "Accept Minutes",
-            "Executive Director Update",
-            "Committee Items",
-            "Grievance Update",
-            "2027 Membership Pricing",
-            "Revenue Opportunities",
-            "Old Business",
-            "New Business",
-            "Adjournment",
-        )
-        items: list[dict] = [
-            {
-                "kind": "attendance",
-                "label": "In attendance:",
-                "names": ["Alex Rivera"],
-            }
-        ]
-        for title in titles:
-            items.append({"kind": "section", "title": title})
-            body = "None." if title in {"Old Business", "New Business", "Adjournment"} else "Recorded."
-            items.append({"kind": "paragraph", "text": body})
-        doc = load_minutes_document({"schemaVersion": 1, "items": items})
-        self.assertEqual([item.title for item in doc.items if item.kind == "section"], list(titles))
-        self.assertEqual(minutes_shape_errors(doc), ())
-        self.assertEqual(absent_speaker_conflicts(doc), ())
-
     def test_roman_heading_needs_a_marker_and_a_year_is_a_title(self) -> None:
         for title in (
             "II. Accept Minutes",

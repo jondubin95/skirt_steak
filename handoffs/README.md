@@ -22,18 +22,20 @@ A pushed branch on a public repo is immediately visible. Treat a push as publica
 ```text
 handoffs/
   README.md
-  INDEX.md                          # thread -> current head
-  YYYYMMDD-HHMM-<thread>.md         # live heads
-  archive/<thread>/...              # superseded heads
+  INDEX.md                          # live status; links relative to this directory
+  YYYYMMDD-HHMM-<thread>.md         # active heads
+  archive/<thread>/...              # superseded heads and done heads
 ```
 
-Each note begins with frontmatter recording `thread`, `status` (`active` or `done`), `created`, `supersedes`, and `private_detail`.
+Each new note begins with frontmatter recording `thread`, `status` (`active` or `done`), `created`, `pull_request` (a number or `null`), `supersedes`, and `private_detail`. Set `pull_request` from `gh pr view --json number` on the current branch. No pull request means `null`. A failed command means `null`, and the failure is reported. Do not guess the number. Older notes have no `pull_request` field.
 
 ## Threads
 
-A thread is one line of work continued across sessions. Each checkpoint writes a new immutable file and supersedes the previous head for that thread. `pickup` selects the newest `active` head, ordering by the filename timestamp, and states which file it chose before acting.
+A thread is one line of work continued across sessions. Each checkpoint writes a new immutable file and archives only the previous head of that same thread. `pickup` selects the newest `active` head, ordering by the filename timestamp, and states which file it chose before acting.
 
-Mark a thread `status: done` when the work ships so `pickup` stops selecting it.
+`INDEX.md` is the live status. On checkpoint and pickup, each `active` head with a `pull_request` number is checked with `gh pr view`. A merged pull request sets that head to `done` and moves it under `archive/<thread>/`. The index link stays relative to this directory. A closed unmerged pull request stays `active`. If `gh pr view` fails, the head stays `active` and the failure is reported. It is not archived. `pull_request: null` stays `active` until a checkpoint on that thread sets `done` by hand. Age is a reason to run the check. It does not by itself mark a thread done.
+
+A link to another note is relative to the file that contains it. When a head moves, links inside that file are rewritten so they still resolve.
 
 ## Template
 

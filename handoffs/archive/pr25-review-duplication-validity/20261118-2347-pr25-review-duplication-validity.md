@@ -14,7 +14,7 @@ Read-only adversarial review of pull request 25 on `feature/board-secretary-fric
 
 ## Current State
 
-- This note is a new thread. It does not supersede [20261118-1542-msjc-board-secretary.md](20261118-1542-msjc-board-secretary.md). That head stays the implementation record. Nothing was archived.
+- This note is a new thread. It does not supersede [20261118-1542-msjc-board-secretary.md](../msjc-board-secretary/20261118-1542-msjc-board-secretary.md). That head stays the implementation record. Nothing was archived.
 - Reviewed HEAD `907a1c7`. No functional code or tests were edited.
 - Every fail-open and fail-closed claim below was run against that tree with `python3`. The suite was not the proof. The suite stays green on these holes.
 - Validation on 2026-11-18: `python3 -m unittest discover -s python/msjc_board_secretary/tests -p "test_*.py"` = 63 tests, OK. `python3 -m ruff check python/msjc_board_secretary` with ruff 0.17.2 (the CI pin) passed. The VM had no ruff module until that install.

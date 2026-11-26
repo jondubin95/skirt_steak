@@ -3,17 +3,33 @@
 Use when the user asks what an older version of a Google Doc said, whether something was removed or edited, or to look through a doc's revision history.
 
 # Why this skill exists
-The Google Drive/Docs/Gmail connectors only return the current version of a doc, plus comments. They do not expose revision history. The box browser also can't sign in to Google reliably. Do not borrow connector tokens to call the Drive API.
+
+The Google Drive/Docs/Gmail connectors return the current doc, plus comments. They do not expose revision history. Do not borrow connector tokens to call the Drive API.
+
+# Command
+
+From the repo root, `python python/msjc_board_secretary/revisions.py` is read-only. Scope is `drive.readonly` only. The token is `Sensitive/google/gdocs_token_drive_readonly.json`, not the writer token. `reauth.py` does not mint this token. The first run that needs a token opens consent through this CLI.
+
+```bash
+python python/msjc_board_secretary/revisions.py list '<doc url or id>'
+python python/msjc_board_secretary/revisions.py export '<doc url or id>' <revisionId> --mime text/markdown
+python python/msjc_board_secretary/revisions.py export '<doc url or id>' --all
+python python/msjc_board_secretary/revisions.py comments '<doc url or id>'
+```
+
+Exports and `comments.json` go under `Sensitive/msjc/revisions/<docId>/`. That tree is gitignored. Do not commit it. If a refresh fails, move that token file aside and run the same command again. Do not point this CLI at the writer token.
 
 # Steps
-1. Get the doc id from the URL (the long string after /d/).
-2. Look for old versions already on the user's own computer. Use ListMachines and confirm it is connected. Then run read-only Shell commands with its machineId (each needs the user's approval) to find an existing revision export folder, typically a gitignored `revisions/<docId>/` folder in the user's board-secretary or minutes repo, plus a helper such as `scripts/revision_insights.py` that exports revisions with the user's own saved Google login.
-3. If exports exist, read them locally. Search for the keywords the user cares about (names, "motion", "moved", "table", etc.) across every version and report the version number, the exact wording, and what changed between versions. Do not copy the full text off the machine unless asked.
-4. If the exports are stale (the doc changed since), ask the user whether to re-run the helper script on their computer. Do it only with their OK, read-only, and never commit or print anything under `revisions/` or `Sensitive/`.
-5. If no laptop is connected or no exports or script exist, fall back to the user opening File > Version history > See version history and pasting the old text, or to having a cloud agent write a small read-only `revisions.list` / `revisions.get` export script that the user runs locally.
-6. Report findings with the answer first. Say plainly when a version range was not checked.
+
+1. Get the doc id from the URL (the long string after `/d/`) or pass the URL through. The CLI accepts either.
+2. Run `list`. Read the ids, times, and display names. Drive coalesces micro-edits, so a report says which listed revisions were checked. An edit that never became its own revision was not checked.
+3. Export only the revisions the question needs (`export` with those ids, or `--all` when the range is the whole list). Search the files for the words the user cares about. Report the revision id, the wording that answers the question, and what changed. Do not print full minutes or comments into chat. Summarize.
+4. `comments` writes replies into `comments.json`. Summarize those the same way. Do not paste the file into chat.
+5. If this machine has no client file or the person has not consented yet, they run the CLI where the sign-in can be approved. In a group chat, do not start that sign-in. Hand it to the 1:1.
+6. If the CLI cannot be run, the person can open File > Version history > See version history and paste the old text.
 
 # Rules
-- Read-only. Never edit, comment on, or share the doc.
-- In a group chat, don't start sign-ins on the box. Hand sign-in steps to the user's 1:1 chat.
-- Only one agent should run commands on the user's computer at a time; use the one that already has the context.
+
+- Read-only. Never edit, comment on, or share the doc from this command.
+- Do not print full minutes or comments into chat. Summarize, and name the listed revisions that were checked.
+- Never commit or print a dump under `Sensitive/msjc/revisions/`.
