@@ -14,7 +14,7 @@ Read-only adversarial review of pull request 25 on `feature/board-secretary-fric
 
 ## Current State
 
-- This thread does not supersede [20261118-1542-msjc-board-secretary.md](20261118-1542-msjc-board-secretary.md). That head stays the implementation record. The 23:47 review note is archived under this thread.
+- This thread does not supersede [20261118-1542-msjc-board-secretary.md](../msjc-board-secretary/20261118-1542-msjc-board-secretary.md). That head stays the implementation record. The 23:47 review note is archived under this thread.
 - Second pass, same tree. Code under review is still `907a1c7`. No functional code or tests were edited.
 - The 23:47 list still holds. This pass added two bypasses a whitespace-only fix would miss: a zero-width character before a Roman marker, and `not vote failed` as the same override as `not voted down`. A paragraph whose text is `II. Accept Minutes` is not checked at all.
 - Every fail-open and fail-closed claim below was run against that tree with `python3`. The suite was not the proof. The suite stays green on these holes.

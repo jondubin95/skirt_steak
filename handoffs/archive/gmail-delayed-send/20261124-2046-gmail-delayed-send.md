@@ -1,7 +1,8 @@
 ---
 thread: gmail-delayed-send
-status: active
+status: done
 created: 2026-11-24T20:46Z
+pull_request: 27
 supersedes: handoffs/archive/gmail-delayed-send/20261124-2016-gmail-delayed-send.md
 private_detail: null
 ---
