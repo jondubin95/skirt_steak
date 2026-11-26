@@ -6,6 +6,8 @@ default client file or a default token file.
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -17,6 +19,33 @@ def _oauth_modules() -> tuple[Any, Any, Any, type[BaseException]]:
     from google_auth_oauthlib.flow import InstalledAppFlow
 
     return Request, Credentials, InstalledAppFlow, RefreshError
+
+
+def _write_token_file(token_path: Path, payload: str) -> None:
+    """Write the token beside the destination, then replace it.
+
+    On POSIX the temporary file is mode 0600 before ``os.replace``, so the
+    token stays readable only by its owner. A failure leaves the previous
+    token in place and removes the temporary file.
+    """
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{token_path.name}.",
+        dir=token_path.parent,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        if os.name == "posix":
+            os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            descriptor = -1
+            handle.write(payload)
+        os.replace(temporary_path, token_path)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if temporary_path.exists():
+            temporary_path.unlink()
 
 
 def load_credentials(
@@ -69,6 +98,5 @@ def load_credentials(
         if timeout_seconds is not None:
             server_kwargs["timeout_seconds"] = timeout_seconds
         creds = flow.run_local_server(**server_kwargs)
-    token_path.parent.mkdir(parents=True, exist_ok=True)
-    token_path.write_text(creds.to_json(), encoding="utf-8")
+    _write_token_file(token_path, creds.to_json())
     return creds

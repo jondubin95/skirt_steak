@@ -71,12 +71,19 @@ def tool_text(payload: Any, is_error: bool = False) -> dict[str, Any]:
 
 
 def docs_service() -> Any:
-    creds = load_credentials(
-        DEFAULT_CREDS,
-        DEFAULT_TOKEN,
-        SCOPES,
-        refresh_failure_message=REAUTH_MESSAGE,
-    )
+    try:
+        creds = load_credentials(
+            DEFAULT_CREDS,
+            DEFAULT_TOKEN,
+            SCOPES,
+            interactive=False,
+            refresh_failure_message=REAUTH_MESSAGE,
+        )
+    except SystemExit as exc:
+        message = str(exc).strip() or (
+            "Google sign-in is required and interactive sign-in is disabled."
+        )
+        raise RuntimeError(message) from exc
     return build_docs_service(creds)
 
 

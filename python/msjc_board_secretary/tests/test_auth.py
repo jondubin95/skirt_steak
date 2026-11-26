@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import sys
 import tempfile
 import unittest
@@ -26,7 +27,9 @@ class OtherFailureError(Exception):
 
 
 class FakeCreds:
-    def __init__(self, *, valid: bool, expired: bool = False, refresh_token: str | None = "rt") -> None:
+    def __init__(
+        self, *, valid: bool, expired: bool = False, refresh_token: str | None = "rt"
+    ) -> None:
         self.valid = valid
         self.expired = expired
         self.refresh_token = refresh_token
@@ -91,7 +94,9 @@ class LoadCredentialsTests(unittest.TestCase):
             token.write_text("original", encoding="utf-8")
             saved = FakeCreds(valid=True)
             CredentialsApi.instance = saved
-            loaded = auth.load_credentials(Path(tmp) / "missing.json", token, DRIVE_SCOPE)
+            loaded = auth.load_credentials(
+                Path(tmp) / "missing.json", token, DRIVE_SCOPE
+            )
             self.assertEqual(token.read_text(encoding="utf-8"), "original")
         self.assertIs(loaded, saved)
         self.assertEqual(CredentialsApi.seen[1], DRIVE_SCOPE)
@@ -105,8 +110,12 @@ class LoadCredentialsTests(unittest.TestCase):
             saved = FakeCreds(valid=False, expired=True, refresh_token="rt")
             saved.payload = "refreshed-json"
             CredentialsApi.instance = saved
-            loaded = auth.load_credentials(Path(tmp) / "credentials.json", token, DRIVE_SCOPE)
+            loaded = auth.load_credentials(
+                Path(tmp) / "credentials.json", token, DRIVE_SCOPE
+            )
             self.assertEqual(token.read_text(encoding="utf-8"), "refreshed-json")
+            self.assertEqual(token.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(list(token.parent.glob(f".{token.name}.*")), [])
         self.assertIs(loaded, saved)
         self.assertEqual(FakeCreds.refresh_calls, ["request"])
         self.assertEqual(FlowApi.calls, [])
@@ -119,7 +128,9 @@ class LoadCredentialsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             token = Path(tmp) / "token.json"
             token.write_text("old", encoding="utf-8")
-            CredentialsApi.instance = Expired(valid=False, expired=True, refresh_token="rt")
+            CredentialsApi.instance = Expired(
+                valid=False, expired=True, refresh_token="rt"
+            )
             with self.assertRaises(SystemExit) as caught:
                 auth.load_credentials(
                     Path(tmp) / "credentials.json",
@@ -139,10 +150,29 @@ class LoadCredentialsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             token = Path(tmp) / "token.json"
             token.write_text("old", encoding="utf-8")
-            CredentialsApi.instance = Expired(valid=False, expired=True, refresh_token="rt")
+            CredentialsApi.instance = Expired(
+                valid=False, expired=True, refresh_token="rt"
+            )
             with self.assertRaises(OtherFailureError):
                 auth.load_credentials(Path(tmp) / "c.json", token, DRIVE_SCOPE)
         self.assertEqual(FlowApi.calls, [])
+
+    def test_replace_failure_keeps_the_previous_token(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            token = Path(tmp) / "token.json"
+            token.write_text("old", encoding="utf-8")
+            saved = FakeCreds(valid=False, expired=True, refresh_token="rt")
+            saved.payload = "refreshed-json"
+            CredentialsApi.instance = saved
+            with patch(
+                "msjc_board_secretary.auth.os.replace", side_effect=OSError("disk")
+            ):
+                with self.assertRaises(OSError):
+                    auth.load_credentials(
+                        Path(tmp) / "credentials.json", token, DRIVE_SCOPE
+                    )
+            self.assertEqual(token.read_text(encoding="utf-8"), "old")
+            self.assertEqual(list(Path(tmp).glob(".token.json.*")), [])
 
     def test_missing_token_runs_consent_with_offline_access(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -206,10 +236,14 @@ class LoadCredentialsTests(unittest.TestCase):
 
 class CallerTests(unittest.TestCase):
     def test_writer_keeps_its_scopes_and_refresh_message(self) -> None:
-        with patch("msjc_board_secretary.auth.load_credentials", return_value="token") as load:
+        with patch(
+            "msjc_board_secretary.auth.load_credentials", return_value="token"
+        ) as load:
             self.assertEqual(write_tab.load_credentials(Path("c"), Path("t")), "token")
         self.assertEqual(load.call_args.args, (Path("c"), Path("t"), write_tab.SCOPES))
-        self.assertEqual(load.call_args.kwargs["refresh_failure_message"], write_tab.REAUTH_MESSAGE)
+        self.assertEqual(
+            load.call_args.kwargs["refresh_failure_message"], write_tab.REAUTH_MESSAGE
+        )
         self.assertEqual(
             write_tab.DEFAULT_TOKEN,
             write_tab.REPO_ROOT / "Sensitive" / "google" / "gdocs_token.json",
@@ -222,7 +256,9 @@ class CallerTests(unittest.TestCase):
     def test_docs_mcp_stays_on_the_writer_token(self) -> None:
         with (
             patch.object(docs_mcp, "load_credentials", return_value="token") as load,
-            patch.object(docs_mcp, "build_docs_service", return_value="service") as build,
+            patch.object(
+                docs_mcp, "build_docs_service", return_value="service"
+            ) as build,
         ):
             self.assertEqual(docs_mcp.docs_service(), "service")
         build.assert_called_once_with("token")
@@ -230,8 +266,31 @@ class CallerTests(unittest.TestCase):
             load.call_args.args,
             (write_tab.DEFAULT_CREDS, write_tab.DEFAULT_TOKEN, write_tab.SCOPES),
         )
-        self.assertEqual(load.call_args.kwargs["refresh_failure_message"], write_tab.REAUTH_MESSAGE)
+        self.assertEqual(
+            load.call_args.kwargs["refresh_failure_message"], write_tab.REAUTH_MESSAGE
+        )
+        self.assertIs(load.call_args.kwargs["interactive"], False)
         self.assertNotIn("update_doc", {tool["name"] for tool in docs_mcp.TOOLS})
+
+    def test_docs_mcp_turns_a_refused_sign_in_into_a_tool_error(self) -> None:
+        message = {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {"name": "read_doc", "arguments": {"documentId": "abc"}},
+        }
+        refusal = "Google sign-in is required and interactive sign-in is disabled."
+        stdout = io.StringIO()
+        with (
+            patch.object(docs_mcp, "load_credentials", side_effect=SystemExit(refusal)),
+            redirect_stdout(stdout),
+        ):
+            docs_mcp.handle(message)
+        payload = json.loads(stdout.getvalue())
+        text = payload["result"]["content"][0]["text"]
+        self.assertTrue(payload["result"]["isError"])
+        self.assertIn(refusal, text)
+        self.assertNotIn("http", text)
 
     def test_reauth_forces_consent_on_the_writer_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -266,8 +325,12 @@ class CallerTests(unittest.TestCase):
             with (
                 patch.object(reauth, "DEFAULT_CREDS", creds),
                 patch.object(reauth, "DEFAULT_TOKEN", token),
-                patch.object(reauth, "_sign_in_timeout_type", return_value=SignInTimeoutError),
-                patch.object(reauth, "load_credentials", side_effect=SignInTimeoutError("closed")),
+                patch.object(
+                    reauth, "_sign_in_timeout_type", return_value=SignInTimeoutError
+                ),
+                patch.object(
+                    reauth, "load_credentials", side_effect=SignInTimeoutError("closed")
+                ),
             ):
                 with self.assertRaises(SystemExit) as caught:
                     reauth.main()
