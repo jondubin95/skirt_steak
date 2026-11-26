@@ -1,6 +1,10 @@
 ---
 name: handoff-notes
-description: Two-tier handoff notes for skirt_steak. Trigger when the user says "checkpoint" (write a handoff), "pickup" (resume from one), or mentions "handoff"/"handoffs". Do not apply otherwise. Note: "checkpoint" here means a session handoff, not an ML model checkpoint.
+description: >-
+  Two-tier handoff notes for skirt_steak. Trigger when the user says
+  "checkpoint" (write a handoff), "pickup" (resume from one), or mentions
+  "handoff"/"handoffs". Do not apply otherwise. Note: "checkpoint" here means
+  a session handoff, not an ML model checkpoint.
 ---
 
 # Handoff Notes
