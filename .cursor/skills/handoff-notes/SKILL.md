@@ -62,6 +62,8 @@ private_detail: null  # or Sensitive/handoffs/YYYYMMDD-HHMM-<thread-slug>.md
 
 `handoffs/INDEX.md` is the live status for each thread. The top of `handoffs/` holds active heads, `INDEX.md`, and `README.md`. Superseded heads and `done` heads live in `handoffs/archive/<thread-slug>/`. The index points at that archived path. Do not add a `branch` field. `gh pr view` returns the branch.
 
+A new note gets `pull_request` from the current branch. Run `gh pr view --json number`. Use that number when a pull request exists. Use `null` when gh reports that no pull request exists. When the command fails, use `null` and report the failure. Do not invent a number.
+
 A link to another note is relative to the file that contains it. GitHub resolves a markdown link from that file's directory. `INDEX.md` links stay relative to `handoffs/`, including `archive/<thread>/<file>.md` after a move. When a head is archived, rewrite links inside that file so they still resolve from `archive/<thread>/`. After that move, do not edit the file again. Do not scan older files in `archive/` for this.
 
 ### Reconcile active heads
@@ -70,7 +72,7 @@ Run this at the start of checkpoint and pickup. It does not archive a thread bec
 
 For each `active` row in `handoffs/INDEX.md`, open that head and read `pull_request`.
 
-- A number: run `gh pr view <number> --json state`. `MERGED` sets `status: done`, moves the file to `handoffs/archive/<thread>/`, rewrites links in that file so they resolve from the archive directory, and points the index at `archive/<thread>/<file>.md` with status `done`. A line in the note that says not to merge does not keep the thread active after that merge. `OPEN` or `CLOSED` without a merge stays `active`. If `created` is old, say how old the head is.
+- A number: run `gh pr view <number> --json state`. `MERGED` sets `status: done`, moves the file to `handoffs/archive/<thread>/`, rewrites links in that file so they resolve from the archive directory, and points the index at `archive/<thread>/<file>.md` with status `done`. A line in the note that says not to merge does not keep the thread active after that merge. `OPEN` or `CLOSED` without a merge stays `active`. If `created` is old, say how old the head is. If `gh pr view` fails, leave the note `active`, report the failure, and do not archive it. Do not treat the failure as merged or closed.
 - `null`: stays `active` until a checkpoint on that thread sets `status: done` by hand. Say how old the head is when `created` is old. A hand-marked `done` head moves to `archive/<thread>/` the same way.
 - A head with no `pull_request` field is an older note. Leave it. Do not invent a number.
 

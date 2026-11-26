@@ -41,7 +41,7 @@ Stdout is a short summary (title, tab, request counts, URL). It does not print t
 
 ## Revisions CLI
 
-`revisions.py` is read-only. It lists Drive revisions, exports them, and writes comments. It does not edit the doc. Scope is `drive.readonly` only. That is a different token from the writer.
+`revisions.py` is read-only. It lists Drive revisions, exports them, and writes comments. It does not edit the doc. Scope is `drive.readonly` only. That scope can read the whole Drive, not only this document. That is a different token from the writer.
 
 From the repo root:
 
@@ -52,7 +52,9 @@ python python/msjc_board_secretary/revisions.py export <docId> --all --mime text
 python python/msjc_board_secretary/revisions.py comments <docId>
 ```
 
-`--mime` is `text/markdown` (default), `text/plain`, or the Word docx type. Export falls back to plain text when the requested type has no link. Pass revision ids, or `--all`.
+`--mime` is `text/markdown` (default), `text/plain`, or the Word docx type. Export falls back to plain text when the requested type has no link, and it says so. Pass revision ids, or `--all`, not both. An incomplete export prints a count and exits non-zero.
+
+An export download makes 6 attempts. Between 429 responses it waits 5, 10, 20, 40, then 80 seconds, and it does not wait after the last attempt. `revisions.list`, `comments.list`, and `files.get` pass `num_retries=5` to the Google client's `execute()`. That client retry covers HTTP 429, 5xx, and 403 `rateLimitExceeded` / `userRateLimitExceeded`. The client chooses those waits.
 
 Defaults:
 
@@ -62,7 +64,7 @@ Defaults:
 
 `.gitignore` already ignores `/Sensitive/**`, so those exports stay untracked. Do not commit them.
 
-The first run that needs a token opens a one-time consent through this CLI and saves that token. `reauth.py` does not do it. `reauth.py` updates the writer token (`Sensitive/google/gdocs_token.json`) for the Docs and `drive.file` scopes. If this token's refresh fails, move the drive read-only token file aside and run the revisions command again.
+The first run that needs a token opens a one-time consent through this CLI and saves that token. The consent screen is forced (`prompt=consent`). The prompt waits 300 seconds and then exits if nobody approves it. `reauth.py` does not do it. `reauth.py` updates the writer token (`Sensitive/google/gdocs_token.json`) for the Docs and `drive.file` scopes. If this token's refresh fails, move the drive read-only token file aside and run the revisions command again.
 
 `list` prints the doc name, revision count, and each revision id, time, and display name. `export` writes one file per revision and prints the path. `comments` writes `comments.json` (comment text and replies) and prints the path. Do not print full minutes or comments into chat. Summarize, and say which listed revisions were checked. Drive coalesces micro-edits, so an unlisted edit was not a separate revision.
 
