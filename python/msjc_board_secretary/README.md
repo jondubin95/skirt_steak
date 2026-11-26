@@ -39,6 +39,33 @@ A one-phrase change uses `--replace` instead of rebuilding the tab. The file is 
 
 Stdout is a short summary (title, tab, request counts, URL). It does not print the minutes text.
 
+## Revisions CLI
+
+`revisions.py` is read-only. It lists Drive revisions, exports them, and writes comments. It does not edit the doc. Scope is `drive.readonly` only. That is a different token from the writer.
+
+From the repo root:
+
+```bash
+python python/msjc_board_secretary/revisions.py list 'https://docs.google.com/document/d/<docId>/edit'
+python python/msjc_board_secretary/revisions.py export <docId> <revisionId> --mime text/markdown
+python python/msjc_board_secretary/revisions.py export <docId> --all --mime text/plain
+python python/msjc_board_secretary/revisions.py comments <docId>
+```
+
+`--mime` is `text/markdown` (default), `text/plain`, or the Word docx type. Export falls back to plain text when the requested type has no link. Pass revision ids, or `--all`.
+
+Defaults:
+
+- client JSON `Sensitive/credentials.json` (same client file as the writer)
+- token `Sensitive/google/gdocs_token_drive_readonly.json`
+- output `Sensitive/msjc/revisions/<docId>/`
+
+`.gitignore` already ignores `/Sensitive/**`, so those exports stay untracked. Do not commit them.
+
+The first run that needs a token opens a one-time consent through this CLI and saves that token. `reauth.py` does not do it. `reauth.py` updates the writer token (`Sensitive/google/gdocs_token.json`) for the Docs and `drive.file` scopes. If this token's refresh fails, move the drive read-only token file aside and run the revisions command again.
+
+`list` prints the doc name, revision count, and each revision id, time, and display name. `export` writes one file per revision and prints the path. `comments` writes `comments.json` (comment text and replies) and prints the path. Do not print full minutes or comments into chat. Summarize, and say which listed revisions were checked. Drive coalesces micro-edits, so an unlisted edit was not a separate revision.
+
 ## Local read-only MCP
 
 Do not commit an `mcp.json` that starts this server. From the repo root, run `python python/msjc_board_secretary/setup_local_mcp.py`. That writes `.cursor/mcp.json` with this interpreter and the absolute path of `docs_mcp.py`, and leaves the file untracked. If the file already exists, the script refuses to overwrite it. Pass `--replace` to overwrite; it copies the current file to `.cursor/mcp.json.bak` first and says where that copy is. Enable the server in Cursor if it shows up disabled. The server uses the same Sensitive credential paths.

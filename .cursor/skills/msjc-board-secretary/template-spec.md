@@ -31,6 +31,10 @@ Do not type `### I.` or a blockquote. Those forms are not the minutes.
 
 Named styles on a typical source doc are not the minutes look (`HEADING_3` is 14pt gray). The writer overrides the runs.
 
+Do not use the `BULLET_DISC_CIRCLE_SQUARE` preset in a hand edit. `disc_requests` is the pass that creates disc glyphs, and that pass currently sends `bulletPreset` `BULLET_DISC_CIRCLE_SQUARE`.
+
+Do not leave a section heading as only the raw `HEADING_3` named style. The writer does not emit 14pt gray, 16pt above, or 4pt below. `requests_for_replace` sets `namedStyleType` to `HEADING_3` with `spaceAbove` 0 and `spaceBelow` 0, then overrides the run with `HEADING_TEXT_STYLE`: Arial, 13pt, bold, black. A blank paragraph is inserted before each section.
+
 ## Bullet voice
 
 Notes are a transcript. Minutes are one bullet per point.
@@ -80,7 +84,9 @@ Omit `verdict` when the notes do not record pass or fail. `fails` is only for a 
 
 ## Names
 
-Expand a first name or nickname only to the full name in the Notes attendance block (`Jo` → `Jordan Hale`). Someone who is not on that block stays as written. Do not swap two different people onto one name. If the notes say `Alex` and the attendance block lists `Alex Rivera`, use `Alex Rivera`. If the notes name a different person who is not on the block, leave that name unchanged.
+Expand a first name or nickname only to the full name in the Notes attendance block (`Jo` → `Jordan Hale`). Someone who is not on that block stays as written. Do not swap two different people onto one name. Do not swap English and Hebrew names between two different people. If the notes say `Alex` and the attendance block lists `Alex Rivera`, use `Alex Rivera`. If the notes name a different person who is not on the block, leave that name unchanged.
+
+A presenter line names only the person who presented. People who spoke, asked questions, or weighed in stay in the bullets. When the notes name a presenter, use that name. When the notes do not name a presenter, omit the line. Do not keep a presenter line carried over from the skeleton or the Minutes tab.
 
 ## Proposals
 
@@ -100,6 +106,7 @@ Example: `April 2026 Board Meeting Minutes 20260412`.
 Fictional raw note:
 
 ```
+- Alex Rivera presented
 - jo moved to accept the march minutes, jordan seconded, passed
 ```
 
@@ -110,6 +117,8 @@ Semantic items (heading text only; the Roman glyph is not in the JSON):
 {"kind": "presenter", "text": "Presented by Alex Rivera."}
 {"kind": "motion", "body": "Alex Rivera moves to accept the March minutes. Jordan Hale seconds.", "verdict": "passes"}
 ```
+
+The presenter line names only Alex Rivera. Jordan Hale seconded and is not a second presenter. If that first note line were missing, omit the presenter item.
 
 Failure modes to avoid, described without a source document:
 
